@@ -1442,13 +1442,13 @@ $porcupineModel = Join-Path $porcupineDir 'porcupine_params.pv'
 $porcupineKeyword = Join-Path $porcupineDir 'jarvis_windows.ppn'
 
 if (-not (Test-Path $porcupineDll)) {
-    Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/Picovoice/porcupine/v4.0.0/lib/windows/amd64/libpv_porcupine.dll' -OutFile $porcupineDll
+    Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/Picovoice/porcupine/master/lib/windows/amd64/libpv_porcupine.dll' -OutFile $porcupineDll
 }
 if (-not (Test-Path $porcupineModel)) {
-    Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/Picovoice/porcupine/v4.0.0/lib/common/porcupine_params.pv' -OutFile $porcupineModel
+    Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/Picovoice/porcupine/master/lib/common/porcupine_params.pv' -OutFile $porcupineModel
 }
 if (-not (Test-Path $porcupineKeyword)) {
-    Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/Picovoice/porcupine/v4.0.0/resources/keyword_files/windows/jarvis_windows.ppn' -OutFile $porcupineKeyword
+    Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/Picovoice/porcupine/master/resources/keyword_files/windows/jarvis_windows.ppn' -OutFile $porcupineKeyword
 }
 )POWERSHELL").arg(toolsRoot, voicePreset.id, voicePreset.modelUrl, voicePreset.configUrl);
 

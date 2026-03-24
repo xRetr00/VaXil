@@ -354,38 +354,6 @@ Window {
                             model: backend.audioOutputDeviceNames
                         }
 
-                        RowLayout {
-                            Layout.fillWidth: true
-
-                            Button {
-                                Layout.fillWidth: true
-                                text: "Auto-detect tools"
-                                onClicked: {
-                                    backend.refreshAudioDevices()
-                                    backend.autoDetectVoiceTools()
-                                    wizard.syncVoiceFieldsFromBackend()
-                                }
-                            }
-
-                            Button {
-                                Layout.fillWidth: true
-                                text: "Install missing tools"
-                                onClicked: {
-                                    backend.setSelectedVoicePresetId(backend.voicePresetIds[voicePresetCombo.currentIndex])
-                                    backend.installAndDetectVoiceTools()
-                                    backend.refreshAudioDevices()
-                                    wizard.syncVoiceFieldsFromBackend()
-                                }
-                            }
-                        }
-
-                        Text {
-                            Layout.fillWidth: true
-                            text: backend.toolInstallStatus.length > 0 ? backend.toolInstallStatus : "Auto-detection checks PATH and local tool folders for voice and wake assets."
-                            color: "#9ab0ca"
-                            font.pixelSize: 12
-                            wrapMode: Text.Wrap
-                        }
                     }
 
                     ColumnLayout {
@@ -456,9 +424,44 @@ Window {
                         }
 
                         Text {
-                            text: "The official Windows Jarvis keyword file can be auto-downloaded. Enter your Picovoice AccessKey here to enable always-listening wake detection."
+                            text: "The official Windows Jarvis keyword file can be auto-downloaded here. Enter a Picovoice Console AccessKey to enable always-listening wake detection."
                             color: "#7f97b7"
                             font.pixelSize: 13
+                            wrapMode: Text.Wrap
+                        }
+
+                        RowLayout {
+                            Layout.fillWidth: true
+
+                            Button {
+                                Layout.fillWidth: true
+                                text: "Auto-detect wake assets"
+                                onClicked: {
+                                    backend.refreshAudioDevices()
+                                    backend.autoDetectVoiceTools()
+                                    wizard.syncVoiceFieldsFromBackend()
+                                }
+                            }
+
+                            Button {
+                                Layout.fillWidth: true
+                                text: "Download official assets"
+                                onClicked: {
+                                    backend.setSelectedVoicePresetId(backend.voicePresetIds[voicePresetCombo.currentIndex])
+                                    backend.installAndDetectVoiceTools()
+                                    backend.refreshAudioDevices()
+                                    wizard.syncVoiceFieldsFromBackend()
+                                }
+                            }
+                        }
+
+                        Text {
+                            Layout.fillWidth: true
+                            text: backend.toolInstallStatus.length > 0
+                                  ? backend.toolInstallStatus
+                                  : "Auto-detection checks the local Porcupine DLL, model, keyword file, and audio devices from this wake-word step only."
+                            color: "#9ab0ca"
+                            font.pixelSize: 12
                             wrapMode: Text.Wrap
                         }
 

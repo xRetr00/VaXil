@@ -258,7 +258,18 @@ void AssistantController::initialize()
     connect(m_audioInputService, &AudioInputService::speechEnded, this, &AssistantController::stopListening);
 
     connect(m_porcupineWakeWordEngine, &PorcupineWakeWordEngine::wakeWordDetected, this, [this]() {
+        const bool interruptingActiveOutput = m_piperTtsEngine->isSpeaking() || m_currentState == AssistantState::Processing;
         stopWakeMonitor();
+        m_lmStudioClient->cancelActiveRequest();
+        m_piperTtsEngine->clear();
+        m_streamAssembler->reset();
+        if (!m_responseText.isEmpty()) {
+            m_responseText.clear();
+            emit responseTextChanged();
+        }
+        if (m_loggingService && interruptingActiveOutput) {
+            m_loggingService->info(QStringLiteral("Wake word detected during active output. Interrupting current response."));
+        }
         m_followUpListeningAfterWakeAck = true;
         m_lastPromptForAiLog = m_settings->wakeWordPhrase();
         deliverLocalResponse(
@@ -308,6 +319,7 @@ void AssistantController::initialize()
         if (m_loggingService) {
             m_loggingService->info(QStringLiteral("TTS playback started."));
         }
+        scheduleWakeMonitorRestart(50);
         emit speakingRequested();
     });
     connect(m_piperTtsEngine, &PiperTtsEngine::playbackFinished, this, [this]() {
@@ -335,6 +347,7 @@ void AssistantController::initialize()
                 .arg(requestId)
                 .arg(m_activeRequestKind == RequestKind::CommandExtraction ? QStringLiteral("command") : QStringLiteral("conversation")));
         }
+        scheduleWakeMonitorRestart(50);
         emit processingRequested();
     });
     connect(m_lmStudioClient, &LmStudioClient::requestDelta, this, [this](quint64 requestId, const QString &delta) {
@@ -670,10 +683,9 @@ void AssistantController::scheduleWakeMonitorRestart(int delayMs)
 bool AssistantController::canStartWakeMonitor() const
 {
     return m_wakeMonitorEnabled
-        && m_currentState == AssistantState::Idle
+        && m_currentState != AssistantState::Listening
         && !m_audioInputService->isActive()
         && !m_porcupineWakeWordEngine->isActive()
-        && !m_piperTtsEngine->isSpeaking()
         && !m_settings->porcupineAccessKey().isEmpty()
         && !m_settings->porcupineLibraryPath().isEmpty()
         && !m_settings->porcupineModelPath().isEmpty()

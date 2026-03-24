@@ -60,7 +60,14 @@ FetchContent_Declare(
 )
 FetchContent_GetProperties(porcupine_sdk)
 if(NOT porcupine_sdk_POPULATED)
+    if(POLICY CMP0169)
+        cmake_policy(PUSH)
+        cmake_policy(SET CMP0169 OLD)
+    endif()
     FetchContent_Populate(porcupine_sdk)
+    if(POLICY CMP0169)
+        cmake_policy(POP)
+    endif()
 endif()
 
 add_library(fvad STATIC
