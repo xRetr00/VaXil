@@ -3,6 +3,7 @@
 #include <QDir>
 #include <QFile>
 #include <QIcon>
+#include <QQuickStyle>
 #include <QResource>
 #include <QTextStream>
 
@@ -63,6 +64,7 @@ int main(int argc, char *argv[])
 {
     QApplication app(argc, argv);
     Q_INIT_RESOURCE(resources);
+    QQuickStyle::setStyle(QStringLiteral("Basic"));
     QApplication::setQuitOnLastWindowClosed(false);
     QApplication::setApplicationDisplayName(QStringLiteral("JARVIS"));
     QApplication::setApplicationName(QStringLiteral("JARVIS"));
