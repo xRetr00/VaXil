@@ -1,6 +1,7 @@
 #include "core/AssistantController.h"
 
 #include <QState>
+#include <QTime>
 
 #include <nlohmann/json.hpp>
 
@@ -10,10 +11,13 @@
 #include "ai/ReasoningRouter.h"
 #include "ai/StreamAssembler.h"
 #include "audio/AudioInputService.h"
+#include "core/IntentRouter.h"
+#include "core/LocalResponseEngine.h"
 #include "devices/DeviceManager.h"
 #include "logging/LoggingService.h"
 #include "memory/MemoryStore.h"
 #include "settings/AppSettings.h"
+#include "settings/IdentityProfileService.h"
 #include "stt/WhisperSttEngine.h"
 #include "tts/PiperTtsEngine.h"
 
@@ -34,9 +38,14 @@ QString stateToString(AssistantState state)
 }
 }
 
-AssistantController::AssistantController(AppSettings *settings, LoggingService *loggingService, QObject *parent)
+AssistantController::AssistantController(
+    AppSettings *settings,
+    IdentityProfileService *identityProfileService,
+    LoggingService *loggingService,
+    QObject *parent)
     : QObject(parent)
     , m_settings(settings)
+    , m_identityProfileService(identityProfileService)
     , m_loggingService(loggingService)
 {
     m_lmStudioClient = new LmStudioClient(this);
@@ -46,6 +55,8 @@ AssistantController::AssistantController(AppSettings *settings, LoggingService *
     m_streamAssembler = new StreamAssembler(this);
     m_memoryStore = new MemoryStore(this);
     m_deviceManager = new DeviceManager(this);
+    m_intentRouter = new IntentRouter(this);
+    m_localResponseEngine = new LocalResponseEngine(this);
     m_audioInputService = new AudioInputService(this);
     m_whisperSttEngine = new WhisperSttEngine(m_settings, this);
     m_piperTtsEngine = new PiperTtsEngine(m_settings, this);
@@ -55,6 +66,7 @@ void AssistantController::initialize()
 {
     m_lmStudioClient->setEndpoint(m_settings->lmStudioEndpoint());
     m_deviceManager->registerDefaults();
+    m_localResponseEngine->initialize();
     setupStateMachine();
     refreshModels();
 
@@ -123,8 +135,13 @@ void AssistantController::initialize()
     });
     connect(m_lmStudioClient, &LmStudioClient::requestFailed, this, [this](quint64 requestId, const QString &errorText) {
         if (requestId == m_activeRequestId) {
-            setStatus(errorText);
-            emit idleRequested();
+            const QString errorGroup = errorText.contains(QStringLiteral("timed out"), Qt::CaseInsensitive)
+                ? QStringLiteral("error_timeout")
+                : QStringLiteral("ai_offline");
+            deliverLocalResponse(
+                m_localResponseEngine->respondToError(errorGroup, buildLocalResponseContext()),
+                errorText,
+                true);
         }
     });
 }
@@ -165,9 +182,29 @@ void AssistantController::submitText(const QString &text)
     emit transcriptChanged();
     emit responseTextChanged();
     setStatus(QStringLiteral("Processing request"));
+    updateUserProfileFromInput(trimmed);
     m_memoryStore->appendConversation(QStringLiteral("user"), trimmed);
 
-    if (m_reasoningRouter->isLikelyCommand(trimmed)) {
+    const LocalIntent intent = m_intentRouter->classify(trimmed);
+    const AiAvailability availability = m_modelCatalogService->availability();
+
+    if (intent == LocalIntent::Greeting || intent == LocalIntent::SmallTalk) {
+        deliverLocalResponse(
+            m_localResponseEngine->respondToIntent(intent, buildLocalResponseContext()),
+            QStringLiteral("Local response"),
+            true);
+        return;
+    }
+
+    if (!availability.online || !availability.modelAvailable) {
+        deliverLocalResponse(
+            m_localResponseEngine->respondToError(QStringLiteral("ai_offline"), buildLocalResponseContext()),
+            QStringLiteral("AI unavailable"),
+            true);
+        return;
+    }
+
+    if (intent == LocalIntent::Command || m_reasoningRouter->isLikelyCommand(trimmed)) {
         startCommandRequest(trimmed);
     } else {
         startConversationRequest(trimmed);
@@ -282,6 +319,54 @@ void AssistantController::setStatus(const QString &status)
     emit statusTextChanged();
 }
 
+void AssistantController::updateUserProfileFromInput(const QString &input)
+{
+    const QString lowered = input.toLower();
+    if (lowered.startsWith(QStringLiteral("my name is "))) {
+        m_identityProfileService->setUserName(input.mid(11).trimmed());
+        return;
+    }
+
+    if (lowered.startsWith(QStringLiteral("i prefer "))) {
+        m_identityProfileService->setPreference(QStringLiteral("general"), input.mid(9).trimmed());
+    }
+}
+
+LocalResponseContext AssistantController::buildLocalResponseContext() const
+{
+    const int hour = QTime::currentTime().hour();
+    QString timeOfDay = QStringLiteral("afternoon");
+    if (hour < 12) {
+        timeOfDay = QStringLiteral("morning");
+    } else if (hour >= 18) {
+        timeOfDay = QStringLiteral("evening");
+    }
+
+    return {
+        .assistantName = m_identityProfileService->identity().assistantName,
+        .userName = m_identityProfileService->userProfile().userName.isEmpty()
+            ? m_memoryStore->userName()
+            : m_identityProfileService->userProfile().userName,
+        .timeOfDay = timeOfDay,
+        .systemState = stateName(),
+        .tone = m_identityProfileService->identity().tone,
+        .addressingStyle = m_identityProfileService->identity().addressingStyle
+    };
+}
+
+void AssistantController::deliverLocalResponse(const QString &text, const QString &status, bool speak)
+{
+    m_responseText = text;
+    emit responseTextChanged();
+    m_memoryStore->appendConversation(QStringLiteral("assistant"), text);
+    setStatus(status);
+    if (speak) {
+        m_piperTtsEngine->enqueueSentence(text);
+    } else {
+        emit idleRequested();
+    }
+}
+
 void AssistantController::startConversationRequest(const QString &input)
 {
     const ReasoningMode mode = m_reasoningRouter->chooseMode(input, m_settings->autoRoutingEnabled(), m_settings->defaultReasoningMode());
@@ -297,6 +382,8 @@ void AssistantController::startConversationRequest(const QString &input)
         input,
         m_memoryStore->recentMessages(8),
         m_memoryStore->relevantMemory(input),
+        m_identityProfileService->identity(),
+        m_identityProfileService->userProfile(),
         mode);
 
     m_activeRequestId = m_lmStudioClient->sendChatRequest(messages, modelId, {
@@ -318,7 +405,11 @@ void AssistantController::startCommandRequest(const QString &input)
 
     m_activeRequestKind = RequestKind::CommandExtraction;
     m_activeRequestId = m_lmStudioClient->sendChatRequest(
-        m_promptAdapter->buildCommandMessages(input, ReasoningMode::Fast),
+        m_promptAdapter->buildCommandMessages(
+            input,
+            m_identityProfileService->identity(),
+            m_identityProfileService->userProfile(),
+            ReasoningMode::Fast),
         modelId,
         {.mode = ReasoningMode::Fast, .kind = RequestKind::CommandExtraction, .stream = false, .timeout = std::chrono::milliseconds(m_settings->requestTimeoutMs())});
 }
@@ -349,10 +440,13 @@ void AssistantController::handleCommandFinished(const QString &text)
     }
 
     const QString result = m_deviceManager->execute(command);
-    m_responseText = result;
+    const QString message = m_localResponseEngine->acknowledgement(command.target, buildLocalResponseContext())
+        + QStringLiteral(" ")
+        + result;
+    m_responseText = message;
     emit responseTextChanged();
-    m_memoryStore->appendConversation(QStringLiteral("assistant"), result);
-    m_piperTtsEngine->enqueueSentence(result);
+    m_memoryStore->appendConversation(QStringLiteral("assistant"), message);
+    m_piperTtsEngine->enqueueSentence(message);
     setStatus(QStringLiteral("Command executed"));
 }
 

@@ -1,0 +1,32 @@
+{
+  "greeting_morning": [
+    "Good morning, {user_name}. {assistant_name} is steady and available.",
+    "Good morning, {user_name}. {assistant_name} is online.",
+    "Morning, {user_name}. {assistant_name} is ready when you are."
+  ],
+  "greeting_evening": [
+    "Good evening, {user_name}. All systems remain available.",
+    "Good evening, {user_name}. {assistant_name} is standing by.",
+    "Evening, {user_name}. What do you need?"
+  ],
+  "small_talk": [
+    "I am operating normally, {user_name}.",
+    "All core systems are stable this {time_of_day}.",
+    "Running smoothly with a {tone} tone. Let me know what you need."
+  ],
+  "ai_offline": [
+    "I'm currently unable to reach the AI core.",
+    "My processing unit is offline at the moment.",
+    "The AI core is unavailable right now, but local systems remain active."
+  ],
+  "error_timeout": [
+    "The AI core did not answer in time.",
+    "The request exceeded its response window.",
+    "I hit a timeout while waiting on the AI core."
+  ],
+  "acknowledgement": [
+    "Understood. Applying that to {target}.",
+    "Acknowledged. Routing the action to {target}.",
+    "Confirmed. Handling {target} now."
+  ]
+}

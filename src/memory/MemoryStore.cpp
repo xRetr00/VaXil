@@ -118,6 +118,17 @@ QList<MemoryRecord> MemoryStore::relevantMemory(const QString &query) const
     return relevant;
 }
 
+QString MemoryStore::userName() const
+{
+    for (const auto &record : loadMemory()) {
+        if (record.type == QStringLiteral("profile") && record.key == QStringLiteral("name")) {
+            return record.value;
+        }
+    }
+
+    return {};
+}
+
 QString MemoryStore::transcriptPath() const
 {
     return appDataRoot() + QStringLiteral("/transcript.jsonl");

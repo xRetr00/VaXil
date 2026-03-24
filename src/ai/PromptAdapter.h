@@ -15,9 +15,15 @@ public:
         const QString &input,
         const QList<AiMessage> &history,
         const QList<MemoryRecord> &memory,
+        const AssistantIdentity &identity,
+        const UserProfile &userProfile,
         ReasoningMode mode) const;
 
-    QList<AiMessage> buildCommandMessages(const QString &input, ReasoningMode mode) const;
+    QList<AiMessage> buildCommandMessages(
+        const QString &input,
+        const AssistantIdentity &identity,
+        const UserProfile &userProfile,
+        ReasoningMode mode) const;
 
     QString applyReasoningMode(const QString &input, ReasoningMode mode) const;
 };

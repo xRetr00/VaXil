@@ -17,6 +17,7 @@ public:
     void extractUserFacts(const QString &content);
     QList<AiMessage> recentMessages(int maxCount) const;
     QList<MemoryRecord> relevantMemory(const QString &query) const;
+    QString userName() const;
 
 private:
     QString transcriptPath() const;

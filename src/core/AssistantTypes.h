@@ -27,6 +27,14 @@ enum class RequestKind {
     Conversation
 };
 
+enum class LocalIntent {
+    Greeting,
+    SmallTalk,
+    Command,
+    ComplexQuery,
+    Unknown
+};
+
 struct AiRequestOptions {
     ReasoningMode mode = ReasoningMode::Balanced;
     RequestKind kind = RequestKind::Conversation;
@@ -78,8 +86,29 @@ struct MemoryRecord {
     QString updatedAt;
 };
 
+struct AssistantIdentity {
+    QString assistantName;
+    QString personality;
+    QString tone;
+    QString addressingStyle;
+};
+
+struct UserProfile {
+    QString userName;
+    nlohmann::json preferences = nlohmann::json::object();
+};
+
 struct AssistantResponse {
     QString text;
     bool isDeviceAction = false;
     std::optional<CommandEnvelope> command;
+};
+
+struct LocalResponseContext {
+    QString assistantName;
+    QString userName;
+    QString timeOfDay;
+    QString systemState;
+    QString tone;
+    QString addressingStyle;
 };

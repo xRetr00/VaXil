@@ -16,6 +16,7 @@
 #include "logging/LoggingService.h"
 #include "overlay/OverlayController.h"
 #include "settings/AppSettings.h"
+#include "settings/IdentityProfileService.h"
 
 #ifdef Q_OS_WIN
 #include <windows.h>
@@ -64,13 +65,20 @@ bool JarvisApplication::initialize()
 {
     m_settings = std::make_unique<AppSettings>();
     m_settings->load();
+    m_identityProfileService = std::make_unique<IdentityProfileService>();
+    if (!m_identityProfileService->initialize()) {
+        return false;
+    }
 
     m_loggingService = std::make_unique<LoggingService>();
     if (!m_loggingService->initialize()) {
         return false;
     }
 
-    m_assistantController = std::make_unique<AssistantController>(m_settings.get(), m_loggingService.get());
+    m_assistantController = std::make_unique<AssistantController>(
+        m_settings.get(),
+        m_identityProfileService.get(),
+        m_loggingService.get());
     m_overlayController = std::make_unique<OverlayController>();
     m_backendFacade = std::make_unique<BackendFacade>(m_settings.get(), m_assistantController.get(), m_overlayController.get());
     m_engine = std::make_unique<QQmlApplicationEngine>();

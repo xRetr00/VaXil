@@ -38,6 +38,8 @@ set(JARVIS_SOURCES
     src/ai/StreamAssembler.cpp
     src/audio/AudioInputService.cpp
     src/core/AssistantController.cpp
+    src/core/IntentRouter.cpp
+    src/core/LocalResponseEngine.cpp
     src/devices/DeviceManager.cpp
     src/devices/MockDevices.cpp
     src/gui/BackendFacade.cpp
@@ -45,6 +47,7 @@ set(JARVIS_SOURCES
     src/memory/MemoryStore.cpp
     src/overlay/OverlayController.cpp
     src/settings/AppSettings.cpp
+    src/settings/IdentityProfileService.cpp
     src/stt/WhisperSttEngine.cpp
     src/tts/PiperTtsEngine.cpp
 )
@@ -59,6 +62,8 @@ set(JARVIS_HEADERS
     src/audio/AudioInputService.h
     src/core/AssistantController.h
     src/core/AssistantTypes.h
+    src/core/IntentRouter.h
+    src/core/LocalResponseEngine.h
     src/devices/Device.h
     src/devices/DeviceManager.h
     src/devices/MockDevices.h
@@ -67,6 +72,7 @@ set(JARVIS_HEADERS
     src/memory/MemoryStore.h
     src/overlay/OverlayController.h
     src/settings/AppSettings.h
+    src/settings/IdentityProfileService.h
     src/stt/WhisperSttEngine.h
     src/tts/PiperTtsEngine.h
 )
@@ -80,6 +86,7 @@ add_library(jarvis_lib STATIC
 )
 
 target_include_directories(jarvis_lib PUBLIC src)
+target_compile_definitions(jarvis_lib PUBLIC JARVIS_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
 
 target_link_libraries(jarvis_lib
     PUBLIC
@@ -128,4 +135,28 @@ if(JARVIS_BUILD_TESTS)
     )
 
     add_test(NAME jarvis_ai_services_tests COMMAND jarvis_ai_services_tests)
+
+    qt_add_executable(jarvis_local_response_tests
+        tests/LocalResponseEngineTests.cpp
+    )
+
+    target_link_libraries(jarvis_local_response_tests
+        PRIVATE
+            jarvis_lib
+            Qt6::Test
+    )
+
+    add_test(NAME jarvis_local_response_tests COMMAND jarvis_local_response_tests)
+
+    qt_add_executable(jarvis_identity_tests
+        tests/IdentityProfileTests.cpp
+    )
+
+    target_link_libraries(jarvis_identity_tests
+        PRIVATE
+            jarvis_lib
+            Qt6::Test
+    )
+
+    add_test(NAME jarvis_identity_tests COMMAND jarvis_identity_tests)
 endif()

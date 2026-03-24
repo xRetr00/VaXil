@@ -7,6 +7,7 @@
 class AssistantController;
 class AppSettings;
 class BackendFacade;
+class IdentityProfileService;
 class LoggingService;
 class NativeHotkeyFilter;
 class OverlayController;
@@ -25,6 +26,7 @@ public:
 
 private:
     std::unique_ptr<AppSettings> m_settings;
+    std::unique_ptr<IdentityProfileService> m_identityProfileService;
     std::unique_ptr<LoggingService> m_loggingService;
     std::unique_ptr<AssistantController> m_assistantController;
     std::unique_ptr<OverlayController> m_overlayController;

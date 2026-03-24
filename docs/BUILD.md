@@ -41,3 +41,5 @@ ctest --preset default
 - LM Studio should expose the OpenAI-compatible API on `http://localhost:1234`
 - The app discovers models from `/v1/models`
 - Voice generation starts only when sentence boundaries are detected from streamed output
+- Identity is loaded from `config/identity.json`
+- User profile is loaded from `config/user_profile.json`

@@ -8,13 +8,16 @@
 class AppSettings;
 class AudioInputService;
 class DeviceManager;
+class IntentRouter;
 class LmStudioClient;
+class LocalResponseEngine;
 class LoggingService;
 class MemoryStore;
 class ModelCatalogService;
 class PiperTtsEngine;
 class PromptAdapter;
 class ReasoningRouter;
+class IdentityProfileService;
 class StreamAssembler;
 class WhisperSttEngine;
 
@@ -28,7 +31,11 @@ class AssistantController : public QObject
     Q_PROPERTY(float audioLevel READ audioLevel NOTIFY audioLevelChanged)
 
 public:
-    AssistantController(AppSettings *settings, LoggingService *loggingService, QObject *parent = nullptr);
+    AssistantController(
+        AppSettings *settings,
+        IdentityProfileService *identityProfileService,
+        LoggingService *loggingService,
+        QObject *parent = nullptr);
 
     void initialize();
 
@@ -79,6 +86,9 @@ signals:
 private:
     void setupStateMachine();
     void setStatus(const QString &status);
+    void updateUserProfileFromInput(const QString &input);
+    LocalResponseContext buildLocalResponseContext() const;
+    void deliverLocalResponse(const QString &text, const QString &status, bool speak = true);
     void startConversationRequest(const QString &input);
     void startCommandRequest(const QString &input);
     void handleConversationFinished(const QString &text);
@@ -86,6 +96,7 @@ private:
     CommandEnvelope parseCommand(const QString &payload) const;
 
     AppSettings *m_settings = nullptr;
+    IdentityProfileService *m_identityProfileService = nullptr;
     LoggingService *m_loggingService = nullptr;
     LmStudioClient *m_lmStudioClient = nullptr;
     ModelCatalogService *m_modelCatalogService = nullptr;
@@ -94,6 +105,8 @@ private:
     StreamAssembler *m_streamAssembler = nullptr;
     MemoryStore *m_memoryStore = nullptr;
     DeviceManager *m_deviceManager = nullptr;
+    IntentRouter *m_intentRouter = nullptr;
+    LocalResponseEngine *m_localResponseEngine = nullptr;
     AudioInputService *m_audioInputService = nullptr;
     WhisperSttEngine *m_whisperSttEngine = nullptr;
     PiperTtsEngine *m_piperTtsEngine = nullptr;
