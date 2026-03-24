@@ -20,6 +20,19 @@ Window {
 
     property int stepIndex: 0
 
+    function syncVoiceFieldsFromBackend() {
+        whisperPathField.text = backend.whisperExecutable
+        piperPathField.text = backend.piperExecutable
+        voicePathField.text = backend.piperVoiceModel
+        ffmpegPathField.text = backend.ffmpegExecutable
+    }
+
+    onVisibleChanged: {
+        if (visible) {
+            syncVoiceFieldsFromBackend()
+        }
+    }
+
     JarvisUi.AnimationController {
         id: setupMotion
         stateName: stepIndex === 0 ? "IDLE" : stepIndex === 1 ? "PROCESSING" : stepIndex === 2 ? "LISTENING" : "SPEAKING"
@@ -147,7 +160,7 @@ Window {
 
                 Text {
                     text: wizard.stepIndex === 0 ? "Define how the assistant should address you."
-                        : wizard.stepIndex === 1 ? "Point JARVIS at LM Studio and choose a model."
+                        : wizard.stepIndex === 1 ? "Point J.A.R.V.I.S at LM Studio and choose a model."
                         : wizard.stepIndex === 2 ? "Connect whisper.cpp, Piper, and the voice model."
                         : "Set the overlay’s starting behavior."
                     color: "#89a3c4"
@@ -231,6 +244,69 @@ Window {
                         TextField { id: voicePathField; Layout.fillWidth: true; text: backend.piperVoiceModel }
                         Text { text: "ffmpeg executable"; color: "#d0e3f5"; font.pixelSize: 13 }
                         TextField { id: ffmpegPathField; Layout.fillWidth: true; text: backend.ffmpegExecutable }
+
+                        RowLayout {
+                            Layout.fillWidth: true
+
+                            Rectangle {
+                                Layout.fillWidth: true
+                                Layout.preferredHeight: 44
+                                radius: 22
+                                color: "#142338"
+                                border.width: 1
+                                border.color: "#2a4667"
+
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: "Auto-detect tools"
+                                    color: "#edf8ff"
+                                    font.pixelSize: 13
+                                }
+
+                                MouseArea {
+                                    anchors.fill: parent
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: {
+                                        backend.autoDetectVoiceTools()
+                                        wizard.syncVoiceFieldsFromBackend()
+                                    }
+                                }
+                            }
+
+                            Rectangle {
+                                Layout.fillWidth: true
+                                Layout.preferredHeight: 44
+                                radius: 22
+                                color: "#183657"
+                                border.width: 1
+                                border.color: "#4d8fd1"
+
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: "Install missing tools"
+                                    color: "#f2fbff"
+                                    font.pixelSize: 13
+                                    font.weight: Font.Medium
+                                }
+
+                                MouseArea {
+                                    anchors.fill: parent
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: {
+                                        backend.installAndDetectVoiceTools()
+                                        wizard.syncVoiceFieldsFromBackend()
+                                    }
+                                }
+                            }
+                        }
+
+                        Text {
+                            Layout.fillWidth: true
+                            text: backend.toolInstallStatus.length > 0 ? backend.toolInstallStatus : "Auto-detection checks PATH and local tool folders."
+                            color: "#9ab0ca"
+                            font.pixelSize: 12
+                            wrapMode: Text.Wrap
+                        }
                     }
 
                     ColumnLayout {

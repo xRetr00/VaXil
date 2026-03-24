@@ -201,7 +201,7 @@ bool JarvisApplication::initialize()
     } else {
         qInfo() << "Startup complete. App is running in the tray. Use Ctrl+Alt+J or tray icon.";
         m_trayIcon->showMessage(
-            QStringLiteral("JARVIS"),
+            QStringLiteral("J.A.R.V.I.S"),
             QStringLiteral("Running in tray. Use Ctrl+Alt+J or the tray icon."),
             QSystemTrayIcon::Information,
             5000);

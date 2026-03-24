@@ -34,6 +34,7 @@ class BackendFacade : public QObject
     Q_PROPERTY(QString assistantName READ assistantName NOTIFY profileChanged)
     Q_PROPERTY(QString userName READ userName NOTIFY profileChanged)
     Q_PROPERTY(bool initialSetupCompleted READ initialSetupCompleted NOTIFY settingsChanged)
+    Q_PROPERTY(QString toolInstallStatus READ toolInstallStatus NOTIFY toolInstallStatusChanged)
 
 public:
     BackendFacade(
@@ -67,6 +68,7 @@ public:
     QString assistantName() const;
     QString userName() const;
     bool initialSetupCompleted() const;
+    QString toolInstallStatus() const;
 
     Q_INVOKABLE void toggleOverlay();
     Q_INVOKABLE void refreshModels();
@@ -98,6 +100,8 @@ public:
         const QString &voicePath,
         const QString &ffmpegPath,
         bool clickThrough);
+    Q_INVOKABLE bool autoDetectVoiceTools();
+    Q_INVOKABLE bool installAndDetectVoiceTools();
 
 signals:
     void stateNameChanged();
@@ -111,10 +115,14 @@ signals:
     void settingsChanged();
     void profileChanged();
     void initialSetupFinished();
+    void toolInstallStatusChanged();
 
 private:
+    void setToolInstallStatus(const QString &status);
+
     AppSettings *m_settings = nullptr;
     IdentityProfileService *m_identityProfileService = nullptr;
     AssistantController *m_assistantController = nullptr;
     OverlayController *m_overlayController = nullptr;
+    QString m_toolInstallStatus;
 };

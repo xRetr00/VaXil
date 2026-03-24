@@ -74,8 +74,8 @@ bool AppSettings::load()
     m_piperExecutable = QString::fromStdString(parsed.value("piperExecutable", std::string{}));
     m_piperVoiceModel = QString::fromStdString(parsed.value("piperVoiceModel", std::string{}));
     m_ffmpegExecutable = QString::fromStdString(parsed.value("ffmpegExecutable", std::string{}));
-    m_voiceSpeed = parsed.value("voiceSpeed", 1.0);
-    m_voicePitch = parsed.value("voicePitch", 1.0);
+    m_voiceSpeed = parsed.value("voiceSpeed", 0.88);
+    m_voicePitch = parsed.value("voicePitch", 0.94);
     m_micSensitivity = parsed.value("micSensitivity", 0.02);
     m_clickThroughEnabled = parsed.value("clickThroughEnabled", false);
     m_initialSetupCompleted = parsed.value("initialSetupCompleted", false);

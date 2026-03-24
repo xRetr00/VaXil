@@ -1,14 +1,113 @@
 #include "tts/PiperTtsEngine.h"
 
+#include <algorithm>
+
 #include <QtConcurrent>
 #include <QAudioOutput>
 #include <QDir>
 #include <QMediaPlayer>
 #include <QProcess>
+#include <QRegularExpression>
 #include <QStandardPaths>
 #include <QUrl>
 
 #include "settings/AppSettings.h"
+
+namespace {
+QString normalizeSpeechText(QString text)
+{
+    QString cleaned = text;
+    cleaned.replace(QRegularExpression(QStringLiteral("[`*_#~]+")), QStringLiteral(" "));
+    cleaned.replace(QRegularExpression(QStringLiteral("\\s+")), QStringLiteral(" "));
+    cleaned.replace(QRegularExpression(QStringLiteral("\\s*\\n+\\s*")), QStringLiteral(". "));
+    cleaned = cleaned.trimmed();
+
+    if (cleaned.isEmpty()) {
+        return {};
+    }
+
+    // Keep speech concise and naturally paced.
+    if (!cleaned.endsWith(QChar::fromLatin1('.'))
+        && !cleaned.endsWith(QChar::fromLatin1('!'))
+        && !cleaned.endsWith(QChar::fromLatin1('?'))) {
+        cleaned += QChar::fromLatin1('.');
+    }
+
+    return cleaned;
+}
+
+QString styleFormatJarvisResponse(const QString &text)
+{
+    QString formatted = normalizeSpeechText(text);
+    if (formatted.isEmpty()) {
+        return {};
+    }
+
+    // Remove common filler language so delivery stays precise.
+    formatted.replace(QRegularExpression(QStringLiteral("\\b(uh|um|you know|like)\\b"), QRegularExpression::CaseInsensitiveOption), QStringLiteral(""));
+    formatted.replace(QRegularExpression(QStringLiteral("\\s+")), QStringLiteral(" "));
+    formatted = formatted.trimmed();
+
+    // Keep voice responses concise and controlled.
+    const QStringList sentences = formatted.split(QRegularExpression(QStringLiteral("(?<=[.!?])\\s+")), Qt::SkipEmptyParts);
+    QStringList conciseSentences;
+    conciseSentences.reserve(3);
+
+    for (const QString &rawSentence : sentences) {
+        if (conciseSentences.size() >= 3) {
+            break;
+        }
+
+        QString sentence = rawSentence.trimmed();
+        if (sentence.isEmpty()) {
+            continue;
+        }
+
+        const QStringList words = sentence.split(QRegularExpression(QStringLiteral("\\s+")), Qt::SkipEmptyParts);
+        if (words.size() > 18) {
+            sentence = words.mid(0, 18).join(QStringLiteral(" ")) + QStringLiteral(".");
+        }
+
+        if (!sentence.endsWith(QChar::fromLatin1('.'))
+            && !sentence.endsWith(QChar::fromLatin1('!'))
+            && !sentence.endsWith(QChar::fromLatin1('?'))) {
+            sentence += QChar::fromLatin1('.');
+        }
+
+        sentence[0] = sentence.at(0).toUpper();
+        conciseSentences.push_back(sentence);
+    }
+
+    return conciseSentences.join(QStringLiteral(" "));
+}
+
+QString injectNaturalPauses(const QString &text)
+{
+    QString withPauses = text;
+    if (withPauses.isEmpty()) {
+        return {};
+    }
+
+    // Create short and long pause opportunities.
+    withPauses.replace(QStringLiteral(": "), QStringLiteral("... "));
+    withPauses.replace(QRegularExpression(QStringLiteral("\\s*-\\s*")), QStringLiteral(", "));
+    withPauses.replace(QRegularExpression(QStringLiteral("\\bplease\\b"), QRegularExpression::CaseInsensitiveOption), QStringLiteral("please"));
+    withPauses.replace(QRegularExpression(QStringLiteral("\\b(and|but|while|however)\\b"), QRegularExpression::CaseInsensitiveOption), QStringLiteral(", \\1"));
+    withPauses.replace(QRegularExpression(QStringLiteral("\\s+,")), QStringLiteral(","));
+    withPauses.replace(QRegularExpression(QStringLiteral(",\\s*,+")), QStringLiteral(", "));
+    withPauses.replace(QRegularExpression(QStringLiteral("\\s+")), QStringLiteral(" "));
+
+    return withPauses.trimmed();
+}
+
+QString applyVoicePipeline(const QString &aiResponse)
+{
+    // Full pipeline: AI response -> style formatter -> pause injection -> TTS input.
+    const QString styled = styleFormatJarvisResponse(aiResponse);
+    const QString paused = injectNaturalPauses(styled);
+    return normalizeSpeechText(paused);
+}
+}
 
 PiperTtsEngine::PiperTtsEngine(AppSettings *settings, QObject *parent)
     : QObject(parent)
@@ -38,11 +137,12 @@ PiperTtsEngine::PiperTtsEngine(AppSettings *settings, QObject *parent)
 
 void PiperTtsEngine::enqueueSentence(const QString &sentence)
 {
-    if (sentence.trimmed().isEmpty()) {
+    const QString prepared = applyVoicePipeline(sentence);
+    if (prepared.isEmpty()) {
         return;
     }
 
-    m_sentences.enqueue(sentence);
+    m_sentences.enqueue(prepared);
     if (!m_processing) {
         processNext();
     }
@@ -111,7 +211,7 @@ QString PiperTtsEngine::synthesizeAndProcess(const QString &sentence)
         return rawPath;
     }
 
-    const QString filter = QStringLiteral("asetrate=22050*%1,aresample=22050,equalizer=f=1200:t=q:w=1:g=2,aecho=0.8:0.9:20:0.25,acompressor")
+    const QString filter = QStringLiteral("asetrate=22050*%1,aresample=22050,highpass=f=70,lowpass=f=9500,equalizer=f=3600:t=q:w=1.1:g=-1.2,equalizer=f=180:t=q:w=1.2:g=1.0,aecho=0.75:0.45:35:0.12,acompressor=threshold=-18dB:ratio=2.0:attack=20:release=220:makeup=1.5")
                                .arg(QString::number(m_settings->voicePitch(), 'f', 2));
 
     QProcess process;

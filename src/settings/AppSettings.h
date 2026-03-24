@@ -76,8 +76,8 @@ private:
     QString m_piperExecutable;
     QString m_piperVoiceModel;
     QString m_ffmpegExecutable;
-    double m_voiceSpeed = 1.0;
-    double m_voicePitch = 1.0;
+    double m_voiceSpeed = 0.88;
+    double m_voicePitch = 0.94;
     double m_micSensitivity = 0.02;
     bool m_clickThroughEnabled = false;
     bool m_initialSetupCompleted = false;

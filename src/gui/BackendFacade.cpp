@@ -1,9 +1,102 @@
 #include "gui/BackendFacade.h"
 
+#include <QDir>
+#include <QDirIterator>
+#include <QFileInfo>
+#include <QProcess>
+#include <QStandardPaths>
+
 #include "core/AssistantController.h"
 #include "overlay/OverlayController.h"
 #include "settings/AppSettings.h"
 #include "settings/IdentityProfileService.h"
+
+namespace {
+QString firstValidPath(const QStringList &candidates)
+{
+    for (const QString &candidate : candidates) {
+        if (!candidate.isEmpty()) {
+            QFileInfo info(candidate);
+            if (info.exists() && info.isFile()) {
+                return info.absoluteFilePath();
+            }
+        }
+    }
+    return {};
+}
+
+QString resolveExecutable(const QStringList &programNames, const QStringList &pathCandidates)
+{
+    for (const QString &program : programNames) {
+        const QString fromPath = QStandardPaths::findExecutable(program);
+        if (!fromPath.isEmpty()) {
+            return fromPath;
+        }
+    }
+
+    return firstValidPath(pathCandidates);
+}
+
+QString findFileRecursive(const QString &rootPath, const QString &fileName)
+{
+    if (rootPath.isEmpty()) {
+        return {};
+    }
+
+    QDir root(rootPath);
+    if (!root.exists()) {
+        return {};
+    }
+
+    QDirIterator it(rootPath, {fileName}, QDir::Files | QDir::Readable, QDirIterator::Subdirectories);
+    if (it.hasNext()) {
+        return it.next();
+    }
+
+    return {};
+}
+
+QString detectPiperVoiceModel(const QString &appDataRoot)
+{
+    const QStringList patterns = {
+        QStringLiteral("en_GB-*.onnx"),
+        QStringLiteral("en_US-*.onnx"),
+        QStringLiteral("*.onnx")
+    };
+
+    const QStringList roots = {
+        appDataRoot + QStringLiteral("/tools/piper-voices"),
+        appDataRoot + QStringLiteral("/tools/piper"),
+        QDir::currentPath() + QStringLiteral("/models"),
+        QStringLiteral(JARVIS_SOURCE_DIR) + QStringLiteral("/models")
+    };
+
+    for (const QString &rootPath : roots) {
+        QDir root(rootPath);
+        if (!root.exists()) {
+            continue;
+        }
+
+        for (const QString &pattern : patterns) {
+            const QStringList files = root.entryList({pattern}, QDir::Files | QDir::Readable, QDir::Name);
+            if (!files.isEmpty()) {
+                return root.absoluteFilePath(files.first());
+            }
+
+            const QFileInfoList nested = root.entryInfoList(QDir::Dirs | QDir::NoDotAndDotDot);
+            for (const QFileInfo &subDirInfo : nested) {
+                QDir subDir(subDirInfo.absoluteFilePath());
+                const QStringList nestedFiles = subDir.entryList({pattern}, QDir::Files | QDir::Readable, QDir::Name);
+                if (!nestedFiles.isEmpty()) {
+                    return subDir.absoluteFilePath(nestedFiles.first());
+                }
+            }
+        }
+    }
+
+    return {};
+}
+}
 
 BackendFacade::BackendFacade(
     AppSettings *settings,
@@ -54,6 +147,7 @@ bool BackendFacade::clickThroughEnabled() const { return m_settings->clickThroug
 QString BackendFacade::assistantName() const { return m_identityProfileService->identity().assistantName; }
 QString BackendFacade::userName() const { return m_identityProfileService->userProfile().userName; }
 bool BackendFacade::initialSetupCompleted() const { return m_settings->initialSetupCompleted(); }
+QString BackendFacade::toolInstallStatus() const { return m_toolInstallStatus; }
 void BackendFacade::toggleOverlay() { m_overlayController->toggleOverlay(); }
 void BackendFacade::refreshModels() { m_assistantController->refreshModels(); }
 void BackendFacade::submitText(const QString &text) { m_assistantController->submitText(text); }
@@ -108,8 +202,8 @@ void BackendFacade::completeInitialSetup(
         piperPath,
         voicePath,
         ffmpegPath,
-        1.0,
-        1.0,
+        0.88,
+        0.94,
         0.02,
         clickThrough);
 
@@ -119,4 +213,191 @@ void BackendFacade::completeInitialSetup(
     emit profileChanged();
     emit settingsChanged();
     emit initialSetupFinished();
+}
+
+void BackendFacade::setToolInstallStatus(const QString &status)
+{
+    if (m_toolInstallStatus == status) {
+        return;
+    }
+
+    m_toolInstallStatus = status;
+    emit toolInstallStatusChanged();
+}
+
+bool BackendFacade::autoDetectVoiceTools()
+{
+    const QString appDataRoot = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+    const QString toolsRoot = appDataRoot + QStringLiteral("/tools");
+    QDir().mkpath(appDataRoot + QStringLiteral("/tools"));
+
+    QString whisper = resolveExecutable(
+        {QStringLiteral("whisper-cli"), QStringLiteral("whisper"), QStringLiteral("main")},
+        {
+            appDataRoot + QStringLiteral("/tools/whisper/whisper-cli.exe"),
+            appDataRoot + QStringLiteral("/tools/whisper/main.exe"),
+            appDataRoot + QStringLiteral("/tools/whisper/Release/whisper-cli.exe"),
+            appDataRoot + QStringLiteral("/tools/whisper/Release/main.exe"),
+            appDataRoot + QStringLiteral("/tools/whisper/bin/whisper-cli.exe"),
+            appDataRoot + QStringLiteral("/tools/whisper/bin/main.exe")
+        });
+    if (whisper.isEmpty()) {
+        whisper = findFileRecursive(toolsRoot, QStringLiteral("whisper-cli.exe"));
+    }
+    if (whisper.isEmpty()) {
+        whisper = findFileRecursive(toolsRoot, QStringLiteral("main.exe"));
+    }
+
+    QString piper = resolveExecutable(
+        {QStringLiteral("piper")},
+        {
+            appDataRoot + QStringLiteral("/tools/piper/piper.exe"),
+            appDataRoot + QStringLiteral("/tools/piper/bin/piper.exe"),
+            appDataRoot + QStringLiteral("/tools/piper/piper/piper.exe")
+        });
+    if (piper.isEmpty()) {
+        piper = findFileRecursive(toolsRoot, QStringLiteral("piper.exe"));
+    }
+
+    QString ffmpeg = resolveExecutable(
+        {QStringLiteral("ffmpeg")},
+        {
+            appDataRoot + QStringLiteral("/tools/ffmpeg/ffmpeg.exe"),
+            appDataRoot + QStringLiteral("/tools/ffmpeg/bin/ffmpeg.exe"),
+            appDataRoot + QStringLiteral("/tools/ffmpeg_build/bin/ffmpeg.exe")
+        });
+    if (ffmpeg.isEmpty()) {
+        ffmpeg = findFileRecursive(toolsRoot, QStringLiteral("ffmpeg.exe"));
+    }
+
+    QString voiceModel = m_settings->piperVoiceModel();
+    if (voiceModel.isEmpty() || !QFileInfo::exists(voiceModel)) {
+        voiceModel = detectPiperVoiceModel(appDataRoot);
+    }
+
+    if (!whisper.isEmpty()) {
+        m_settings->setWhisperExecutable(whisper);
+    }
+    if (!piper.isEmpty()) {
+        m_settings->setPiperExecutable(piper);
+    }
+    if (!ffmpeg.isEmpty()) {
+        m_settings->setFfmpegExecutable(ffmpeg);
+    }
+    if (!voiceModel.isEmpty()) {
+        m_settings->setPiperVoiceModel(voiceModel);
+    }
+
+    const bool complete = !m_settings->whisperExecutable().isEmpty()
+        && !m_settings->piperExecutable().isEmpty()
+        && !m_settings->ffmpegExecutable().isEmpty()
+        && !m_settings->piperVoiceModel().isEmpty();
+
+    setToolInstallStatus(complete
+            ? QStringLiteral("Voice tools detected and fields populated.")
+            : QStringLiteral("Some tools are still missing. Use Install Missing Tools."));
+
+    m_settings->save();
+    emit settingsChanged();
+    return complete;
+}
+
+bool BackendFacade::installAndDetectVoiceTools()
+{
+    if (autoDetectVoiceTools()) {
+        return true;
+    }
+
+#ifdef Q_OS_WIN
+    const QString appDataRoot = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+    const QString toolsRoot = QDir::toNativeSeparators(appDataRoot + QStringLiteral("/tools"));
+    setToolInstallStatus(QStringLiteral("Installing missing voice tools. This can take a few minutes..."));
+
+    const QString script = QStringLiteral(R"POWERSHELL(
+$ErrorActionPreference = 'Stop'
+$ProgressPreference = 'SilentlyContinue'
+
+$toolsRoot = '%1'
+New-Item -ItemType Directory -Force -Path $toolsRoot | Out-Null
+
+function Install-LatestZip {
+    param(
+        [string]$Repo,
+        [string[]]$NamePatterns,
+        [string]$Destination
+    )
+
+    $release = Invoke-RestMethod -Uri ("https://api.github.com/repos/{0}/releases/latest" -f $Repo)
+    $asset = $null
+    foreach ($pattern in $NamePatterns) {
+        $asset = $release.assets | Where-Object { $_.name -like $pattern } | Select-Object -First 1
+        if ($asset) { break }
+    }
+    if (-not $asset) {
+        throw "Unable to find a matching release asset for $Repo"
+    }
+
+    $zipPath = Join-Path $toolsRoot ($Repo.Replace('/','_') + '.zip')
+    Invoke-WebRequest -Uri $asset.browser_download_url -OutFile $zipPath
+    if (Test-Path $Destination) { Remove-Item -Recurse -Force $Destination }
+    Expand-Archive -Path $zipPath -DestinationPath $Destination -Force
+}
+
+if (-not (Get-Command ffmpeg -ErrorAction SilentlyContinue)) {
+    winget install --id Gyan.FFmpeg.Essentials --exact --accept-source-agreements --accept-package-agreements --silent
+}
+
+if (-not (Get-Command ffmpeg -ErrorAction SilentlyContinue)) {
+    $ffmpegDir = Join-Path $toolsRoot 'ffmpeg_build'
+    Install-LatestZip -Repo 'BtbN/FFmpeg-Builds' -NamePatterns @('*win64-lgpl-shared*.zip', '*win64-gpl-shared*.zip') -Destination $ffmpegDir
+}
+
+$whisperDir = Join-Path $toolsRoot 'whisper'
+if (-not (Test-Path (Join-Path $whisperDir 'whisper-cli.exe')) -and -not (Test-Path (Join-Path $whisperDir 'main.exe'))) {
+    Install-LatestZip -Repo 'ggerganov/whisper.cpp' -NamePatterns @('*bin*x64*.zip', '*windows*x64*.zip') -Destination $whisperDir
+}
+
+$piperDir = Join-Path $toolsRoot 'piper'
+if (-not (Test-Path (Join-Path $piperDir 'piper.exe'))) {
+    Install-LatestZip -Repo 'rhasspy/piper' -NamePatterns @('*windows*amd64*.zip', '*win*amd64*.zip') -Destination $piperDir
+}
+
+$voiceDir = Join-Path $toolsRoot 'piper-voices'
+New-Item -ItemType Directory -Force -Path $voiceDir | Out-Null
+$voiceModel = Join-Path $voiceDir 'en_GB-alba-medium.onnx'
+$voiceJson = Join-Path $voiceDir 'en_GB-alba-medium.onnx.json'
+
+if (-not (Test-Path $voiceModel)) {
+    Invoke-WebRequest -Uri 'https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/en/en_GB/alba/medium/en_GB-alba-medium.onnx?download=true' -OutFile $voiceModel
+}
+if (-not (Test-Path $voiceJson)) {
+    Invoke-WebRequest -Uri 'https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/en/en_GB/alba/medium/en_GB-alba-medium.onnx.json?download=true' -OutFile $voiceJson
+}
+)POWERSHELL").arg(toolsRoot.replace("'", "''"));
+
+    QProcess installer;
+    installer.start(
+        QStringLiteral("powershell"),
+        {
+            QStringLiteral("-NoProfile"),
+            QStringLiteral("-ExecutionPolicy"), QStringLiteral("Bypass"),
+            QStringLiteral("-Command"),
+            script
+        });
+
+    installer.waitForFinished(15 * 60 * 1000);
+    if (installer.exitStatus() != QProcess::NormalExit || installer.exitCode() != 0) {
+        setToolInstallStatus(QStringLiteral("Automatic install failed. Please run as Administrator and try again."));
+        return autoDetectVoiceTools();
+    }
+
+    const bool complete = autoDetectVoiceTools();
+    setToolInstallStatus(complete
+            ? QStringLiteral("Voice tools installed and configured.")
+            : QStringLiteral("Install finished, but some paths still need manual review."));
+    return complete;
+#else
+    setToolInstallStatus(QStringLiteral("Automatic install is currently implemented for Windows only."));
+    return autoDetectVoiceTools();
+#endif
 }
