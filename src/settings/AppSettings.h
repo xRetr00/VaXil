@@ -106,15 +106,15 @@ private:
     QString m_selectedVoicePresetId = QStringLiteral("en_GB-alba-medium");
     QString m_preciseEngineExecutable;
     QString m_preciseModelPath;
-    double m_preciseTriggerThreshold = 0.8;
-    int m_preciseTriggerCooldownMs = 1500;
+    double m_preciseTriggerThreshold = 0.30;
+    int m_preciseTriggerCooldownMs = 750;
     QString m_ffmpegExecutable;
     double m_voiceSpeed = 0.89;
     double m_voicePitch = 0.93;
     double m_micSensitivity = 0.02;
     QString m_selectedAudioInputDeviceId;
     QString m_selectedAudioOutputDeviceId;
-    bool m_clickThroughEnabled = false;
+    bool m_clickThroughEnabled = true;
     bool m_initialSetupCompleted = false;
     QString m_wakeWordPhrase = QStringLiteral("Jarvis");
 };

@@ -6,8 +6,8 @@ Item {
 
     property string lastMessage: ""
 
-    width: 320
-    height: 360
+    width: 300
+    height: 320
 
     ListModel {
         id: toastModel
@@ -55,12 +55,12 @@ Item {
                 required property string message
                 required property string tone
 
-                width: 286
-                height: 58
-                radius: 29
-                color: "#7d07111a"
+                width: 268
+                height: 50
+                radius: 25
+                color: "#8c06101a"
                 border.width: 1
-                border.color: tone === "error" ? "#7e4964" : tone === "response" ? "#426aa8" : "#2d4662"
+                border.color: tone === "error" ? "#74475f" : tone === "response" ? "#345d92" : "#263e58"
                 opacity: 0.96
 
                 Rectangle {
@@ -68,8 +68,8 @@ Item {
                     radius: parent.radius
                     color: "transparent"
                     border.width: 1
-                    border.color: "#30d7e8ff"
-                    opacity: tone === "response" ? 0.18 : 0.08
+                    border.color: tone === "response" ? "#41d5ff" : "#8db6ff"
+                    opacity: tone === "response" ? 0.16 : 0.06
                 }
 
                 Rectangle {
@@ -89,7 +89,7 @@ Item {
                     anchors.rightMargin: 20
                     text: message
                     color: "#ecf7ff"
-                    font.pixelSize: 13
+                    font.pixelSize: 12
                     wrapMode: Text.Wrap
                     maximumLineCount: 2
                     elide: Text.ElideRight

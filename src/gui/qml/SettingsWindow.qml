@@ -443,21 +443,39 @@ Window {
                     }
 
                     Text { text: "Trigger threshold"; color: "#c9def3"; font.pixelSize: 13 }
-                    Slider {
-                        id: preciseThresholdSlider
+                    RowLayout {
                         Layout.fillWidth: true
-                        from: 0.5
-                        to: 0.95
-                        value: backend.preciseTriggerThreshold
+
+                        Slider {
+                            id: preciseThresholdSlider
+                            Layout.fillWidth: true
+                            from: 0.30
+                            to: 0.85
+                            value: backend.preciseTriggerThreshold
+                            onPressedChanged: {
+                                if (!pressed) {
+                                    backend.saveWakeDetectionTuning(preciseThresholdSlider.value, preciseCooldownSpin.value)
+                                }
+                            }
+                        }
+
+                        Text {
+                            text: preciseThresholdSlider.value.toFixed(2)
+                            color: "#c9def3"
+                            font.pixelSize: 13
+                            horizontalAlignment: Text.AlignRight
+                            Layout.preferredWidth: 44
+                        }
                     }
 
                     Text { text: "Trigger cooldown (ms)"; color: "#c9def3"; font.pixelSize: 13 }
                     SpinBox {
                         id: preciseCooldownSpin
                         Layout.fillWidth: true
-                        from: 1000
-                        to: 2000
+                        from: 600
+                        to: 900
                         value: backend.preciseTriggerCooldownMs
+                        onValueModified: backend.saveWakeDetectionTuning(preciseThresholdSlider.value, preciseCooldownSpin.value)
                     }
 
                     RowLayout {

@@ -22,6 +22,8 @@ class BackendFacade : public QObject
     Q_PROPERTY(QStringList voicePresetIds READ voicePresetIds CONSTANT)
     Q_PROPERTY(QString selectedVoicePresetId READ selectedVoicePresetId NOTIFY settingsChanged)
     Q_PROPERTY(bool overlayVisible READ overlayVisible NOTIFY overlayVisibleChanged)
+    Q_PROPERTY(double presenceOffsetX READ presenceOffsetX NOTIFY presenceOffsetChanged)
+    Q_PROPERTY(double presenceOffsetY READ presenceOffsetY NOTIFY presenceOffsetChanged)
     Q_PROPERTY(QString lmStudioEndpoint READ lmStudioEndpoint NOTIFY settingsChanged)
     Q_PROPERTY(int defaultReasoningMode READ defaultReasoningMode NOTIFY settingsChanged)
     Q_PROPERTY(bool autoRoutingEnabled READ autoRoutingEnabled NOTIFY settingsChanged)
@@ -75,6 +77,8 @@ public:
     QStringList voicePresetIds() const;
     QString selectedVoicePresetId() const;
     bool overlayVisible() const;
+    double presenceOffsetX() const;
+    double presenceOffsetY() const;
     QString lmStudioEndpoint() const;
     int defaultReasoningMode() const;
     bool autoRoutingEnabled() const;
@@ -116,6 +120,7 @@ public:
     Q_INVOKABLE void cancelRequest();
     Q_INVOKABLE void setSelectedModel(const QString &modelId);
     Q_INVOKABLE void setSelectedVoicePresetId(const QString &voiceId);
+    Q_INVOKABLE void saveWakeDetectionTuning(double preciseThreshold, int preciseCooldownMs);
     Q_INVOKABLE void saveSettings(
         const QString &endpoint,
         const QString &modelId,
@@ -198,6 +203,7 @@ signals:
     void modelsChanged();
     void selectedModelChanged();
     void overlayVisibleChanged();
+    void presenceOffsetChanged();
     void audioDevicesChanged();
     void settingsChanged();
     void profileChanged();

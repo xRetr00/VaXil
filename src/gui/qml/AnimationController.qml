@@ -14,6 +14,7 @@ Item {
     property real time: 0.0
     property real smoothedInput: 0.0
     property real speakingSignal: 0.0
+    property real jitterSignal: 0.0
 
     readonly property real idleAmount: stateName === "IDLE" ? 1.0 : 0.0
     readonly property real listeningAmount: stateName === "LISTENING" ? 1.0 : 0.0
@@ -38,6 +39,7 @@ Item {
         + processingAmount * 0.18
         + speakingAmount * (0.24 + speakingSignal * 0.2)
     readonly property real auraPulse: 0.36 + idleBreath * 0.16 + speakingSignal * 0.22 + inputBoost * 0.16
+    readonly property real listeningVibration: listeningAmount * (0.8 + inputBoost * 1.4) * jitterSignal
 
     Timer {
         id: frameDriver
@@ -67,6 +69,7 @@ Item {
                 + 0.2 * Math.sin(root.time * 12.6 + 1.7)
             const targetSpeech = root.stateName === "SPEAKING" ? Math.max(0.0, waveform) : 0.0
             root.speakingSignal += (targetSpeech - root.speakingSignal) * Math.min(1.0, dt * 8.5)
+            root.jitterSignal = Math.sin(root.time * 33.0) * 0.5 + Math.sin(root.time * 51.0 + 0.7) * 0.5
         }
 
         onRunningChanged: {

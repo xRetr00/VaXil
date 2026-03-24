@@ -117,7 +117,7 @@ bool JarvisApplication::initialize()
     if (auto *window = qobject_cast<QQuickWindow *>(m_engine->rootObjects().first())) {
         m_mainWindow = window;
         m_overlayController->attachWindow(window);
-        m_overlayController->setClickThrough(m_settings->clickThroughEnabled());
+        m_overlayController->setClickThrough(true);
         if (!appIcon.isNull()) {
             window->setIcon(appIcon);
         }

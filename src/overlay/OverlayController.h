@@ -16,6 +16,8 @@ public:
 
     void attachWindow(QQuickWindow *window);
     bool isVisible() const;
+    double presenceOffsetX() const;
+    double presenceOffsetY() const;
     void showOverlay();
     void hideOverlay();
     void toggleOverlay();
@@ -25,6 +27,7 @@ public:
 
 signals:
     void visibilityChanged(bool visible);
+    void presenceOffsetChanged();
 
 private:
     void reevaluateVisibility();
@@ -43,4 +46,6 @@ private:
     bool m_assistantSpeaking = false;
     bool m_setupVisible = false;
     qint64 m_ignoreUserUntilMs = 0;
+    double m_presenceOffsetX = 0.0;
+    double m_presenceOffsetY = 0.0;
 };

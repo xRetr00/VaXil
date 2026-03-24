@@ -580,6 +580,7 @@ BackendFacade::BackendFacade(
         emit selectedModelChanged();
     });
     connect(m_overlayController, &OverlayController::visibilityChanged, this, &BackendFacade::overlayVisibleChanged);
+    connect(m_overlayController, &OverlayController::presenceOffsetChanged, this, &BackendFacade::presenceOffsetChanged);
     connect(m_settings, &AppSettings::settingsChanged, this, &BackendFacade::settingsChanged);
 
     auto *mediaDevices = new QMediaDevices(this);
@@ -612,6 +613,8 @@ QStringList BackendFacade::voicePresetIds() const
 }
 QString BackendFacade::selectedVoicePresetId() const { return m_settings->selectedVoicePresetId(); }
 bool BackendFacade::overlayVisible() const { return m_overlayController->isVisible(); }
+double BackendFacade::presenceOffsetX() const { return m_overlayController->presenceOffsetX(); }
+double BackendFacade::presenceOffsetY() const { return m_overlayController->presenceOffsetY(); }
 QString BackendFacade::lmStudioEndpoint() const { return m_settings->lmStudioEndpoint(); }
 int BackendFacade::defaultReasoningMode() const { return static_cast<int>(m_settings->defaultReasoningMode()); }
 bool BackendFacade::autoRoutingEnabled() const { return m_settings->autoRoutingEnabled(); }
@@ -702,6 +705,15 @@ void BackendFacade::setSelectedVoicePresetId(const QString &voiceId)
     m_settings->save();
     emit settingsChanged();
 }
+
+void BackendFacade::saveWakeDetectionTuning(double preciseThreshold, int preciseCooldownMs)
+{
+    m_settings->setPreciseTriggerThreshold(preciseThreshold);
+    m_settings->setPreciseTriggerCooldownMs(preciseCooldownMs);
+    m_settings->save();
+    emit settingsChanged();
+}
+
 void BackendFacade::refreshAudioDevices()
 {
     emit audioDevicesChanged();

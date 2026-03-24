@@ -102,6 +102,8 @@ private:
     void setupStateMachine();
     void transitionToState(AssistantState state);
     void setStatus(const QString &status);
+    void pauseWakeMonitor();
+    void resumeWakeMonitor(int delayMs = 0);
     void updateUserProfileFromInput(const QString &input);
     LocalResponseContext buildLocalResponseContext() const;
     void deliverLocalResponse(const QString &text, const QString &status, bool speak = true);

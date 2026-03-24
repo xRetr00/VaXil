@@ -1,5 +1,7 @@
 #include "wakeword/WakeWordEnginePrecise.h"
 
+#include <algorithm>
+
 #include <QFileInfo>
 #include <QIODevice>
 #include <QMediaDevices>
@@ -8,6 +10,9 @@
 
 namespace {
 constexpr int kSampleRate = 16000;
+constexpr int kMinCooldownMs = 600;
+constexpr int kMaxCooldownMs = 900;
+constexpr int kProbabilityLogEveryNFrames = 5;
 }
 
 WakeWordEnginePrecise::WakeWordEnginePrecise(LoggingService *loggingService, QObject *parent)
@@ -52,19 +57,108 @@ bool WakeWordEnginePrecise::start(
     }
 
     m_threshold = threshold;
-    m_cooldownMs = cooldownMs;
+    m_cooldownMs = std::clamp(cooldownMs, kMinCooldownMs, kMaxCooldownMs);
     m_lastActivationMs = 0;
     m_pendingAudio.clear();
     m_stdoutBuffer.clear();
+    m_recentProbabilities.clear();
+    m_probabilitySum = 0.0f;
+    m_consecutiveAboveThreshold = 0;
+    m_probabilityLogCounter = 0;
+    m_preferredDeviceId = preferredDeviceId;
+    m_paused = false;
 
     m_format.setSampleRate(kSampleRate);
     m_format.setChannelCount(1);
     m_format.setSampleFormat(QAudioFormat::Int16);
 
+    m_engineProcess.start(enginePath, {QFileInfo(modelPath).absoluteFilePath(), QString::number(m_chunkBytes)});
+    if (!m_engineProcess.waitForStarted(5000)) {
+        emit errorOccurred(QStringLiteral("Failed to start Mycroft Precise engine"));
+        return false;
+    }
+
+    if (!startAudioCapture()) {
+        stop();
+        return false;
+    }
+    if (m_loggingService) {
+        m_loggingService->info(QStringLiteral("Mycroft Precise wake engine started. engine=\"%1\" model=\"%2\" threshold=%3 cooldownMs=%4")
+            .arg(enginePath, modelPath)
+            .arg(m_threshold, 0, 'f', 2)
+            .arg(m_cooldownMs));
+        m_loggingService->info(QStringLiteral("Wake detection stability config: movingAvgFrames=%1 consistentFrames=%2")
+            .arg(m_movingAverageWindowFrames)
+            .arg(m_consistentFramesRequired));
+    }
+    return true;
+}
+
+void WakeWordEnginePrecise::pause()
+{
+    if (!isActive() || m_paused) {
+        return;
+    }
+
+    m_paused = true;
+    stopAudioCapture();
+    resetDetectionState();
+    if (m_loggingService) {
+        m_loggingService->info(QStringLiteral("Mycroft Precise wake detection paused."));
+    }
+}
+
+void WakeWordEnginePrecise::resume()
+{
+    if (m_engineProcess.state() != QProcess::Running || !m_paused) {
+        return;
+    }
+
+    if (!startAudioCapture()) {
+        emit errorOccurred(QStringLiteral("Failed to resume microphone capture for wake detection"));
+        return;
+    }
+
+    m_paused = false;
+    resetDetectionState();
+    if (m_loggingService) {
+        m_loggingService->info(QStringLiteral("Mycroft Precise wake detection resumed."));
+    }
+}
+
+void WakeWordEnginePrecise::stop()
+{
+    stopAudioCapture();
+    resetDetectionState();
+    m_paused = false;
+    m_preferredDeviceId.clear();
+
+    if (m_engineProcess.state() != QProcess::NotRunning) {
+        m_engineProcess.closeWriteChannel();
+        m_engineProcess.terminate();
+        if (!m_engineProcess.waitForFinished(1000)) {
+            m_engineProcess.kill();
+            m_engineProcess.waitForFinished(1000);
+        }
+    }
+}
+
+bool WakeWordEnginePrecise::isActive() const
+{
+    return m_engineProcess.state() == QProcess::Running;
+}
+
+bool WakeWordEnginePrecise::isPaused() const
+{
+    return m_paused;
+}
+
+bool WakeWordEnginePrecise::startAudioCapture()
+{
     QAudioDevice device = QMediaDevices::defaultAudioInput();
-    if (!preferredDeviceId.isEmpty()) {
+    if (!m_preferredDeviceId.isEmpty()) {
         for (const QAudioDevice &candidate : QMediaDevices::audioInputs()) {
-            if (QString::fromUtf8(candidate.id()) == preferredDeviceId) {
+            if (QString::fromUtf8(candidate.id()) == m_preferredDeviceId) {
                 device = candidate;
                 break;
             }
@@ -81,32 +175,20 @@ bool WakeWordEnginePrecise::start(
         return false;
     }
 
-    m_engineProcess.start(enginePath, {QFileInfo(modelPath).absoluteFilePath(), QString::number(m_chunkBytes)});
-    if (!m_engineProcess.waitForStarted(5000)) {
-        emit errorOccurred(QStringLiteral("Failed to start Mycroft Precise engine"));
-        return false;
-    }
-
+    stopAudioCapture();
     m_audioSource = std::make_unique<QAudioSource>(device, m_format, this);
     m_audioSource->setBufferSize(m_chunkBytes * 4);
     m_audioIoDevice = m_audioSource->start();
     if (!m_audioIoDevice) {
-        stop();
         emit errorOccurred(QStringLiteral("Failed to start microphone capture for wake detection"));
         return false;
     }
 
     m_audioReadyReadConnection = connect(m_audioIoDevice, &QIODevice::readyRead, this, &WakeWordEnginePrecise::flushAudioToEngine);
-    if (m_loggingService) {
-        m_loggingService->info(QStringLiteral("Mycroft Precise wake engine started. engine=\"%1\" model=\"%2\" threshold=%3 cooldownMs=%4")
-            .arg(enginePath, modelPath)
-            .arg(m_threshold, 0, 'f', 2)
-            .arg(m_cooldownMs));
-    }
     return true;
 }
 
-void WakeWordEnginePrecise::stop()
+void WakeWordEnginePrecise::stopAudioCapture()
 {
     if (m_audioReadyReadConnection) {
         disconnect(m_audioReadyReadConnection);
@@ -119,26 +201,20 @@ void WakeWordEnginePrecise::stop()
     }
     m_audioIoDevice = nullptr;
     m_pendingAudio.clear();
-    m_stdoutBuffer.clear();
-
-    if (m_engineProcess.state() != QProcess::NotRunning) {
-        m_engineProcess.closeWriteChannel();
-        m_engineProcess.terminate();
-        if (!m_engineProcess.waitForFinished(1000)) {
-            m_engineProcess.kill();
-            m_engineProcess.waitForFinished(1000);
-        }
-    }
 }
 
-bool WakeWordEnginePrecise::isActive() const
+void WakeWordEnginePrecise::resetDetectionState()
 {
-    return m_audioSource != nullptr && m_engineProcess.state() == QProcess::Running;
+    m_stdoutBuffer.clear();
+    m_recentProbabilities.clear();
+    m_probabilitySum = 0.0f;
+    m_consecutiveAboveThreshold = 0;
+    m_probabilityLogCounter = 0;
 }
 
 void WakeWordEnginePrecise::flushAudioToEngine()
 {
-    if (!m_audioIoDevice || m_engineProcess.state() != QProcess::Running) {
+    if (!m_audioIoDevice || m_engineProcess.state() != QProcess::Running || m_paused) {
         return;
     }
 
@@ -179,12 +255,47 @@ void WakeWordEnginePrecise::consumeEngineOutput()
         }
 
         emit probabilityUpdated(probability);
+        if (m_paused) {
+            continue;
+        }
+        m_recentProbabilities.enqueue(probability);
+        m_probabilitySum += probability;
+        if (m_recentProbabilities.size() > m_movingAverageWindowFrames) {
+            m_probabilitySum -= m_recentProbabilities.dequeue();
+        }
+
+        const float movingAverage = m_recentProbabilities.isEmpty()
+            ? 0.0f
+            : (m_probabilitySum / static_cast<float>(m_recentProbabilities.size()));
+
+        if (probability >= m_threshold) {
+            ++m_consecutiveAboveThreshold;
+        } else {
+            m_consecutiveAboveThreshold = 0;
+        }
+
+        ++m_probabilityLogCounter;
+        if (m_loggingService && (m_probabilityLogCounter % kProbabilityLogEveryNFrames) == 0) {
+            m_loggingService->info(QStringLiteral("Wake probability raw=%1 avg=%2 consecutive=%3/%4 threshold=%5")
+                .arg(probability, 0, 'f', 4)
+                .arg(movingAverage, 0, 'f', 4)
+                .arg(m_consecutiveAboveThreshold)
+                .arg(m_consistentFramesRequired)
+                .arg(m_threshold, 0, 'f', 2));
+        }
+
         const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
-        if (probability >= m_threshold && (nowMs - m_lastActivationMs) >= m_cooldownMs) {
+        const bool stableDetection = movingAverage >= m_threshold
+            && m_consecutiveAboveThreshold >= m_consistentFramesRequired;
+        if (stableDetection && (nowMs - m_lastActivationMs) >= m_cooldownMs) {
             m_lastActivationMs = nowMs;
+            m_consecutiveAboveThreshold = 0;
             if (m_loggingService) {
-                m_loggingService->info(QStringLiteral("Mycroft Precise wake word detected. probability=%1")
-                    .arg(probability, 0, 'f', 3));
+                m_loggingService->info(QStringLiteral("Mycroft Precise wake word detected. raw=%1 avg=%2 threshold=%3 cooldownMs=%4")
+                    .arg(probability, 0, 'f', 4)
+                    .arg(movingAverage, 0, 'f', 4)
+                    .arg(m_threshold, 0, 'f', 2)
+                    .arg(m_cooldownMs));
             }
             emit wakeWordDetected();
         }

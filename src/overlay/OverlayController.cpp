@@ -53,6 +53,16 @@ bool OverlayController::isVisible() const
     return m_visible;
 }
 
+double OverlayController::presenceOffsetX() const
+{
+    return m_presenceOffsetX;
+}
+
+double OverlayController::presenceOffsetY() const
+{
+    return m_presenceOffsetY;
+}
+
 void OverlayController::showOverlay()
 {
     m_manualRequested = true;
@@ -127,6 +137,32 @@ void OverlayController::reevaluateVisibility()
         return;
     }
 
+    QScreen *screen = QGuiApplication::screenAt(QCursor::pos());
+    if (!screen) {
+        screen = QGuiApplication::primaryScreen();
+    }
+    if (screen) {
+        const QRect geometry = screen->geometry();
+        const QPoint cursor = QCursor::pos();
+        const double centerX = geometry.center().x();
+        const double centerY = geometry.center().y();
+        const double halfWidth = (std::max)(1.0, geometry.width() / 2.0);
+        const double halfHeight = (std::max)(1.0, geometry.height() / 2.0);
+
+        const double targetX = std::clamp((cursor.x() - centerX) / halfWidth, -1.0, 1.0);
+        const double targetY = std::clamp((cursor.y() - centerY) / halfHeight, -1.0, 1.0);
+        const double smoothFactor = 0.18;
+
+        const double nextX = m_presenceOffsetX + (targetX - m_presenceOffsetX) * smoothFactor;
+        const double nextY = m_presenceOffsetY + (targetY - m_presenceOffsetY) * smoothFactor;
+
+        if (std::abs(nextX - m_presenceOffsetX) > 0.002 || std::abs(nextY - m_presenceOffsetY) > 0.002) {
+            m_presenceOffsetX = nextX;
+            m_presenceOffsetY = nextY;
+            emit presenceOffsetChanged();
+        }
+    }
+
     const qint64 now = nowMs();
     const bool fullscreen = isFullscreenForeground();
     const bool userActive = isUserActive();
@@ -161,7 +197,6 @@ void OverlayController::animateToVisible(bool visible)
             positionWindow();
             m_window->show();
             m_window->raise();
-            m_window->requestActivate();
         } else {
             m_window->hide();
         }

@@ -62,12 +62,12 @@ double clampVoicePitch(double value)
 
 double clampPreciseTriggerThreshold(double value)
 {
-    return std::clamp(value, 0.5, 0.99);
+    return std::clamp(value, 0.30, 0.85);
 }
 
 int clampPreciseTriggerCooldownMs(int value)
 {
-    return std::clamp(value, 1000, 2000);
+    return std::clamp(value, 600, 900);
 }
 }
 
@@ -106,15 +106,15 @@ bool AppSettings::load()
     m_selectedVoicePresetId = QString::fromStdString(parsed.value("selectedVoicePresetId", m_selectedVoicePresetId.toStdString()));
     m_preciseEngineExecutable = QString::fromStdString(parsed.value("preciseEngineExecutable", std::string{}));
     m_preciseModelPath = QString::fromStdString(parsed.value("preciseModelPath", std::string{}));
-    m_preciseTriggerThreshold = clampPreciseTriggerThreshold(parsed.value("preciseTriggerThreshold", 0.8));
-    m_preciseTriggerCooldownMs = clampPreciseTriggerCooldownMs(parsed.value("preciseTriggerCooldownMs", 1500));
+    m_preciseTriggerThreshold = clampPreciseTriggerThreshold(parsed.value("preciseTriggerThreshold", 0.30));
+    m_preciseTriggerCooldownMs = clampPreciseTriggerCooldownMs(parsed.value("preciseTriggerCooldownMs", 750));
     m_ffmpegExecutable = QString::fromStdString(parsed.value("ffmpegExecutable", std::string{}));
     m_voiceSpeed = clampVoiceSpeed(parsed.value("voiceSpeed", kDefaultVoiceSpeed));
     m_voicePitch = clampVoicePitch(parsed.value("voicePitch", kDefaultVoicePitch));
     m_micSensitivity = parsed.value("micSensitivity", 0.02);
     m_selectedAudioInputDeviceId = QString::fromStdString(parsed.value("selectedAudioInputDeviceId", std::string{}));
     m_selectedAudioOutputDeviceId = QString::fromStdString(parsed.value("selectedAudioOutputDeviceId", std::string{}));
-    m_clickThroughEnabled = parsed.value("clickThroughEnabled", false);
+    m_clickThroughEnabled = parsed.value("clickThroughEnabled", true);
     m_initialSetupCompleted = parsed.value("initialSetupCompleted", false);
     m_wakeWordPhrase = QString::fromStdString(parsed.value("wakeWordPhrase", m_wakeWordPhrase.toStdString()));
     emit settingsChanged();

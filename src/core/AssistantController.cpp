@@ -248,7 +248,7 @@ void AssistantController::initialize()
             m_audioCaptureMode = AudioCaptureMode::None;
             m_lastCompletedCaptureMode = AudioCaptureMode::None;
             setStatus(QStringLiteral("No speech detected"));
-            scheduleWakeMonitorRestart(50);
+            resumeWakeMonitor(50);
             emit idleRequested();
             return;
         }
@@ -258,8 +258,14 @@ void AssistantController::initialize()
     connect(m_audioInputService, &AudioInputService::speechEnded, this, &AssistantController::stopListening);
 
     connect(m_wakeWordEnginePrecise, &WakeWordEnginePrecise::wakeWordDetected, this, [this]() {
+        if (m_currentState == AssistantState::Speaking || m_piperTtsEngine->isSpeaking()) {
+            if (m_loggingService) {
+                m_loggingService->info(QStringLiteral("Wake trigger ignored while assistant is speaking."));
+            }
+            return;
+        }
         const bool interruptingActiveOutput = m_piperTtsEngine->isSpeaking() || m_currentState == AssistantState::Processing;
-        stopWakeMonitor();
+        pauseWakeMonitor();
         m_lmStudioClient->cancelActiveRequest();
         m_piperTtsEngine->clear();
         m_streamAssembler->reset();
@@ -289,7 +295,7 @@ void AssistantController::initialize()
         emit transcriptChanged();
         if (result.text.isEmpty()) {
             setStatus(QStringLiteral("No speech detected"));
-            scheduleWakeMonitorRestart();
+            resumeWakeMonitor(50);
             emit idleRequested();
             return;
         }
@@ -305,7 +311,7 @@ void AssistantController::initialize()
             m_loggingService->error(QStringLiteral("Speech transcription failed: %1").arg(errorText));
         }
         setStatus(errorText);
-        scheduleWakeMonitorRestart();
+        resumeWakeMonitor(50);
         emit idleRequested();
     });
 
@@ -319,7 +325,7 @@ void AssistantController::initialize()
         if (m_loggingService) {
             m_loggingService->info(QStringLiteral("TTS playback started."));
         }
-        scheduleWakeMonitorRestart(50);
+        pauseWakeMonitor();
         emit speakingRequested();
     });
     connect(m_piperTtsEngine, &PiperTtsEngine::playbackFinished, this, [this]() {
@@ -331,12 +337,12 @@ void AssistantController::initialize()
             startAudioCapture(AudioCaptureMode::Direct, true);
             return;
         }
-        scheduleWakeMonitorRestart();
+        resumeWakeMonitor(400);
         emit idleRequested();
     });
     connect(m_piperTtsEngine, &PiperTtsEngine::playbackFailed, this, [this](const QString &errorText) {
         setStatus(errorText);
-        scheduleWakeMonitorRestart();
+        resumeWakeMonitor(400);
         emit idleRequested();
     });
 
@@ -347,7 +353,6 @@ void AssistantController::initialize()
                 .arg(requestId)
                 .arg(m_activeRequestKind == RequestKind::CommandExtraction ? QStringLiteral("command") : QStringLiteral("conversation")));
         }
-        scheduleWakeMonitorRestart(50);
         emit processingRequested();
     });
     connect(m_lmStudioClient, &LmStudioClient::requestDelta, this, [this](quint64 requestId, const QString &delta) {
@@ -389,7 +394,7 @@ void AssistantController::initialize()
     });
 
     if (m_settings->initialSetupCompleted()) {
-        scheduleWakeMonitorRestart(1500);
+        startWakeMonitor();
     }
 }
 
@@ -499,13 +504,20 @@ void AssistantController::submitText(const QString &text)
 
 void AssistantController::startListening()
 {
-    stopWakeMonitor();
+    pauseWakeMonitor();
     startAudioCapture(AudioCaptureMode::Direct, true);
 }
 
 void AssistantController::startWakeMonitor()
 {
     m_wakeMonitorEnabled = true;
+    if (m_wakeWordEnginePrecise->isActive()) {
+        if (m_wakeWordEnginePrecise->isPaused() && canStartWakeMonitor()) {
+            m_wakeWordEnginePrecise->resume();
+        }
+        return;
+    }
+
     if (!canStartWakeMonitor()) {
         return;
     }
@@ -549,7 +561,7 @@ void AssistantController::stopListening()
     emit processingRequested();
     if (pcm.isEmpty()) {
         setStatus(QStringLiteral("No audio captured"));
-        scheduleWakeMonitorRestart();
+        resumeWakeMonitor(50);
         emit idleRequested();
         return;
     }
@@ -561,7 +573,7 @@ void AssistantController::cancelActiveRequest()
     m_lmStudioClient->cancelActiveRequest();
     m_piperTtsEngine->clear();
     setStatus(QStringLiteral("Request cancelled"));
-    scheduleWakeMonitorRestart();
+    resumeWakeMonitor(400);
     emit idleRequested();
 }
 
@@ -620,7 +632,13 @@ void AssistantController::saveSettings(
     m_settings->save();
     refreshModels();
     setStatus(QStringLiteral("Settings saved"));
-    scheduleWakeMonitorRestart(1000);
+    if (m_wakeWordEnginePrecise->isActive()) {
+        stopWakeMonitor();
+    }
+    m_wakeMonitorEnabled = m_settings->initialSetupCompleted();
+    if (m_wakeMonitorEnabled) {
+        startWakeMonitor();
+    }
 }
 
 void AssistantController::setupStateMachine()
@@ -660,6 +678,36 @@ void AssistantController::setStatus(const QString &status)
     emit statusTextChanged();
 }
 
+void AssistantController::pauseWakeMonitor()
+{
+    if (!m_wakeMonitorEnabled || !m_wakeWordEnginePrecise->isActive()) {
+        return;
+    }
+
+    m_wakeWordEnginePrecise->pause();
+}
+
+void AssistantController::resumeWakeMonitor(int delayMs)
+{
+    if (!m_wakeMonitorEnabled) {
+        return;
+    }
+
+    QTimer::singleShot(delayMs, this, [this]() {
+        if (!m_wakeMonitorEnabled || !canStartWakeMonitor()) {
+            return;
+        }
+
+        if (m_wakeWordEnginePrecise->isActive()) {
+            if (m_wakeWordEnginePrecise->isPaused()) {
+                m_wakeWordEnginePrecise->resume();
+            }
+        } else {
+            startWakeMonitor();
+        }
+    });
+}
+
 void AssistantController::scheduleWakeMonitorRestart(int delayMs)
 {
     if (!m_wakeMonitorEnabled && m_settings->initialSetupCompleted()) {
@@ -670,11 +718,7 @@ void AssistantController::scheduleWakeMonitorRestart(int delayMs)
         return;
     }
 
-    QTimer::singleShot(delayMs, this, [this]() {
-        if (canStartWakeMonitor()) {
-            startWakeMonitor();
-        }
-    });
+    resumeWakeMonitor(delayMs);
 }
 
 bool AssistantController::canStartWakeMonitor() const
@@ -682,7 +726,7 @@ bool AssistantController::canStartWakeMonitor() const
     return m_wakeMonitorEnabled
         && m_currentState != AssistantState::Listening
         && !m_audioInputService->isActive()
-        && !m_wakeWordEnginePrecise->isActive()
+        && !m_piperTtsEngine->isSpeaking()
         && !m_settings->preciseEngineExecutable().isEmpty()
         && !m_settings->preciseModelPath().isEmpty();
 }
