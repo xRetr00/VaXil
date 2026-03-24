@@ -1,5 +1,6 @@
 .cache/
 .cmake/
+bin/
 CMakeFiles/
 cmake_install.cmake
 Makefile
@@ -7,7 +8,6 @@ CMakeCache.txt
 build/
 build-*/
 logs/
-config/
 *.log
 *.tmp
 *.bak
@@ -49,3 +49,5 @@ __pycache__/
 *.backup
 *.orig
 *.rej
+config/user_profile.json
+bin/logs/

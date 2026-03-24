@@ -2,6 +2,7 @@
 
 #include <QAbstractNativeEventFilter>
 #include <QApplication>
+#include <QDebug>
 #include <QCoreApplication>
 #include <QMenu>
 #include <QIcon>
@@ -64,18 +65,30 @@ JarvisApplication::~JarvisApplication() = default;
 
 bool JarvisApplication::initialize()
 {
+    qInfo() << "Loading settings";
     m_settings = std::make_unique<AppSettings>();
-    m_settings->load();
+    if (!m_settings->load()) {
+        qCritical() << "Failed to load settings";
+        return false;
+    }
+    qInfo() << "Settings loaded from" << m_settings->storagePath();
+
+    qInfo() << "Loading identity/profile configuration";
     m_identityProfileService = std::make_unique<IdentityProfileService>();
     if (!m_identityProfileService->initialize()) {
+        qCritical() << "Failed to load identity/profile configuration";
         return false;
     }
 
+    qInfo() << "Initializing logging";
     m_loggingService = std::make_unique<LoggingService>();
     if (!m_loggingService->initialize()) {
+        qCritical() << "Failed to initialize logging";
         return false;
     }
+    qInfo() << "Application log file:" << m_loggingService->logFilePath();
 
+    qInfo() << "Building core services";
     m_assistantController = std::make_unique<AssistantController>(
         m_settings.get(),
         m_identityProfileService.get(),
@@ -91,10 +104,12 @@ bool JarvisApplication::initialize()
     m_trayIcon = std::make_unique<QSystemTrayIcon>(appIcon.isNull() ? qApp->style()->standardIcon(QStyle::SP_ComputerIcon) : appIcon, this);
 
     m_engine->rootContext()->setContextProperty(QStringLiteral("backend"), m_backendFacade.get());
+    qInfo() << "Loading QML windows";
     m_engine->load(QUrl(QStringLiteral("qrc:/qt/qml/JARVIS/gui/qml/Main.qml")));
     m_engine->load(QUrl(QStringLiteral("qrc:/qt/qml/JARVIS/gui/qml/SettingsWindow.qml")));
     m_engine->load(QUrl(QStringLiteral("qrc:/qt/qml/JARVIS/gui/qml/SetupWizard.qml")));
     if (m_engine->rootObjects().isEmpty()) {
+        qCritical() << "QML load failed: no root objects were created";
         return false;
     }
 
@@ -174,9 +189,17 @@ bool JarvisApplication::initialize()
 
     m_assistantController->initialize();
     if (!m_settings->initialSetupCompleted() && m_setupWindow) {
+        qInfo() << "First run detected. Opening setup wizard.";
         m_setupWindow->show();
         m_setupWindow->raise();
         m_setupWindow->requestActivate();
+    } else {
+        qInfo() << "Startup complete. App is running in the tray. Use Ctrl+Alt+J or tray icon.";
+        m_trayIcon->showMessage(
+            QStringLiteral("JARVIS"),
+            QStringLiteral("Running in tray. Use Ctrl+Alt+J or the tray icon."),
+            QSystemTrayIcon::Information,
+            5000);
     }
 
     connect(m_backendFacade.get(), &BackendFacade::initialSetupFinished, this, [this]() {
@@ -186,6 +209,7 @@ bool JarvisApplication::initialize()
         if (m_mainWindow) {
             m_mainWindow->show();
         }
+        qInfo() << "Initial setup completed";
     });
     return true;
 }

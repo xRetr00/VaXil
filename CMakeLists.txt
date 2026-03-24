@@ -121,12 +121,15 @@ target_link_libraries(jarvis_lib
         spdlog::spdlog
 )
 
-qt_add_executable(jarvis WIN32
+qt_add_executable(jarvis
     src/app/main.cpp
     src/app/jarvis.rc
 )
 
 target_link_libraries(jarvis PRIVATE jarvis_lib)
+set_target_properties(jarvis PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/bin"
+)
 
 get_target_property(QT_CORE_DLL Qt6::Core IMPORTED_LOCATION_DEBUG)
 if(NOT QT_CORE_DLL)
@@ -136,6 +139,12 @@ get_filename_component(QT_BIN_DIR "${QT_CORE_DLL}" DIRECTORY)
 find_program(WINDEPLOYQT_EXECUTABLE windeployqt HINTS "${QT_BIN_DIR}" REQUIRED)
 
 if(WIN32)
+    add_custom_command(TARGET jarvis PRE_BUILD
+        COMMAND "${CMAKE_COMMAND}"
+            -DDEPLOY_DIR="$<TARGET_FILE_DIR:jarvis>"
+            -P "${CMAKE_SOURCE_DIR}/cmake/CleanDeployDir.cmake"
+        COMMENT "Cleaning deployed runtime directory"
+    )
     add_custom_command(TARGET jarvis POST_BUILD
         COMMAND "${WINDEPLOYQT_EXECUTABLE}"
             --verbose 0

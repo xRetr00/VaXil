@@ -19,7 +19,9 @@ public:
     void info(const QString &message) const;
     void warn(const QString &message) const;
     void error(const QString &message) const;
+    QString logFilePath() const;
 
 private:
     std::shared_ptr<spdlog::logger> m_logger;
+    QString m_logFilePath;
 };

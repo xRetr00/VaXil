@@ -2,7 +2,6 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import QtQuick.Window
-import Qt5Compat.GraphicalEffects
 
 Window {
     id: root
@@ -29,15 +28,22 @@ Window {
             border.color: "#44c8ff"
             border.width: 1
 
-            RadialGradient {
-                anchors.fill: parent
-                horizontalRadius: width * 0.75
-                verticalRadius: height * 0.75
-                gradient: Gradient {
-                    GradientStop { position: 0.0; color: "#183b56" }
-                    GradientStop { position: 0.5; color: "#0d1f31" }
-                    GradientStop { position: 1.0; color: "#04080d" }
-                }
+            Rectangle {
+                anchors.centerIn: parent
+                width: parent.width * 0.88
+                height: parent.height * 0.88
+                radius: width / 2
+                color: "#123955"
+                opacity: 0.16
+            }
+
+            Rectangle {
+                anchors.centerIn: parent
+                width: parent.width * 0.62
+                height: parent.height * 0.62
+                radius: width / 2
+                color: "#0f2740"
+                opacity: 0.28
             }
 
             ColumnLayout {
@@ -48,6 +54,19 @@ Window {
                 Item {
                     Layout.fillWidth: true
                     Layout.preferredHeight: 280
+
+                    Rectangle {
+                        anchors.centerIn: parent
+                        width: orb.width + 96
+                        height: width
+                        radius: width / 2
+                        color: backend.stateName === "LISTENING" ? "#287cffd6" : "#2233d0ff"
+                        opacity: backend.stateName === "SPEAKING" ? 0.52 : 0.34
+                        scale: orb.scale * 1.04
+
+                        Behavior on scale { NumberAnimation { duration: 120; easing.type: Easing.OutQuad } }
+                        Behavior on opacity { NumberAnimation { duration: 180; easing.type: Easing.OutQuad } }
+                    }
 
                     Rectangle {
                         id: outerRing
@@ -93,13 +112,14 @@ Window {
                         }
                     }
 
-                    Glow {
-                        anchors.fill: orb
-                        source: orb
-                        radius: 42
-                        samples: 24
-                        color: backend.stateName === "LISTENING" ? "#7cffd6" : "#33d0ff"
-                        spread: 0.35
+                    Rectangle {
+                        anchors.centerIn: orb
+                        width: orb.width + 36
+                        height: width
+                        radius: width / 2
+                        color: "#9aefff"
+                        opacity: 0.10
+                        scale: orb.scale
                     }
 
                     Repeater {
