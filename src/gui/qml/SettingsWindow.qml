@@ -10,6 +10,10 @@ Window {
     visible: true
     title: "JARVIS Settings"
     color: "#0a1118"
+    onClosing: function(close) {
+        close.accepted = false
+        hide()
+    }
 
     ScrollView {
         anchors.fill: parent

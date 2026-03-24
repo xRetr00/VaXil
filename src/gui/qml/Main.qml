@@ -11,6 +11,10 @@ Window {
     visible: false
     color: "transparent"
     flags: Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool
+    onClosing: function(close) {
+        close.accepted = false
+        hide()
+    }
 
     Rectangle {
         anchors.fill: parent

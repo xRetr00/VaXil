@@ -4,6 +4,7 @@
 #include <QApplication>
 #include <QCoreApplication>
 #include <QMenu>
+#include <QIcon>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
 #include <QQuickWindow>
@@ -86,7 +87,8 @@ bool JarvisApplication::initialize()
         m_assistantController.get(),
         m_overlayController.get());
     m_engine = std::make_unique<QQmlApplicationEngine>();
-    m_trayIcon = std::make_unique<QSystemTrayIcon>(qApp->style()->standardIcon(QStyle::SP_ComputerIcon), this);
+    const QIcon appIcon(QStringLiteral(":/qt/qml/JARVIS/gui/assets/icon.ico"));
+    m_trayIcon = std::make_unique<QSystemTrayIcon>(appIcon.isNull() ? qApp->style()->standardIcon(QStyle::SP_ComputerIcon) : appIcon, this);
 
     m_engine->rootContext()->setContextProperty(QStringLiteral("backend"), m_backendFacade.get());
     m_engine->load(QUrl(QStringLiteral("qrc:/qt/qml/JARVIS/gui/qml/Main.qml")));
@@ -100,18 +102,27 @@ bool JarvisApplication::initialize()
         m_mainWindow = window;
         m_overlayController->attachWindow(window);
         m_overlayController->setClickThrough(m_settings->clickThroughEnabled());
+        if (!appIcon.isNull()) {
+            window->setIcon(appIcon);
+        }
         window->setColor(Qt::transparent);
         window->hide();
     }
     if (m_engine->rootObjects().size() > 1) {
         m_settingsWindow = qobject_cast<QQuickWindow *>(m_engine->rootObjects().at(1));
         if (m_settingsWindow) {
+            if (!appIcon.isNull()) {
+                m_settingsWindow->setIcon(appIcon);
+            }
             m_settingsWindow->hide();
         }
     }
     if (m_engine->rootObjects().size() > 2) {
         m_setupWindow = qobject_cast<QQuickWindow *>(m_engine->rootObjects().at(2));
         if (m_setupWindow) {
+            if (!appIcon.isNull()) {
+                m_setupWindow->setIcon(appIcon);
+            }
             m_setupWindow->hide();
         }
     }
@@ -133,10 +144,27 @@ bool JarvisApplication::initialize()
             m_settingsWindow->requestActivate();
         }
     });
+    trayMenu->addAction(QStringLiteral("Setup"), [this]() {
+        if (m_setupWindow) {
+            m_setupWindow->show();
+            m_setupWindow->raise();
+            m_setupWindow->requestActivate();
+        }
+    });
     trayMenu->addSeparator();
     trayMenu->addAction(QStringLiteral("Quit"), qApp, &QCoreApplication::quit);
     m_trayIcon->setContextMenu(trayMenu);
     m_trayIcon->show();
+    connect(m_trayIcon.get(), &QSystemTrayIcon::activated, this, [this](QSystemTrayIcon::ActivationReason reason) {
+        if (reason == QSystemTrayIcon::Trigger || reason == QSystemTrayIcon::DoubleClick) {
+            if (m_setupWindow && m_setupWindow->isVisible()) {
+                m_setupWindow->raise();
+                m_setupWindow->requestActivate();
+                return;
+            }
+            m_overlayController->toggleOverlay();
+        }
+    });
 
     connect(m_overlayController.get(), &OverlayController::visibilityChanged, this, [this](bool visible) {
         if (!visible) {

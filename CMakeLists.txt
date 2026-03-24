@@ -3,6 +3,7 @@ cmake_minimum_required(VERSION 3.27)
 project(JARVIS VERSION 0.1.0 LANGUAGES CXX)
 
 include(FetchContent)
+enable_language(RC)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -122,6 +123,7 @@ target_link_libraries(jarvis_lib
 
 qt_add_executable(jarvis WIN32
     src/app/main.cpp
+    src/app/jarvis.rc
 )
 
 target_link_libraries(jarvis PRIVATE jarvis_lib)
@@ -131,6 +133,18 @@ if(NOT QT_CORE_DLL)
     get_target_property(QT_CORE_DLL Qt6::Core IMPORTED_LOCATION_RELEASE)
 endif()
 get_filename_component(QT_BIN_DIR "${QT_CORE_DLL}" DIRECTORY)
+find_program(WINDEPLOYQT_EXECUTABLE windeployqt HINTS "${QT_BIN_DIR}" REQUIRED)
+
+if(WIN32)
+    add_custom_command(TARGET jarvis POST_BUILD
+        COMMAND "${WINDEPLOYQT_EXECUTABLE}"
+            --verbose 0
+            --no-translations
+            --qmldir "${CMAKE_SOURCE_DIR}/src/gui/qml"
+            "$<TARGET_FILE:jarvis>"
+        COMMENT "Deploying Qt runtime for jarvis.exe"
+    )
+endif()
 
 if(JARVIS_BUILD_TESTS)
     enable_testing()

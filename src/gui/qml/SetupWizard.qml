@@ -10,6 +10,10 @@ Window {
     visible: false
     title: backend.assistantName + " Setup"
     color: "#09111a"
+    onClosing: function(close) {
+        close.accepted = false
+        hide()
+    }
 
     property int stepIndex: 0
 
