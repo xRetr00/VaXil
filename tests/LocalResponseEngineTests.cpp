@@ -11,6 +11,8 @@ private slots:
     void classifiesGreeting();
     void classifiesCommand();
     void loadsAndRendersGreeting();
+    void rendersWakeWordReady();
+    void rendersCurrentTime();
     void avoidsImmediateRepetitionWhenVariantsExist();
 };
 
@@ -36,6 +38,46 @@ void LocalResponseEngineTests::loadsAndRendersGreeting()
         .systemState = QStringLiteral("IDLE")
     });
     QVERIFY(text.contains(QStringLiteral("Alex")));
+}
+
+void LocalResponseEngineTests::rendersWakeWordReady()
+{
+    LocalResponseEngine engine;
+    QVERIFY(engine.initialize());
+
+    const QString text = engine.wakeWordReady({
+        .assistantName = QStringLiteral("JARVIS"),
+        .userName = QStringLiteral("Alex"),
+        .timeOfDay = QStringLiteral("morning"),
+        .systemState = QStringLiteral("IDLE"),
+        .tone = QStringLiteral("confident"),
+        .addressingStyle = QStringLiteral("direct"),
+        .currentTime = QStringLiteral("09:30"),
+        .currentDate = QStringLiteral("Monday, March 24, 2026"),
+        .wakeWord = QStringLiteral("Jarvis")
+    });
+
+    QVERIFY(text.contains(QStringLiteral("Alex")) || text.contains(QStringLiteral("JARVIS")));
+}
+
+void LocalResponseEngineTests::rendersCurrentTime()
+{
+    LocalResponseEngine engine;
+    QVERIFY(engine.initialize());
+
+    const QString text = engine.currentTimeResponse({
+        .assistantName = QStringLiteral("JARVIS"),
+        .userName = QStringLiteral("Alex"),
+        .timeOfDay = QStringLiteral("morning"),
+        .systemState = QStringLiteral("IDLE"),
+        .tone = QStringLiteral("confident"),
+        .addressingStyle = QStringLiteral("direct"),
+        .currentTime = QStringLiteral("09:30"),
+        .currentDate = QStringLiteral("Monday, March 24, 2026"),
+        .wakeWord = QStringLiteral("Jarvis")
+    });
+
+    QVERIFY(text.contains(QStringLiteral("09:30")));
 }
 
 void LocalResponseEngineTests::avoidsImmediateRepetitionWhenVariantsExist()

@@ -94,6 +94,8 @@ struct AssistantIdentity {
 };
 
 struct UserProfile {
+    QString displayName;
+    QString spokenName;
     QString userName;
     nlohmann::json preferences = nlohmann::json::object();
 };
@@ -111,4 +113,7 @@ struct LocalResponseContext {
     QString systemState;
     QString tone;
     QString addressingStyle;
+    QString currentTime;
+    QString currentDate;
+    QString wakeWord;
 };

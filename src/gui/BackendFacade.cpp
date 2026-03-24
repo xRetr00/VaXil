@@ -7,6 +7,8 @@
 #include <QFileInfo>
 #include <QMediaDevices>
 #include <QProcess>
+#include <QRegularExpression>
+#include <QVariantMap>
 #include <QStandardPaths>
 #include <QUrl>
 
@@ -16,6 +18,13 @@
 #include "settings/IdentityProfileService.h"
 
 namespace {
+struct PiperVoicePreset {
+    QString id;
+    QString label;
+    QString modelUrl;
+    QString configUrl;
+};
+
 QString firstValidPath(const QStringList &candidates)
 {
     for (const QString &candidate : candidates) {
@@ -60,10 +69,132 @@ QString findFileRecursive(const QString &rootPath, const QString &fileName)
     return {};
 }
 
+const QList<PiperVoicePreset> &voicePresets()
+{
+    static const QList<PiperVoicePreset> presets{
+        {
+            QStringLiteral("en_GB-alba-medium"),
+            QStringLiteral("Alba Medium  |  UK  |  Calm recommended"),
+            QStringLiteral("https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/en/en_GB/alba/medium/en_GB-alba-medium.onnx?download=true"),
+            QStringLiteral("https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/en/en_GB/alba/medium/en_GB-alba-medium.onnx.json?download=true")
+        },
+        {
+            QStringLiteral("en_GB-alan-medium"),
+            QStringLiteral("Alan Medium  |  UK  |  Neutral male"),
+            QStringLiteral("https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/en/en_GB/alan/medium/en_GB-alan-medium.onnx?download=true"),
+            QStringLiteral("https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/en/en_GB/alan/medium/en_GB-alan-medium.onnx.json?download=true")
+        },
+        {
+            QStringLiteral("en_GB-northern_english_male-medium"),
+            QStringLiteral("Northern English Male  |  UK  |  Deep tone"),
+            QStringLiteral("https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/en/en_GB/northern_english_male/medium/en_GB-northern_english_male-medium.onnx?download=true"),
+            QStringLiteral("https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/en/en_GB/northern_english_male/medium/en_GB-northern_english_male-medium.onnx.json?download=true")
+        },
+        {
+            QStringLiteral("en_GB-semaine-medium"),
+            QStringLiteral("Semaine Medium  |  UK  |  Controlled female"),
+            QStringLiteral("https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/en/en_GB/semaine/medium/en_GB-semaine-medium.onnx?download=true"),
+            QStringLiteral("https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/en/en_GB/semaine/medium/en_GB-semaine-medium.onnx.json?download=true")
+        },
+        {
+            QStringLiteral("en_US-ryan-medium"),
+            QStringLiteral("Ryan Medium  |  US  |  Neutral male"),
+            QStringLiteral("https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/en/en_US/ryan/medium/en_US-ryan-medium.onnx?download=true"),
+            QStringLiteral("https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/en/en_US/ryan/medium/en_US-ryan-medium.onnx.json?download=true")
+        },
+        {
+            QStringLiteral("en_US-lessac-medium"),
+            QStringLiteral("Lessac Medium  |  US  |  Clear neutral"),
+            QStringLiteral("https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/en/en_US/lessac/medium/en_US-lessac-medium.onnx?download=true"),
+            QStringLiteral("https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/en/en_US/lessac/medium/en_US-lessac-medium.onnx.json?download=true")
+        }
+    };
+
+    return presets;
+}
+
+const PiperVoicePreset *findVoicePreset(const QString &voiceId)
+{
+    for (const PiperVoicePreset &preset : voicePresets()) {
+        if (preset.id == voiceId) {
+            return &preset;
+        }
+    }
+
+    return nullptr;
+}
+
+QString detectVoicePresetIdFromPath(const QString &path)
+{
+    const QString fileName = QFileInfo(path).fileName();
+    for (const PiperVoicePreset &preset : voicePresets()) {
+        if (fileName.compare(preset.id + QStringLiteral(".onnx"), Qt::CaseInsensitive) == 0) {
+            return preset.id;
+        }
+    }
+
+    return {};
+}
+
+QString piperVoicesRoot(const QString &appDataRoot)
+{
+    return appDataRoot + QStringLiteral("/tools/piper-voices");
+}
+
+QString quotePowerShell(const QString &value)
+{
+    QString escaped = value;
+    escaped.replace(QStringLiteral("'"), QStringLiteral("''"));
+    return QStringLiteral("'%1'").arg(escaped);
+}
+
+bool downloadFileWithPowerShell(const QString &url, const QString &destinationPath, int timeoutMs, QString *error)
+{
+    QProcess process;
+    const QString script = QStringLiteral(
+        "$ProgressPreference='SilentlyContinue'; "
+        "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; "
+        "New-Item -ItemType Directory -Force -Path (Split-Path -Parent %1) | Out-Null; "
+        "Invoke-WebRequest -UseBasicParsing -Uri %2 -OutFile %1")
+        .arg(quotePowerShell(destinationPath), quotePowerShell(url));
+
+    process.start(
+        QStringLiteral("powershell"),
+        {
+            QStringLiteral("-NoProfile"),
+            QStringLiteral("-ExecutionPolicy"), QStringLiteral("Bypass"),
+            QStringLiteral("-Command"),
+            script
+        });
+
+    if (!process.waitForFinished(timeoutMs)) {
+        process.kill();
+        if (error) {
+            *error = QStringLiteral("Download timed out.");
+        }
+        return false;
+    }
+
+    if (process.exitStatus() != QProcess::NormalExit || process.exitCode() != 0) {
+        if (error) {
+            *error = QString::fromUtf8(process.readAllStandardError()).trimmed();
+            if (error->isEmpty()) {
+                *error = QString::fromUtf8(process.readAllStandardOutput()).trimmed();
+            }
+            if (error->isEmpty()) {
+                *error = QStringLiteral("Download failed.");
+            }
+        }
+        return false;
+    }
+
+    return QFileInfo::exists(destinationPath);
+}
+
 QString detectPiperVoiceModel(const QString &appDataRoot)
 {
     const QStringList roots = {
-        appDataRoot + QStringLiteral("/tools/piper-voices"),
+        piperVoicesRoot(appDataRoot),
         appDataRoot + QStringLiteral("/tools/piper"),
         QDir::currentPath() + QStringLiteral("/models"),
         QStringLiteral(JARVIS_SOURCE_DIR) + QStringLiteral("/models")
@@ -193,6 +324,64 @@ QString resolveVoiceModelSelection(const QString &selection)
 
     return {};
 }
+
+QString extractVersionToken(const QString &text)
+{
+    const QRegularExpression versionPattern(QStringLiteral("(v?\\d+\\.\\d+(?:\\.\\d+)*)"));
+    const QRegularExpressionMatch match = versionPattern.match(text);
+    if (!match.hasMatch()) {
+        return {};
+    }
+
+    return match.captured(1);
+}
+
+QString probeToolVersion(const QString &executablePath, const QStringList &args)
+{
+    if (executablePath.isEmpty() || !QFileInfo::exists(executablePath)) {
+        return {};
+    }
+
+    QProcess process;
+    process.start(executablePath, args);
+    if (!process.waitForFinished(3000)) {
+        process.kill();
+        return {};
+    }
+
+    const QString output = QString::fromUtf8(process.readAllStandardOutput())
+        + QString::fromUtf8(process.readAllStandardError());
+    return extractVersionToken(output);
+}
+
+QString fetchLatestReleaseTag(const QString &repo)
+{
+    QProcess process;
+    const QString command = QStringLiteral("(Invoke-RestMethod -Uri 'https://api.github.com/repos/%1/releases/latest').tag_name").arg(repo);
+    process.start(QStringLiteral("powershell"),
+        {
+            QStringLiteral("-NoProfile"),
+            QStringLiteral("-ExecutionPolicy"), QStringLiteral("Bypass"),
+            QStringLiteral("-Command"),
+            command
+        });
+
+    if (!process.waitForFinished(3500)) {
+        process.kill();
+        return {};
+    }
+
+    return QString::fromUtf8(process.readAllStandardOutput()).trimmed();
+}
+
+bool looksLatestEnough(const QString &installedVersion, const QString &latestTag)
+{
+    if (installedVersion.isEmpty() || latestTag.isEmpty()) {
+        return false;
+    }
+
+    return latestTag.contains(installedVersion, Qt::CaseInsensitive);
+}
 }
 
 BackendFacade::BackendFacade(
@@ -231,6 +420,23 @@ QString BackendFacade::statusText() const { return m_assistantController->status
 double BackendFacade::audioLevel() const { return m_assistantController->audioLevel(); }
 QStringList BackendFacade::models() const { return m_assistantController->availableModelIds(); }
 QString BackendFacade::selectedModel() const { return m_assistantController->selectedModel(); }
+QStringList BackendFacade::voicePresetNames() const
+{
+    QStringList values;
+    for (const PiperVoicePreset &preset : voicePresets()) {
+        values.push_back(preset.label);
+    }
+    return values;
+}
+QStringList BackendFacade::voicePresetIds() const
+{
+    QStringList values;
+    for (const PiperVoicePreset &preset : voicePresets()) {
+        values.push_back(preset.id);
+    }
+    return values;
+}
+QString BackendFacade::selectedVoicePresetId() const { return m_settings->selectedVoicePresetId(); }
 bool BackendFacade::overlayVisible() const { return m_overlayController->isVisible(); }
 QString BackendFacade::lmStudioEndpoint() const { return m_settings->lmStudioEndpoint(); }
 int BackendFacade::defaultReasoningMode() const { return static_cast<int>(m_settings->defaultReasoningMode()); }
@@ -284,15 +490,36 @@ QString BackendFacade::selectedAudioInputDeviceId() const { return m_settings->s
 QString BackendFacade::selectedAudioOutputDeviceId() const { return m_settings->selectedAudioOutputDeviceId(); }
 bool BackendFacade::clickThroughEnabled() const { return m_settings->clickThroughEnabled(); }
 QString BackendFacade::assistantName() const { return m_identityProfileService->identity().assistantName; }
-QString BackendFacade::userName() const { return m_identityProfileService->userProfile().userName; }
+QString BackendFacade::userName() const
+{
+    const UserProfile profile = m_identityProfileService->userProfile();
+    return profile.displayName.isEmpty() ? profile.userName : profile.displayName;
+}
+QString BackendFacade::spokenUserName() const
+{
+    const UserProfile profile = m_identityProfileService->userProfile();
+    const QString displayName = profile.displayName.isEmpty() ? profile.userName : profile.displayName;
+    return profile.spokenName.isEmpty() ? displayName : profile.spokenName;
+}
 bool BackendFacade::initialSetupCompleted() const { return m_settings->initialSetupCompleted(); }
 QString BackendFacade::toolInstallStatus() const { return m_toolInstallStatus; }
+QString BackendFacade::wakeWordPhrase() const { return m_settings->wakeWordPhrase(); }
 void BackendFacade::toggleOverlay() { m_overlayController->toggleOverlay(); }
 void BackendFacade::refreshModels() { m_assistantController->refreshModels(); }
 void BackendFacade::submitText(const QString &text) { m_assistantController->submitText(text); }
 void BackendFacade::startListening() { m_assistantController->startListening(); }
 void BackendFacade::cancelRequest() { m_assistantController->cancelActiveRequest(); }
 void BackendFacade::setSelectedModel(const QString &modelId) { m_assistantController->setSelectedModel(modelId); }
+void BackendFacade::setSelectedVoicePresetId(const QString &voiceId)
+{
+    if (findVoicePreset(voiceId) == nullptr) {
+        return;
+    }
+
+    m_settings->setSelectedVoicePresetId(voiceId);
+    m_settings->save();
+    emit settingsChanged();
+}
 void BackendFacade::refreshAudioDevices()
 {
     emit audioDevicesChanged();
@@ -317,6 +544,11 @@ void BackendFacade::saveSettings(
     const QString &audioOutputDeviceId,
     bool clickThrough)
 {
+    const QString detectedVoicePresetId = detectVoicePresetIdFromPath(voicePath);
+    if (!detectedVoicePresetId.isEmpty()) {
+        m_settings->setSelectedVoicePresetId(detectedVoicePresetId);
+    }
+
     m_assistantController->saveSettings(
         endpoint, modelId, defaultMode, autoRouting, streaming, timeoutMs,
         whisperPath,
@@ -333,8 +565,45 @@ void BackendFacade::saveSettings(
     emit settingsChanged();
 }
 
+bool BackendFacade::downloadVoiceModel(const QString &voiceId)
+{
+    const PiperVoicePreset *preset = findVoicePreset(voiceId);
+    if (preset == nullptr) {
+        setToolInstallStatus(QStringLiteral("Selected Piper voice is not recognized."));
+        return false;
+    }
+
+    const QString appDataRoot = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+    const QString voiceRoot = piperVoicesRoot(appDataRoot);
+    QDir().mkpath(voiceRoot);
+
+    const QString modelPath = voiceRoot + QStringLiteral("/") + preset->id + QStringLiteral(".onnx");
+    const QString configPath = modelPath + QStringLiteral(".json");
+
+    setToolInstallStatus(QStringLiteral("Downloading Piper voice %1...").arg(preset->id));
+
+    QString errorText;
+    if (!QFileInfo::exists(modelPath) && !downloadFileWithPowerShell(preset->modelUrl, modelPath, 5 * 60 * 1000, &errorText)) {
+        setToolInstallStatus(QStringLiteral("Voice download failed: %1").arg(errorText));
+        return false;
+    }
+
+    if (!QFileInfo::exists(configPath) && !downloadFileWithPowerShell(preset->configUrl, configPath, 60 * 1000, &errorText)) {
+        setToolInstallStatus(QStringLiteral("Voice config download failed: %1").arg(errorText));
+        return false;
+    }
+
+    m_settings->setSelectedVoicePresetId(preset->id);
+    m_settings->setPiperVoiceModel(modelPath);
+    m_settings->save();
+    setToolInstallStatus(QStringLiteral("Voice ready: %1").arg(preset->label));
+    emit settingsChanged();
+    return true;
+}
+
 bool BackendFacade::completeInitialSetup(
-    const QString &userName,
+    const QString &displayName,
+    const QString &spokenName,
     const QString &endpoint,
     const QString &modelId,
     const QString &whisperPath,
@@ -405,8 +674,11 @@ bool BackendFacade::completeInitialSetup(
         return false;
     }
 
-    if (!userName.trimmed().isEmpty()) {
-        m_identityProfileService->setUserName(userName.trimmed());
+    m_identityProfileService->setUserNames(displayName.trimmed(), spokenName.trimmed());
+
+    const QString detectedVoicePresetId = detectVoicePresetIdFromPath(resolvedVoiceModel);
+    if (!detectedVoicePresetId.isEmpty()) {
+        m_settings->setSelectedVoicePresetId(detectedVoicePresetId);
     }
 
     m_assistantController->saveSettings(
@@ -437,8 +709,9 @@ bool BackendFacade::completeInitialSetup(
     return true;
 }
 
-bool BackendFacade::runSetupVoiceTest(
-    const QString &userName,
+bool BackendFacade::runSetupScenario(
+    const QString &displayName,
+    const QString &spokenName,
     const QString &endpoint,
     const QString &modelId,
     const QString &whisperPath,
@@ -447,11 +720,12 @@ bool BackendFacade::runSetupVoiceTest(
     const QString &ffmpegPath,
     const QString &audioInputDeviceId,
     const QString &audioOutputDeviceId,
-    bool clickThrough)
+    bool clickThrough,
+    const QString &scenarioId)
 {
     const QString normalizedEndpoint = endpoint.trimmed();
     if (normalizedEndpoint.isEmpty()) {
-        setToolInstallStatus(QStringLiteral("LM Studio endpoint is required before running a voice test."));
+        setToolInstallStatus(QStringLiteral("LM Studio endpoint is required before running a setup scenario."));
         return false;
     }
 
@@ -509,6 +783,13 @@ bool BackendFacade::runSetupVoiceTest(
         return false;
     }
 
+    m_identityProfileService->setUserNames(displayName.trimmed(), spokenName.trimmed());
+
+    const QString detectedVoicePresetId = detectVoicePresetIdFromPath(resolvedVoiceModel);
+    if (!detectedVoicePresetId.isEmpty()) {
+        m_settings->setSelectedVoicePresetId(detectedVoicePresetId);
+    }
+
     m_assistantController->saveSettings(
         normalizedEndpoint,
         modelId,
@@ -527,12 +808,93 @@ bool BackendFacade::runSetupVoiceTest(
         audioOutputDeviceId,
         clickThrough);
 
-    const QString caller = userName.trimmed().isEmpty() ? QStringLiteral("Sir") : userName.trimmed();
-    const QString testPrompt = QStringLiteral("Reply with exactly one calm, confident sentence greeting %1. No markdown.").arg(caller);
+    QString testPrompt;
+    QString status;
+    if (scenarioId == QStringLiteral("wakeword_time")) {
+        testPrompt = QStringLiteral("%1, what's the time now?").arg(m_settings->wakeWordPhrase());
+        status = QStringLiteral("Wake phrase time test started. Listen for the local clock response.");
+    } else {
+        testPrompt = m_settings->wakeWordPhrase();
+        status = QStringLiteral("Wake phrase presence test started. Listen for the ready response.");
+    }
+
     m_assistantController->submitText(testPrompt);
-    setToolInstallStatus(QStringLiteral("Voice test sent to the AI model. Listen for J.A.R.V.I.S output."));
+    setToolInstallStatus(status);
     emit settingsChanged();
     return true;
+}
+
+QVariantMap BackendFacade::evaluateSetupRequirements(
+    const QString &endpoint,
+    const QString &modelId,
+    const QString &whisperPath,
+    const QString &piperPath,
+    const QString &voicePath,
+    const QString &ffmpegPath)
+{
+    QVariantMap result;
+
+    const bool endpointOk = !endpoint.trimmed().isEmpty();
+    const bool modelOk = !modelId.trimmed().isEmpty() && m_assistantController->availableModelIds().contains(modelId);
+
+    const QString resolvedWhisper = resolveExecutableSelection(
+        whisperPath,
+        {
+            QStringLiteral("whisper-cli.exe"),
+            QStringLiteral("main.exe"),
+            QStringLiteral("whisper.exe")
+        });
+    const QString resolvedPiper = resolveExecutableSelection(
+        piperPath,
+        {
+            QStringLiteral("piper.exe")
+        });
+    const QString resolvedFfmpeg = resolveExecutableSelection(
+        ffmpegPath,
+        {
+            QStringLiteral("ffmpeg.exe")
+        });
+    const QString resolvedVoice = resolveVoiceModelSelection(voicePath);
+
+    const bool whisperOk = !resolvedWhisper.isEmpty();
+    const bool piperOk = !resolvedPiper.isEmpty();
+    const bool ffmpegOk = !resolvedFfmpeg.isEmpty();
+    const bool voiceOk = !resolvedVoice.isEmpty();
+
+    const QString whisperVersion = whisperOk ? probeToolVersion(resolvedWhisper, {QStringLiteral("--version")}) : QString{};
+    const QString piperVersion = piperOk ? probeToolVersion(resolvedPiper, {QStringLiteral("--version")}) : QString{};
+    const QString ffmpegVersion = ffmpegOk ? probeToolVersion(resolvedFfmpeg, {QStringLiteral("-version")}) : QString{};
+
+    const QString whisperLatest = whisperOk ? fetchLatestReleaseTag(QStringLiteral("ggerganov/whisper.cpp")) : QString{};
+    const QString piperLatest = piperOk ? fetchLatestReleaseTag(QStringLiteral("rhasspy/piper")) : QString{};
+    const QString ffmpegLatest = ffmpegOk ? fetchLatestReleaseTag(QStringLiteral("BtbN/FFmpeg-Builds")) : QString{};
+
+    result.insert(QStringLiteral("endpointOk"), endpointOk);
+    result.insert(QStringLiteral("modelOk"), modelOk);
+    result.insert(QStringLiteral("whisperOk"), whisperOk);
+    result.insert(QStringLiteral("piperOk"), piperOk);
+    result.insert(QStringLiteral("voiceOk"), voiceOk);
+    result.insert(QStringLiteral("ffmpegOk"), ffmpegOk);
+
+    result.insert(QStringLiteral("whisperPathResolved"), resolvedWhisper);
+    result.insert(QStringLiteral("piperPathResolved"), resolvedPiper);
+    result.insert(QStringLiteral("voicePathResolved"), resolvedVoice);
+    result.insert(QStringLiteral("ffmpegPathResolved"), resolvedFfmpeg);
+
+    result.insert(QStringLiteral("whisperVersion"), whisperVersion);
+    result.insert(QStringLiteral("piperVersion"), piperVersion);
+    result.insert(QStringLiteral("ffmpegVersion"), ffmpegVersion);
+    result.insert(QStringLiteral("whisperLatestTag"), whisperLatest);
+    result.insert(QStringLiteral("piperLatestTag"), piperLatest);
+    result.insert(QStringLiteral("ffmpegLatestTag"), ffmpegLatest);
+    result.insert(QStringLiteral("whisperLatestOk"), looksLatestEnough(whisperVersion, whisperLatest));
+    result.insert(QStringLiteral("piperLatestOk"), looksLatestEnough(piperVersion, piperLatest));
+    result.insert(QStringLiteral("ffmpegLatestOk"), looksLatestEnough(ffmpegVersion, ffmpegLatest));
+
+    const bool allValid = endpointOk && modelOk && whisperOk && piperOk && voiceOk && ffmpegOk;
+    result.insert(QStringLiteral("allValid"), allValid);
+
+    return result;
 }
 
 void BackendFacade::openContainingDirectory(const QString &path)
@@ -626,6 +988,10 @@ bool BackendFacade::autoDetectVoiceTools()
     }
     if (!voiceModel.isEmpty()) {
         m_settings->setPiperVoiceModel(voiceModel);
+        const QString detectedVoicePresetId = detectVoicePresetIdFromPath(voiceModel);
+        if (!detectedVoicePresetId.isEmpty()) {
+            m_settings->setSelectedVoicePresetId(detectedVoicePresetId);
+        }
     }
 
     const bool complete = !m_settings->whisperExecutable().isEmpty()
@@ -651,6 +1017,8 @@ bool BackendFacade::installAndDetectVoiceTools()
 #ifdef Q_OS_WIN
     const QString appDataRoot = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
     const QString toolsRoot = QDir::toNativeSeparators(appDataRoot + QStringLiteral("/tools"));
+    const PiperVoicePreset *preset = findVoicePreset(m_settings->selectedVoicePresetId());
+    const PiperVoicePreset &voicePreset = preset != nullptr ? *preset : voicePresets().first();
     setToolInstallStatus(QStringLiteral("Installing missing voice tools. This can take a few minutes..."));
 
     const QString script = QStringLiteral(R"POWERSHELL(
@@ -704,16 +1072,16 @@ if (-not (Test-Path (Join-Path $piperDir 'piper.exe'))) {
 
 $voiceDir = Join-Path $toolsRoot 'piper-voices'
 New-Item -ItemType Directory -Force -Path $voiceDir | Out-Null
-$voiceModel = Join-Path $voiceDir 'en_GB-alba-medium.onnx'
-$voiceJson = Join-Path $voiceDir 'en_GB-alba-medium.onnx.json'
+$voiceModel = Join-Path $voiceDir '%2.onnx'
+$voiceJson = Join-Path $voiceDir '%2.onnx.json'
 
 if (-not (Test-Path $voiceModel)) {
-    Invoke-WebRequest -Uri 'https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/en/en_GB/alba/medium/en_GB-alba-medium.onnx?download=true' -OutFile $voiceModel
+    Invoke-WebRequest -Uri '%3' -OutFile $voiceModel
 }
 if (-not (Test-Path $voiceJson)) {
-    Invoke-WebRequest -Uri 'https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/en/en_GB/alba/medium/en_GB-alba-medium.onnx.json?download=true' -OutFile $voiceJson
+    Invoke-WebRequest -Uri '%4' -OutFile $voiceJson
 }
-)POWERSHELL").arg(toolsRoot);
+)POWERSHELL").arg(toolsRoot, voicePreset.id, voicePreset.modelUrl, voicePreset.configUrl);
 
     QProcess installer;
     installer.start(

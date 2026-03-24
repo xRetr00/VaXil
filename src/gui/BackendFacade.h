@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QObject>
+#include <QVariantMap>
 
 class AssistantController;
 class AppSettings;
@@ -17,6 +18,9 @@ class BackendFacade : public QObject
     Q_PROPERTY(double audioLevel READ audioLevel NOTIFY audioLevelChanged)
     Q_PROPERTY(QStringList models READ models NOTIFY modelsChanged)
     Q_PROPERTY(QString selectedModel READ selectedModel NOTIFY selectedModelChanged)
+    Q_PROPERTY(QStringList voicePresetNames READ voicePresetNames CONSTANT)
+    Q_PROPERTY(QStringList voicePresetIds READ voicePresetIds CONSTANT)
+    Q_PROPERTY(QString selectedVoicePresetId READ selectedVoicePresetId NOTIFY settingsChanged)
     Q_PROPERTY(bool overlayVisible READ overlayVisible NOTIFY overlayVisibleChanged)
     Q_PROPERTY(QString lmStudioEndpoint READ lmStudioEndpoint NOTIFY settingsChanged)
     Q_PROPERTY(int defaultReasoningMode READ defaultReasoningMode NOTIFY settingsChanged)
@@ -39,8 +43,10 @@ class BackendFacade : public QObject
     Q_PROPERTY(bool clickThroughEnabled READ clickThroughEnabled NOTIFY settingsChanged)
     Q_PROPERTY(QString assistantName READ assistantName NOTIFY profileChanged)
     Q_PROPERTY(QString userName READ userName NOTIFY profileChanged)
+    Q_PROPERTY(QString spokenUserName READ spokenUserName NOTIFY profileChanged)
     Q_PROPERTY(bool initialSetupCompleted READ initialSetupCompleted NOTIFY settingsChanged)
     Q_PROPERTY(QString toolInstallStatus READ toolInstallStatus NOTIFY toolInstallStatusChanged)
+    Q_PROPERTY(QString wakeWordPhrase READ wakeWordPhrase NOTIFY settingsChanged)
 
 public:
     BackendFacade(
@@ -57,6 +63,9 @@ public:
     double audioLevel() const;
     QStringList models() const;
     QString selectedModel() const;
+    QStringList voicePresetNames() const;
+    QStringList voicePresetIds() const;
+    QString selectedVoicePresetId() const;
     bool overlayVisible() const;
     QString lmStudioEndpoint() const;
     int defaultReasoningMode() const;
@@ -79,8 +88,10 @@ public:
     bool clickThroughEnabled() const;
     QString assistantName() const;
     QString userName() const;
+    QString spokenUserName() const;
     bool initialSetupCompleted() const;
     QString toolInstallStatus() const;
+    QString wakeWordPhrase() const;
 
     Q_INVOKABLE void toggleOverlay();
     Q_INVOKABLE void refreshModels();
@@ -88,6 +99,7 @@ public:
     Q_INVOKABLE void startListening();
     Q_INVOKABLE void cancelRequest();
     Q_INVOKABLE void setSelectedModel(const QString &modelId);
+    Q_INVOKABLE void setSelectedVoicePresetId(const QString &voiceId);
     Q_INVOKABLE void saveSettings(
         const QString &endpoint,
         const QString &modelId,
@@ -105,8 +117,10 @@ public:
         const QString &audioInputDeviceId,
         const QString &audioOutputDeviceId,
         bool clickThrough);
+    Q_INVOKABLE bool downloadVoiceModel(const QString &voiceId);
     Q_INVOKABLE bool completeInitialSetup(
-        const QString &userName,
+        const QString &displayName,
+        const QString &spokenName,
         const QString &endpoint,
         const QString &modelId,
         const QString &whisperPath,
@@ -116,8 +130,9 @@ public:
         const QString &audioInputDeviceId,
         const QString &audioOutputDeviceId,
         bool clickThrough);
-    Q_INVOKABLE bool runSetupVoiceTest(
-        const QString &userName,
+    Q_INVOKABLE bool runSetupScenario(
+        const QString &displayName,
+        const QString &spokenName,
         const QString &endpoint,
         const QString &modelId,
         const QString &whisperPath,
@@ -126,7 +141,15 @@ public:
         const QString &ffmpegPath,
         const QString &audioInputDeviceId,
         const QString &audioOutputDeviceId,
-        bool clickThrough);
+        bool clickThrough,
+        const QString &scenarioId);
+    Q_INVOKABLE QVariantMap evaluateSetupRequirements(
+        const QString &endpoint,
+        const QString &modelId,
+        const QString &whisperPath,
+        const QString &piperPath,
+        const QString &voicePath,
+        const QString &ffmpegPath);
     Q_INVOKABLE void openContainingDirectory(const QString &path);
     Q_INVOKABLE bool autoDetectVoiceTools();
     Q_INVOKABLE bool installAndDetectVoiceTools();

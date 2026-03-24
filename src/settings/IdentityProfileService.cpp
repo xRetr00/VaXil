@@ -56,7 +56,31 @@ UserProfile IdentityProfileService::userProfile() const
 
 bool IdentityProfileService::setUserName(const QString &userName)
 {
-    m_userProfile.userName = userName.trimmed();
+    const QString normalized = userName.trimmed();
+    m_userProfile.displayName = normalized;
+    m_userProfile.userName = normalized;
+    if (m_userProfile.spokenName.trimmed().isEmpty()) {
+        m_userProfile.spokenName = normalized;
+    }
+    return saveUserProfile();
+}
+
+bool IdentityProfileService::setSpokenName(const QString &spokenName)
+{
+    const QString normalized = spokenName.trimmed();
+    m_userProfile.spokenName = normalized.isEmpty() ? m_userProfile.displayName : normalized;
+    return saveUserProfile();
+}
+
+bool IdentityProfileService::setUserNames(const QString &displayName, const QString &spokenName)
+{
+    const QString normalizedDisplay = displayName.trimmed();
+    const QString normalizedSpoken = spokenName.trimmed();
+    const QString effectiveDisplay = normalizedDisplay.isEmpty() ? normalizedSpoken : normalizedDisplay;
+
+    m_userProfile.displayName = effectiveDisplay;
+    m_userProfile.userName = effectiveDisplay;
+    m_userProfile.spokenName = normalizedSpoken.isEmpty() ? effectiveDisplay : normalizedSpoken;
     return saveUserProfile();
 }
 
@@ -116,6 +140,8 @@ bool IdentityProfileService::ensureDefaults()
     QFile profileFile(userProfilePath());
     if (!profileFile.exists()) {
         const nlohmann::json profile = {
+            {"display_name", ""},
+            {"spoken_name", ""},
             {"user_name", ""},
             {"preferences", nlohmann::json::object()}
         };
@@ -159,7 +185,16 @@ bool IdentityProfileService::loadUserProfile()
         return false;
     }
 
-    m_userProfile.userName = QString::fromStdString(json.value("user_name", std::string{}));
+    const QString legacyUserName = QString::fromStdString(json.value("user_name", std::string{}));
+    m_userProfile.displayName = QString::fromStdString(json.value("display_name", legacyUserName.toStdString()));
+    m_userProfile.spokenName = QString::fromStdString(json.value("spoken_name", m_userProfile.displayName.toStdString()));
+    if (m_userProfile.displayName.isEmpty()) {
+        m_userProfile.displayName = m_userProfile.spokenName;
+    }
+    if (m_userProfile.spokenName.isEmpty()) {
+        m_userProfile.spokenName = m_userProfile.displayName;
+    }
+    m_userProfile.userName = m_userProfile.displayName;
     m_userProfile.preferences = json.contains("preferences") ? json.at("preferences") : nlohmann::json::object();
     return true;
 }
@@ -167,6 +202,8 @@ bool IdentityProfileService::loadUserProfile()
 bool IdentityProfileService::saveUserProfile() const
 {
     const nlohmann::json profile = {
+        {"display_name", m_userProfile.displayName.toStdString()},
+        {"spoken_name", m_userProfile.spokenName.toStdString()},
         {"user_name", m_userProfile.userName.toStdString()},
         {"preferences", m_userProfile.preferences}
     };

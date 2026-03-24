@@ -11,6 +11,7 @@ private slots:
     void promptAdapterAppliesNoThink();
     void promptAdapterAppliesDeepPrefix();
     void promptAdapterInjectsIdentityAndProfile();
+    void promptAdapterInjectsRuntimeContext();
     void streamAssemblerEmitsSentences();
 };
 
@@ -32,6 +33,8 @@ void AiServicesTests::promptAdapterInjectsIdentityAndProfile()
 {
     PromptAdapter adapter;
     UserProfile profile;
+    profile.displayName = QStringLiteral("Alex");
+    profile.spokenName = QStringLiteral("Alexander");
     profile.userName = QStringLiteral("Alex");
     profile.preferences["theme"] = "dark";
 
@@ -49,8 +52,31 @@ void AiServicesTests::promptAdapterInjectsIdentityAndProfile()
         ReasoningMode::Balanced);
 
     QVERIFY(messages.first().content.contains(QStringLiteral("You are JARVIS")));
-    QVERIFY(messages.first().content.contains(QStringLiteral("name: Alex")));
+    QVERIFY(messages.first().content.contains(QStringLiteral("display name: Alex")));
+    QVERIFY(messages.first().content.contains(QStringLiteral("spoken name: Alexander")));
     QVERIFY(messages.first().content.contains(QStringLiteral("theme = dark")));
+}
+
+void AiServicesTests::promptAdapterInjectsRuntimeContext()
+{
+    PromptAdapter adapter;
+
+    const auto messages = adapter.buildConversationMessages(
+        QStringLiteral("What time is it?"),
+        {},
+        {},
+        {
+            .assistantName = QStringLiteral("JARVIS"),
+            .personality = QStringLiteral("calm"),
+            .tone = QStringLiteral("confident"),
+            .addressingStyle = QStringLiteral("direct")
+        },
+        {},
+        ReasoningMode::Balanced);
+
+    QVERIFY(messages.first().content.contains(QStringLiteral("Current runtime context:")));
+    QVERIFY(messages.first().content.contains(QStringLiteral("wake phrase: Jarvis")));
+    QVERIFY(messages.first().content.contains(QStringLiteral("timezone:")));
 }
 
 void AiServicesTests::streamAssemblerEmitsSentences()

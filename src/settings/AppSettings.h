@@ -42,6 +42,9 @@ public:
     QString piperVoiceModel() const;
     void setPiperVoiceModel(const QString &path);
 
+    QString selectedVoicePresetId() const;
+    void setSelectedVoicePresetId(const QString &voicePresetId);
+
     QString ffmpegExecutable() const;
     void setFfmpegExecutable(const QString &path);
 
@@ -66,6 +69,9 @@ public:
     bool initialSetupCompleted() const;
     void setInitialSetupCompleted(bool completed);
 
+    QString wakeWordPhrase() const;
+    void setWakeWordPhrase(const QString &wakeWordPhrase);
+
     QString storagePath() const;
 
 signals:
@@ -81,6 +87,7 @@ private:
     QString m_whisperExecutable;
     QString m_piperExecutable;
     QString m_piperVoiceModel;
+    QString m_selectedVoicePresetId = QStringLiteral("en_GB-alba-medium");
     QString m_ffmpegExecutable;
     double m_voiceSpeed = 0.89;
     double m_voicePitch = 0.93;
@@ -89,4 +96,5 @@ private:
     QString m_selectedAudioOutputDeviceId;
     bool m_clickThroughEnabled = false;
     bool m_initialSetupCompleted = false;
+    QString m_wakeWordPhrase = QStringLiteral("Jarvis");
 };

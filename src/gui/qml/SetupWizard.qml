@@ -7,16 +7,11 @@ import "." as JarvisUi
 Window {
     id: wizard
 
-    width: 860
-    height: 720
+    width: 920
+    height: 760
     visible: false
     title: backend.assistantName + " Setup"
     color: "#050912"
-
-    onClosing: function(close) {
-        close.accepted = false
-        hide()
-    }
 
     property int stepIndex: 0
 
@@ -26,6 +21,12 @@ Window {
         voicePathField.text = backend.piperVoiceModel
         ffmpegPathField.text = backend.ffmpegExecutable
 
+        const modelIndex = backend.models.indexOf(backend.selectedModel)
+        modelCombo.currentIndex = modelIndex >= 0 ? modelIndex : 0
+
+        const voiceIndex = backend.voicePresetIds.indexOf(backend.selectedVoicePresetId)
+        voicePresetCombo.currentIndex = voiceIndex >= 0 ? voiceIndex : 0
+
         const inputIndex = backend.audioInputDeviceIds.indexOf(backend.selectedAudioInputDeviceId)
         inputDeviceCombo.currentIndex = inputIndex >= 0 ? inputIndex : 0
 
@@ -33,17 +34,34 @@ Window {
         outputDeviceCombo.currentIndex = outputIndex >= 0 ? outputIndex : 0
     }
 
+    onClosing: function(close) {
+        close.accepted = false
+        hide()
+    }
+
     onVisibleChanged: {
         if (visible) {
             backend.refreshAudioDevices()
+            backend.refreshModels()
             syncVoiceFieldsFromBackend()
+        }
+    }
+
+    Connections {
+        target: backend
+        function onModelsChanged() {
+            wizard.syncVoiceFieldsFromBackend()
         }
     }
 
     JarvisUi.AnimationController {
         id: setupMotion
-        stateName: stepIndex === 0 ? "IDLE" : stepIndex === 1 ? "PROCESSING" : stepIndex === 2 ? "LISTENING" : "SPEAKING"
-        inputLevel: 0.04
+        stateName: stepIndex === 0 ? "IDLE"
+            : stepIndex === 1 ? "PROCESSING"
+            : stepIndex === 2 ? "LISTENING"
+            : stepIndex === 3 ? "PROCESSING"
+            : "SPEAKING"
+        inputLevel: 0.05
         overlayVisible: wizard.visible
     }
 
@@ -53,25 +71,26 @@ Window {
     }
 
     Rectangle {
-        anchors.top: parent.top
-        anchors.left: parent.left
-        anchors.right: parent.right
-        height: 280
-        color: "#091224"
+        anchors.fill: parent
+        gradient: Gradient {
+            GradientStop { position: 0.0; color: "#091224" }
+            GradientStop { position: 0.6; color: "#060b14" }
+            GradientStop { position: 1.0; color: "#03060c" }
+        }
     }
 
     RowLayout {
         anchors.fill: parent
-        anchors.margins: 26
-        spacing: 22
+        anchors.margins: 24
+        spacing: 20
 
         Rectangle {
-            Layout.preferredWidth: 280
+            Layout.preferredWidth: 300
             Layout.fillHeight: true
-            radius: 36
-            color: "#9f08111d"
+            radius: 34
+            color: "#88111c2c"
             border.width: 1
-            border.color: "#20314e"
+            border.color: "#213754"
 
             Column {
                 anchors.fill: parent
@@ -79,8 +98,8 @@ Window {
                 spacing: 18
 
                 JarvisUi.OrbRenderer {
-                    width: 220
-                    height: 220
+                    width: 228
+                    height: 228
                     anchors.horizontalCenter: parent.horizontalCenter
                     stateName: setupMotion.stateName
                     time: setupMotion.time
@@ -95,7 +114,7 @@ Window {
                 Text {
                     width: parent.width
                     text: backend.assistantName + " Setup"
-                    color: "#eff7ff"
+                    color: "#eef7ff"
                     font.pixelSize: 30
                     font.weight: Font.Medium
                     horizontalAlignment: Text.AlignHCenter
@@ -103,8 +122,8 @@ Window {
 
                 Text {
                     width: parent.width
-                    text: "Shape the local stack before the assistant enters the overlay."
-                    color: "#8ca5c5"
+                    text: "Prepare the local AI, voice stack, wake phrase flow, and overlay defaults before activation."
+                    color: "#8da6c7"
                     font.pixelSize: 14
                     wrapMode: Text.Wrap
                     horizontalAlignment: Text.AlignHCenter
@@ -115,14 +134,14 @@ Window {
                     spacing: 10
 
                     Repeater {
-                        model: 4
+                        model: 5
 
                         delegate: Rectangle {
                             required property int index
 
                             width: parent.width
-                            height: 44
-                            radius: 22
+                            height: 46
+                            radius: 23
                             color: wizard.stepIndex === index ? "#17375d" : "#0d1829"
                             border.width: 1
                             border.color: wizard.stepIndex === index ? "#5ba5ff" : "#213754"
@@ -132,7 +151,8 @@ Window {
                                 text: index === 0 ? "Profile"
                                     : index === 1 ? "AI Core"
                                     : index === 2 ? "Voice"
-                                    : "Overlay"
+                                    : index === 3 ? "Wake Word"
+                                    : "Final Check"
                                 color: "#e5f4ff"
                                 font.pixelSize: 14
                             }
@@ -145,8 +165,8 @@ Window {
         Rectangle {
             Layout.fillWidth: true
             Layout.fillHeight: true
-            radius: 36
-            color: "#9208111d"
+            radius: 34
+            color: "#7a08111d"
             border.width: 1
             border.color: "#20314e"
 
@@ -159,7 +179,8 @@ Window {
                     text: wizard.stepIndex === 0 ? "Identity"
                         : wizard.stepIndex === 1 ? "AI Core"
                         : wizard.stepIndex === 2 ? "Voice Pipeline"
-                        : "Presence"
+                        : wizard.stepIndex === 3 ? "Wake Phrase"
+                        : "Final Validation"
                     color: "#f0f8ff"
                     font.pixelSize: 28
                     font.weight: Font.Medium
@@ -167,9 +188,10 @@ Window {
 
                 Text {
                     text: wizard.stepIndex === 0 ? "Define how the assistant should address you."
-                        : wizard.stepIndex === 1 ? "Point J.A.R.V.I.S at LM Studio and choose a model."
-                        : wizard.stepIndex === 2 ? "Connect whisper.cpp, Piper, and the voice model."
-                        : "Set the overlay’s starting behavior."
+                        : wizard.stepIndex === 1 ? "Point JARVIS at LM Studio and choose the active model."
+                        : wizard.stepIndex === 2 ? "Connect whisper.cpp, Piper, FFmpeg, and the voice model you want."
+                        : wizard.stepIndex === 3 ? "Use Jarvis as the wake phrase and understand how the current phrase-aware flow behaves."
+                        : "Run final checks, trigger tests, and confirm the real startup behavior."
                     color: "#89a3c4"
                     font.pixelSize: 14
                     wrapMode: Text.Wrap
@@ -178,7 +200,7 @@ Window {
                 ProgressBar {
                     Layout.fillWidth: true
                     from: 0
-                    to: 4
+                    to: 5
                     value: wizard.stepIndex + 1
                 }
 
@@ -189,101 +211,114 @@ Window {
 
                     ColumnLayout {
                         spacing: 14
-                        Text { text: "Your name"; color: "#d0e3f5"; font.pixelSize: 13 }
+
+                        Text { text: "Display name"; color: "#d0e3f5"; font.pixelSize: 13 }
                         TextField {
-                            id: userNameField
+                            id: displayNameField
                             Layout.fillWidth: true
                             text: backend.userName
-                            placeholderText: "How should " + backend.assistantName + " address you?"
+                            placeholderText: "Name shown in the interface"
+                        }
+
+                        Text { text: "Spoken name"; color: "#d0e3f5"; font.pixelSize: 13 }
+                        TextField {
+                            id: spokenNameField
+                            Layout.fillWidth: true
+                            text: backend.spokenUserName
+                            placeholderText: "Pronunciation for voice replies (optional)"
                         }
                     }
 
                     ColumnLayout {
                         spacing: 14
+
                         Text { text: "LM Studio endpoint"; color: "#d0e3f5"; font.pixelSize: 13 }
-                        TextField { id: endpointField; Layout.fillWidth: true; text: backend.lmStudioEndpoint }
+                        TextField {
+                            id: endpointField
+                            Layout.fillWidth: true
+                            text: backend.lmStudioEndpoint
+                        }
+
                         RowLayout {
                             Layout.fillWidth: true
 
-                            Rectangle {
-                                Layout.preferredWidth: 150
-                                Layout.preferredHeight: 48
-                                radius: 24
-                                color: "#15253c"
-                                border.width: 1
-                                border.color: "#2a4667"
-
-                                Text {
-                                    anchors.centerIn: parent
-                                    text: "Refresh models"
-                                    color: "#edf8ff"
-                                    font.pixelSize: 14
-                                }
-
-                                MouseArea {
-                                    anchors.fill: parent
-                                    cursorShape: Qt.PointingHandCursor
-                                    onClicked: backend.refreshModels()
-                                }
+                            Button {
+                                text: "Refresh models"
+                                onClicked: backend.refreshModels()
                             }
 
                             ComboBox {
                                 id: modelCombo
                                 Layout.fillWidth: true
                                 model: backend.models
-                                Component.onCompleted: {
-                                    const index = backend.models.indexOf(backend.selectedModel)
-                                    if (index >= 0) {
-                                        currentIndex = index
-                                    }
-                                }
                             }
+                        }
+
+                        Text {
+                            text: "The selected model is stored in settings and used for all LM Studio requests."
+                            color: "#9ab0ca"
+                            font.pixelSize: 12
+                            wrapMode: Text.Wrap
                         }
                     }
 
                     ColumnLayout {
                         spacing: 14
+
                         Text { text: "whisper.cpp executable"; color: "#d0e3f5"; font.pixelSize: 13 }
                         RowLayout {
                             Layout.fillWidth: true
                             TextField { id: whisperPathField; Layout.fillWidth: true; text: backend.whisperExecutable }
-                            Button {
-                                text: "Open Dir"
-                                onClicked: backend.openContainingDirectory(whisperPathField.text)
-                            }
+                            Button { text: "Open Dir"; onClicked: backend.openContainingDirectory(whisperPathField.text) }
                         }
-                        Text {
-                            text: "Use whisper-cli.exe or main.exe from the whisper Release folder."
-                            color: "#9ab0ca"
-                            font.pixelSize: 12
-                            wrapMode: Text.Wrap
-                        }
+
                         Text { text: "Piper executable"; color: "#d0e3f5"; font.pixelSize: 13 }
                         RowLayout {
                             Layout.fillWidth: true
                             TextField { id: piperPathField; Layout.fillWidth: true; text: backend.piperExecutable }
-                            Button {
-                                text: "Open Dir"
-                                onClicked: backend.openContainingDirectory(piperPathField.text)
-                            }
+                            Button { text: "Open Dir"; onClicked: backend.openContainingDirectory(piperPathField.text) }
                         }
+
                         Text { text: "Piper voice model"; color: "#d0e3f5"; font.pixelSize: 13 }
                         RowLayout {
                             Layout.fillWidth: true
                             TextField { id: voicePathField; Layout.fillWidth: true; text: backend.piperVoiceModel }
+                            Button { text: "Open Dir"; onClicked: backend.openContainingDirectory(voicePathField.text) }
+                        }
+
+                        Text { text: "Official Piper voice"; color: "#d0e3f5"; font.pixelSize: 13 }
+                        RowLayout {
+                            Layout.fillWidth: true
+
+                            ComboBox {
+                                id: voicePresetCombo
+                                Layout.fillWidth: true
+                                model: backend.voicePresetNames
+                                onActivated: backend.setSelectedVoicePresetId(backend.voicePresetIds[currentIndex])
+                            }
+
                             Button {
-                                text: "Open Dir"
-                                onClicked: backend.openContainingDirectory(voicePathField.text)
+                                text: "Download"
+                                onClicked: {
+                                    backend.setSelectedVoicePresetId(backend.voicePresetIds[voicePresetCombo.currentIndex])
+                                    backend.downloadVoiceModel(backend.voicePresetIds[voicePresetCombo.currentIndex])
+                                    wizard.syncVoiceFieldsFromBackend()
+                                }
                             }
                         }
+
+                        Text {
+                            text: "Use one of the curated official Piper voices, then keep the resolved .onnx model path active."
+                            color: "#9ab0ca"
+                            font.pixelSize: 12
+                            wrapMode: Text.Wrap
+                        }
+
                         Text { text: "ffmpeg executable"; color: "#d0e3f5"; font.pixelSize: 13 }
                         RowLayout {
                             Layout.fillWidth: true
                             TextField { id: ffmpegPathField; Layout.fillWidth: true; text: backend.ffmpegExecutable }
-                            Button {
-                                text: "Open Dir"
-                                onClicked: backend.openContainingDirectory(ffmpegPathField.text)
-                            }
+                            Button { text: "Open Dir"; onClicked: backend.openContainingDirectory(ffmpegPathField.text) }
                         }
 
                         Text { text: "Input device (microphone)"; color: "#d0e3f5"; font.pixelSize: 13 }
@@ -291,7 +326,6 @@ Window {
                             id: inputDeviceCombo
                             Layout.fillWidth: true
                             model: backend.audioInputDeviceNames
-                            currentIndex: 0
                         }
 
                         Text { text: "Output device (speaker/headset)"; color: "#d0e3f5"; font.pixelSize: 13 }
@@ -299,62 +333,29 @@ Window {
                             id: outputDeviceCombo
                             Layout.fillWidth: true
                             model: backend.audioOutputDeviceNames
-                            currentIndex: 0
                         }
 
                         RowLayout {
                             Layout.fillWidth: true
 
-                            Rectangle {
+                            Button {
                                 Layout.fillWidth: true
-                                Layout.preferredHeight: 44
-                                radius: 22
-                                color: "#142338"
-                                border.width: 1
-                                border.color: "#2a4667"
-
-                                Text {
-                                    anchors.centerIn: parent
-                                    text: "Auto-detect tools"
-                                    color: "#edf8ff"
-                                    font.pixelSize: 13
-                                }
-
-                                MouseArea {
-                                    anchors.fill: parent
-                                    cursorShape: Qt.PointingHandCursor
-                                    onClicked: {
-                                        backend.refreshAudioDevices()
-                                        backend.autoDetectVoiceTools()
-                                        wizard.syncVoiceFieldsFromBackend()
-                                    }
+                                text: "Auto-detect tools"
+                                onClicked: {
+                                    backend.refreshAudioDevices()
+                                    backend.autoDetectVoiceTools()
+                                    wizard.syncVoiceFieldsFromBackend()
                                 }
                             }
 
-                            Rectangle {
+                            Button {
                                 Layout.fillWidth: true
-                                Layout.preferredHeight: 44
-                                radius: 22
-                                color: "#183657"
-                                border.width: 1
-                                border.color: "#4d8fd1"
-
-                                Text {
-                                    anchors.centerIn: parent
-                                    text: "Install missing tools"
-                                    color: "#f2fbff"
-                                    font.pixelSize: 13
-                                    font.weight: Font.Medium
-                                }
-
-                                MouseArea {
-                                    anchors.fill: parent
-                                    cursorShape: Qt.PointingHandCursor
-                                    onClicked: {
-                                        backend.installAndDetectVoiceTools()
-                                        backend.refreshAudioDevices()
-                                        wizard.syncVoiceFieldsFromBackend()
-                                    }
+                                text: "Install missing tools"
+                                onClicked: {
+                                    backend.setSelectedVoicePresetId(backend.voicePresetIds[voicePresetCombo.currentIndex])
+                                    backend.installAndDetectVoiceTools()
+                                    backend.refreshAudioDevices()
+                                    wizard.syncVoiceFieldsFromBackend()
                                 }
                             }
                         }
@@ -370,16 +371,136 @@ Window {
 
                     ColumnLayout {
                         spacing: 14
+
+                        Text {
+                            text: "Wake phrase"
+                            color: "#d0e3f5"
+                            font.pixelSize: 13
+                        }
+
+                        Rectangle {
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: 58
+                            radius: 18
+                            color: "#0f1a2a"
+                            border.width: 1
+                            border.color: "#284666"
+
+                            Text {
+                                anchors.centerIn: parent
+                                text: backend.wakeWordPhrase
+                                color: "#e7f7ff"
+                                font.pixelSize: 22
+                                font.weight: Font.Medium
+                            }
+                        }
+
+                        Text {
+                            text: "Typed and transcribed phrases beginning with \"" + backend.wakeWordPhrase + "\" are stripped and routed cleanly through the assistant."
+                            color: "#9ab0ca"
+                            font.pixelSize: 14
+                            wrapMode: Text.Wrap
+                        }
+
+                        Text {
+                            text: "True background wake word detection with Picovoice Porcupine requires a Picovoice AccessKey and a custom Jarvis .ppn keyword file. This setup prepares the phrase-aware flow now."
+                            color: "#7f97b7"
+                            font.pixelSize: 13
+                            wrapMode: Text.Wrap
+                        }
+
                         CheckBox {
                             id: clickThroughCheck
                             text: "Enable click-through overlay by default"
                             checked: backend.clickThroughEnabled
                         }
+                    }
+
+                    ColumnLayout {
+                        spacing: 14
 
                         Text {
-                            text: "You can still change all of this later from the tray menu."
+                            text: "Test phrases"
+                            color: "#d0e3f5"
+                            font.pixelSize: 13
+                        }
+
+                        Text {
+                            text: "1. Say: \"" + backend.wakeWordPhrase + "\""
+                            color: "#eef7ff"
+                            font.pixelSize: 18
+                        }
+
+                        Text {
+                            text: "2. Say: \"" + backend.wakeWordPhrase + ", what's the time now?\""
+                            color: "#eef7ff"
+                            font.pixelSize: 18
+                            wrapMode: Text.Wrap
+                        }
+
+                        Text {
+                            text: "The second test confirms that the assistant uses the real local clock instead of guessing."
                             color: "#9ab0ca"
                             font.pixelSize: 14
+                            wrapMode: Text.Wrap
+                        }
+
+                        RowLayout {
+                            Layout.fillWidth: true
+
+                            Button {
+                                text: "Start mic test"
+                                onClicked: backend.startListening()
+                            }
+
+                            Button {
+                                text: "Test Jarvis"
+                                onClicked: {
+                                    if (!backend.runSetupScenario(
+                                            displayNameField.text,
+                                            spokenNameField.text,
+                                            endpointField.text,
+                                            modelCombo.currentText,
+                                            whisperPathField.text,
+                                            piperPathField.text,
+                                            voicePathField.text,
+                                            ffmpegPathField.text,
+                                            inputDeviceCombo.currentIndex >= 0 ? backend.audioInputDeviceIds[inputDeviceCombo.currentIndex] : "",
+                                            outputDeviceCombo.currentIndex >= 0 ? backend.audioOutputDeviceIds[outputDeviceCombo.currentIndex] : "",
+                                            clickThroughCheck.checked,
+                                            "wakeword_ready")) {
+                                        wizard.stepIndex = 2
+                                    }
+                                }
+                            }
+
+                            Button {
+                                text: "Test time query"
+                                onClicked: {
+                                    if (!backend.runSetupScenario(
+                                            displayNameField.text,
+                                            spokenNameField.text,
+                                            endpointField.text,
+                                            modelCombo.currentText,
+                                            whisperPathField.text,
+                                            piperPathField.text,
+                                            voicePathField.text,
+                                            ffmpegPathField.text,
+                                            inputDeviceCombo.currentIndex >= 0 ? backend.audioInputDeviceIds[inputDeviceCombo.currentIndex] : "",
+                                            outputDeviceCombo.currentIndex >= 0 ? backend.audioOutputDeviceIds[outputDeviceCombo.currentIndex] : "",
+                                            clickThroughCheck.checked,
+                                            "wakeword_time")) {
+                                        wizard.stepIndex = 2
+                                    }
+                                }
+                            }
+                        }
+
+                        Text {
+                            Layout.fillWidth: true
+                            text: backend.toolInstallStatus.length > 0 ? backend.toolInstallStatus : "Run the tests before finishing setup."
+                            color: "#9ab0ca"
+                            font.pixelSize: 12
                             wrapMode: Text.Wrap
                         }
                     }
@@ -388,108 +509,57 @@ Window {
                 RowLayout {
                     Layout.fillWidth: true
 
-                    Rectangle {
-                        Layout.preferredWidth: 130
-                        Layout.preferredHeight: 50
-                        radius: 25
-                        color: wizard.stepIndex > 0 ? "#15253c" : "#0d1521"
-                        border.width: 1
-                        border.color: wizard.stepIndex > 0 ? "#2a4667" : "#1a293e"
-                        opacity: wizard.stepIndex > 0 ? 1.0 : 0.45
-
-                        Text {
-                            anchors.centerIn: parent
-                            text: "Back"
-                            color: "#edf8ff"
-                            font.pixelSize: 14
-                        }
-
-                        MouseArea {
-                            anchors.fill: parent
-                            enabled: wizard.stepIndex > 0
-                            cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
-                            onClicked: wizard.stepIndex--
-                        }
+                    Button {
+                        text: "Back"
+                        enabled: wizard.stepIndex > 0
+                        onClicked: wizard.stepIndex--
                     }
 
                     Item { Layout.fillWidth: true }
 
-                    Rectangle {
-                        visible: wizard.stepIndex === 3
-                        Layout.preferredWidth: 160
-                        Layout.preferredHeight: 50
-                        radius: 25
-                        color: "#12404a"
-                        border.width: 1
-                        border.color: "#3b97aa"
-
-                        Text {
-                            anchors.centerIn: parent
-                            text: "Test voice"
-                            color: "#eaffff"
-                            font.pixelSize: 14
-                            font.weight: Font.Medium
-                        }
-
-                        MouseArea {
-                            anchors.fill: parent
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: {
-                                if (!backend.runSetupVoiceTest(
-                                        userNameField.text,
-                                        endpointField.text,
-                                        modelCombo.currentText,
-                                        whisperPathField.text,
-                                        piperPathField.text,
-                                        voicePathField.text,
-                                        ffmpegPathField.text,
-                                        inputDeviceCombo.currentIndex >= 0 ? backend.audioInputDeviceIds[inputDeviceCombo.currentIndex] : "",
-                                        outputDeviceCombo.currentIndex >= 0 ? backend.audioOutputDeviceIds[outputDeviceCombo.currentIndex] : "",
-                                        clickThroughCheck.checked)) {
-                                    wizard.stepIndex = 2
-                                }
+                    Button {
+                        visible: wizard.stepIndex === 4
+                        text: "Quick test"
+                        onClicked: {
+                            if (!backend.runSetupScenario(
+                                    displayNameField.text,
+                                    spokenNameField.text,
+                                    endpointField.text,
+                                    modelCombo.currentText,
+                                    whisperPathField.text,
+                                    piperPathField.text,
+                                    voicePathField.text,
+                                    ffmpegPathField.text,
+                                    inputDeviceCombo.currentIndex >= 0 ? backend.audioInputDeviceIds[inputDeviceCombo.currentIndex] : "",
+                                    outputDeviceCombo.currentIndex >= 0 ? backend.audioOutputDeviceIds[outputDeviceCombo.currentIndex] : "",
+                                    clickThroughCheck.checked,
+                                    "wakeword_ready")) {
+                                wizard.stepIndex = 2
                             }
                         }
                     }
 
-                    Rectangle {
-                        Layout.preferredWidth: 168
-                        Layout.preferredHeight: 50
-                        radius: 25
-                        color: "#183657"
-                        border.width: 1
-                        border.color: "#4d8fd1"
+                    Button {
+                        text: wizard.stepIndex === 4 ? "Finish setup" : "Continue"
+                        onClicked: {
+                            if (wizard.stepIndex < 4) {
+                                wizard.stepIndex++
+                                return
+                            }
 
-                        Text {
-                            anchors.centerIn: parent
-                            text: wizard.stepIndex === 3 ? "Finish setup" : "Continue"
-                            color: "#f2fbff"
-                            font.pixelSize: 14
-                            font.weight: Font.Medium
-                        }
-
-                        MouseArea {
-                            anchors.fill: parent
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: {
-                                if (wizard.stepIndex < 3) {
-                                    wizard.stepIndex++
-                                    return
-                                }
-
-                                if (!backend.completeInitialSetup(
-                                        userNameField.text,
-                                        endpointField.text,
-                                        modelCombo.currentText,
-                                        whisperPathField.text,
-                                        piperPathField.text,
-                                        voicePathField.text,
-                                        ffmpegPathField.text,
-                                        inputDeviceCombo.currentIndex >= 0 ? backend.audioInputDeviceIds[inputDeviceCombo.currentIndex] : "",
-                                        outputDeviceCombo.currentIndex >= 0 ? backend.audioOutputDeviceIds[outputDeviceCombo.currentIndex] : "",
-                                        clickThroughCheck.checked)) {
-                                    wizard.stepIndex = 2
-                                }
+                            if (!backend.completeInitialSetup(
+                                    displayNameField.text,
+                                    spokenNameField.text,
+                                    endpointField.text,
+                                    modelCombo.currentText,
+                                    whisperPathField.text,
+                                    piperPathField.text,
+                                    voicePathField.text,
+                                    ffmpegPathField.text,
+                                    inputDeviceCombo.currentIndex >= 0 ? backend.audioInputDeviceIds[inputDeviceCombo.currentIndex] : "",
+                                    outputDeviceCombo.currentIndex >= 0 ? backend.audioOutputDeviceIds[outputDeviceCombo.currentIndex] : "",
+                                    clickThroughCheck.checked)) {
+                                wizard.stepIndex = 2
                             }
                         }
                     }

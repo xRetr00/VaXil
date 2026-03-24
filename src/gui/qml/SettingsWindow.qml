@@ -18,6 +18,27 @@ Window {
         hide()
     }
 
+    property var requirementStatus: ({})
+
+    function statusColor(ok) {
+        return ok ? "#1ecb6b" : "#f04d5d"
+    }
+
+    function statusText(ok) {
+        return ok ? "OK" : "Missing"
+    }
+
+    function refreshRequirementStatus() {
+        requirementStatus = backend.evaluateSetupRequirements(
+            endpointField.text,
+            modelCombo.currentText,
+            whisperPathField.text,
+            piperPathField.text,
+            voicePathField.text,
+            ffmpegPathField.text
+        )
+    }
+
     onVisibleChanged: {
         if (!visible) {
             return
@@ -28,6 +49,7 @@ Window {
         inputDeviceCombo.currentIndex = inputIndex >= 0 ? inputIndex : 0
         const outputIndex = backend.audioOutputDeviceIds.indexOf(backend.selectedAudioOutputDeviceId)
         outputDeviceCombo.currentIndex = outputIndex >= 0 ? outputIndex : 0
+        refreshRequirementStatus()
     }
 
     JarvisUi.AnimationController {
@@ -181,6 +203,11 @@ Window {
 
                     Text { text: "LM Studio endpoint"; color: "#c9def3"; font.pixelSize: 13 }
                     TextField { id: endpointField; Layout.fillWidth: true; text: backend.lmStudioEndpoint }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        Rectangle { width: 10; height: 10; radius: 5; color: settingsWindow.statusColor(requirementStatus.endpointOk === true) }
+                        Text { text: "Endpoint: " + settingsWindow.statusText(requirementStatus.endpointOk === true); color: "#9ab0ca"; font.pixelSize: 12 }
+                    }
 
                     Text { text: "Selected model"; color: "#c9def3"; font.pixelSize: 13 }
                     ComboBox {
@@ -194,6 +221,11 @@ Window {
                             }
                         }
                         onActivated: backend.setSelectedModel(currentText)
+                    }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        Rectangle { width: 10; height: 10; radius: 5; color: settingsWindow.statusColor(requirementStatus.modelOk === true) }
+                        Text { text: "Model: " + settingsWindow.statusText(requirementStatus.modelOk === true); color: "#9ab0ca"; font.pixelSize: 12 }
                     }
 
                     RowLayout {
@@ -258,15 +290,80 @@ Window {
 
                     Text { text: "whisper.cpp executable"; color: "#c9def3"; font.pixelSize: 13 }
                     TextField { id: whisperPathField; Layout.fillWidth: true; text: backend.whisperExecutable }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        Rectangle { width: 10; height: 10; radius: 5; color: settingsWindow.statusColor(requirementStatus.whisperOk === true) }
+                        Text {
+                            text: "Whisper: " + settingsWindow.statusText(requirementStatus.whisperOk === true)
+                                + (requirementStatus.whisperVersion ? " (" + requirementStatus.whisperVersion + ")" : "")
+                            color: "#9ab0ca"
+                            font.pixelSize: 12
+                        }
+                    }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        Rectangle { width: 10; height: 10; radius: 5; color: settingsWindow.statusColor(requirementStatus.whisperLatestOk === true) }
+                        Text {
+                            text: "Whisper latest: " + (requirementStatus.whisperLatestOk === true ? "Up to date" : "Check update")
+                                + (requirementStatus.whisperLatestTag ? " [" + requirementStatus.whisperLatestTag + "]" : "")
+                            color: "#9ab0ca"
+                            font.pixelSize: 12
+                        }
+                    }
 
                     Text { text: "Piper executable"; color: "#c9def3"; font.pixelSize: 13 }
                     TextField { id: piperPathField; Layout.fillWidth: true; text: backend.piperExecutable }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        Rectangle { width: 10; height: 10; radius: 5; color: settingsWindow.statusColor(requirementStatus.piperOk === true) }
+                        Text {
+                            text: "Piper: " + settingsWindow.statusText(requirementStatus.piperOk === true)
+                                + (requirementStatus.piperVersion ? " (" + requirementStatus.piperVersion + ")" : "")
+                            color: "#9ab0ca"
+                            font.pixelSize: 12
+                        }
+                    }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        Rectangle { width: 10; height: 10; radius: 5; color: settingsWindow.statusColor(requirementStatus.piperLatestOk === true) }
+                        Text {
+                            text: "Piper latest: " + (requirementStatus.piperLatestOk === true ? "Up to date" : "Check update")
+                                + (requirementStatus.piperLatestTag ? " [" + requirementStatus.piperLatestTag + "]" : "")
+                            color: "#9ab0ca"
+                            font.pixelSize: 12
+                        }
+                    }
 
                     Text { text: "Piper voice model"; color: "#c9def3"; font.pixelSize: 13 }
                     TextField { id: voicePathField; Layout.fillWidth: true; text: backend.piperVoiceModel }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        Rectangle { width: 10; height: 10; radius: 5; color: settingsWindow.statusColor(requirementStatus.voiceOk === true) }
+                        Text { text: "Voice model: " + settingsWindow.statusText(requirementStatus.voiceOk === true); color: "#9ab0ca"; font.pixelSize: 12 }
+                    }
 
                     Text { text: "ffmpeg executable"; color: "#c9def3"; font.pixelSize: 13 }
                     TextField { id: ffmpegPathField; Layout.fillWidth: true; text: backend.ffmpegExecutable }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        Rectangle { width: 10; height: 10; radius: 5; color: settingsWindow.statusColor(requirementStatus.ffmpegOk === true) }
+                        Text {
+                            text: "FFmpeg: " + settingsWindow.statusText(requirementStatus.ffmpegOk === true)
+                                + (requirementStatus.ffmpegVersion ? " (" + requirementStatus.ffmpegVersion + ")" : "")
+                            color: "#9ab0ca"
+                            font.pixelSize: 12
+                        }
+                    }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        Rectangle { width: 10; height: 10; radius: 5; color: settingsWindow.statusColor(requirementStatus.ffmpegLatestOk === true) }
+                        Text {
+                            text: "FFmpeg latest: " + (requirementStatus.ffmpegLatestOk === true ? "Up to date" : "Check update")
+                                + (requirementStatus.ffmpegLatestTag ? " [" + requirementStatus.ffmpegLatestTag + "]" : "")
+                            color: "#9ab0ca"
+                            font.pixelSize: 12
+                        }
+                    }
 
                     RowLayout {
                         Layout.fillWidth: true
@@ -362,11 +459,35 @@ Window {
                                 onClicked: {
                                     backend.refreshModels()
                                     backend.refreshAudioDevices()
+                                    settingsWindow.refreshRequirementStatus()
                                     const inputIndex = backend.audioInputDeviceIds.indexOf(backend.selectedAudioInputDeviceId)
                                     inputDeviceCombo.currentIndex = inputIndex >= 0 ? inputIndex : 0
                                     const outputIndex = backend.audioOutputDeviceIds.indexOf(backend.selectedAudioOutputDeviceId)
                                     outputDeviceCombo.currentIndex = outputIndex >= 0 ? outputIndex : 0
                                 }
+                            }
+                        }
+
+                        Rectangle {
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: 50
+                            radius: 25
+                            color: "#15331f"
+                            border.width: 1
+                            border.color: "#2e7e4b"
+
+                            Text {
+                                anchors.centerIn: parent
+                                text: "Check requirements"
+                                color: "#eafdf2"
+                                font.pixelSize: 14
+                                font.weight: Font.Medium
+                            }
+
+                            MouseArea {
+                                anchors.fill: parent
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: settingsWindow.refreshRequirementStatus()
                             }
                         }
 

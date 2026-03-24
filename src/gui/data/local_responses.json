@@ -14,6 +14,21 @@
     "All core systems are stable this {time_of_day}.",
     "Running smoothly with a {tone} tone. Let me know what you need."
   ],
+  "wakeword_ready": [
+    "Ready, {user_name}.",
+    "Standing by, {user_name}.",
+    "{assistant_name} is listening, {user_name}."
+  ],
+  "time_status": [
+    "It is {current_time}, {user_name}.",
+    "The current time is {current_time}.",
+    "It is now {current_time}."
+  ],
+  "date_status": [
+    "Today is {current_date}.",
+    "The date is {current_date}.",
+    "It is {current_date} today."
+  ],
   "ai_offline": [
     "I'm currently unable to reach the AI core.",
     "My processing unit is offline at the moment.",

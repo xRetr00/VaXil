@@ -25,6 +25,21 @@ QHash<QString, QStringList> defaultResponses()
              QStringLiteral("All core systems are stable this {time_of_day}."),
              QStringLiteral("Running smoothly with a {tone} tone. Let me know what you need.")
          }},
+        {QStringLiteral("wakeword_ready"), {
+             QStringLiteral("Ready, {user_name}."),
+             QStringLiteral("Standing by, {user_name}."),
+             QStringLiteral("{assistant_name} is listening, {user_name}.")
+         }},
+        {QStringLiteral("time_status"), {
+             QStringLiteral("It is {current_time}, {user_name}."),
+             QStringLiteral("The current time is {current_time}."),
+             QStringLiteral("It is now {current_time}.")
+         }},
+        {QStringLiteral("date_status"), {
+             QStringLiteral("Today is {current_date}."),
+             QStringLiteral("The date is {current_date}."),
+             QStringLiteral("It is {current_date} today.")
+         }},
         {QStringLiteral("ai_offline"), {
              QStringLiteral("I'm currently unable to reach the AI core."),
              QStringLiteral("My processing unit is offline at the moment."),
@@ -87,6 +102,21 @@ QString LocalResponseEngine::acknowledgement(const QString &target, const LocalR
     return renderTemplate(chooseVariant(QStringLiteral("acknowledgement")), context, target);
 }
 
+QString LocalResponseEngine::wakeWordReady(const LocalResponseContext &context)
+{
+    return renderTemplate(chooseVariant(QStringLiteral("wakeword_ready")), context);
+}
+
+QString LocalResponseEngine::currentTimeResponse(const LocalResponseContext &context)
+{
+    return renderTemplate(chooseVariant(QStringLiteral("time_status")), context);
+}
+
+QString LocalResponseEngine::currentDateResponse(const LocalResponseContext &context)
+{
+    return renderTemplate(chooseVariant(QStringLiteral("date_status")), context);
+}
+
 QString LocalResponseEngine::resolveGroup(LocalIntent intent, const LocalResponseContext &context) const
 {
     switch (intent) {
@@ -116,6 +146,9 @@ QString LocalResponseEngine::renderTemplate(const QString &variant, const LocalR
     text.replace(QStringLiteral("{tone}"), context.tone);
     text.replace(QStringLiteral("{addressing_style}"), context.addressingStyle);
     text.replace(QStringLiteral("{target}"), target);
+    text.replace(QStringLiteral("{current_time}"), context.currentTime);
+    text.replace(QStringLiteral("{current_date}"), context.currentDate);
+    text.replace(QStringLiteral("{wake_word}"), context.wakeWord);
     return text;
 }
 

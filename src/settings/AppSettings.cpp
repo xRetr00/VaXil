@@ -92,6 +92,7 @@ bool AppSettings::load()
     m_whisperExecutable = QString::fromStdString(parsed.value("whisperExecutable", std::string{}));
     m_piperExecutable = QString::fromStdString(parsed.value("piperExecutable", std::string{}));
     m_piperVoiceModel = QString::fromStdString(parsed.value("piperVoiceModel", std::string{}));
+    m_selectedVoicePresetId = QString::fromStdString(parsed.value("selectedVoicePresetId", m_selectedVoicePresetId.toStdString()));
     m_ffmpegExecutable = QString::fromStdString(parsed.value("ffmpegExecutable", std::string{}));
     m_voiceSpeed = clampVoiceSpeed(parsed.value("voiceSpeed", kDefaultVoiceSpeed));
     m_voicePitch = clampVoicePitch(parsed.value("voicePitch", kDefaultVoicePitch));
@@ -100,6 +101,7 @@ bool AppSettings::load()
     m_selectedAudioOutputDeviceId = QString::fromStdString(parsed.value("selectedAudioOutputDeviceId", std::string{}));
     m_clickThroughEnabled = parsed.value("clickThroughEnabled", false);
     m_initialSetupCompleted = parsed.value("initialSetupCompleted", false);
+    m_wakeWordPhrase = QString::fromStdString(parsed.value("wakeWordPhrase", m_wakeWordPhrase.toStdString()));
     emit settingsChanged();
     return true;
 }
@@ -116,6 +118,7 @@ bool AppSettings::save() const
         {"whisperExecutable", m_whisperExecutable.toStdString()},
         {"piperExecutable", m_piperExecutable.toStdString()},
         {"piperVoiceModel", m_piperVoiceModel.toStdString()},
+        {"selectedVoicePresetId", m_selectedVoicePresetId.toStdString()},
         {"ffmpegExecutable", m_ffmpegExecutable.toStdString()},
         {"voiceSpeed", m_voiceSpeed},
         {"voicePitch", m_voicePitch},
@@ -123,7 +126,8 @@ bool AppSettings::save() const
         {"selectedAudioInputDeviceId", m_selectedAudioInputDeviceId.toStdString()},
         {"selectedAudioOutputDeviceId", m_selectedAudioOutputDeviceId.toStdString()},
         {"clickThroughEnabled", m_clickThroughEnabled},
-        {"initialSetupCompleted", m_initialSetupCompleted}
+        {"initialSetupCompleted", m_initialSetupCompleted},
+        {"wakeWordPhrase", m_wakeWordPhrase.toStdString()}
     };
 
     QFile file(settingsFilePath());
@@ -153,6 +157,8 @@ QString AppSettings::piperExecutable() const { return m_piperExecutable; }
 void AppSettings::setPiperExecutable(const QString &path) { m_piperExecutable = path; emit settingsChanged(); }
 QString AppSettings::piperVoiceModel() const { return m_piperVoiceModel; }
 void AppSettings::setPiperVoiceModel(const QString &path) { m_piperVoiceModel = path; emit settingsChanged(); }
+QString AppSettings::selectedVoicePresetId() const { return m_selectedVoicePresetId; }
+void AppSettings::setSelectedVoicePresetId(const QString &voicePresetId) { m_selectedVoicePresetId = voicePresetId; emit settingsChanged(); }
 QString AppSettings::ffmpegExecutable() const { return m_ffmpegExecutable; }
 void AppSettings::setFfmpegExecutable(const QString &path) { m_ffmpegExecutable = path; emit settingsChanged(); }
 double AppSettings::voiceSpeed() const { return m_voiceSpeed; }
@@ -169,4 +175,10 @@ bool AppSettings::clickThroughEnabled() const { return m_clickThroughEnabled; }
 void AppSettings::setClickThroughEnabled(bool enabled) { m_clickThroughEnabled = enabled; emit settingsChanged(); }
 bool AppSettings::initialSetupCompleted() const { return m_initialSetupCompleted; }
 void AppSettings::setInitialSetupCompleted(bool completed) { m_initialSetupCompleted = completed; emit settingsChanged(); }
+QString AppSettings::wakeWordPhrase() const { return m_wakeWordPhrase; }
+void AppSettings::setWakeWordPhrase(const QString &wakeWordPhrase)
+{
+    m_wakeWordPhrase = wakeWordPhrase.trimmed().isEmpty() ? QStringLiteral("Jarvis") : wakeWordPhrase.trimmed();
+    emit settingsChanged();
+}
 QString AppSettings::storagePath() const { return settingsFilePath(); }

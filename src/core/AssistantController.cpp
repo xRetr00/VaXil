@@ -1,5 +1,7 @@
 #include "core/AssistantController.h"
 
+#include <QDateTime>
+#include <QLocale>
 #include <QTime>
 
 #include <nlohmann/json.hpp>
@@ -34,6 +36,66 @@ QString stateToString(AssistantState state)
         return QStringLiteral("SPEAKING");
     }
     return QStringLiteral("IDLE");
+}
+
+QString normalizeForRouting(QString text)
+{
+    text = text.trimmed();
+    while (!text.isEmpty() && QStringLiteral(",.!?:;").contains(text.front())) {
+        text.remove(0, 1);
+        text = text.trimmed();
+    }
+    return text;
+}
+
+QString stripWakeWordPrefix(const QString &input, const QString &wakeWord)
+{
+    const QString trimmed = input.trimmed();
+    if (trimmed.isEmpty() || wakeWord.trimmed().isEmpty()) {
+        return trimmed;
+    }
+
+    const QString lowered = trimmed.toLower();
+    const QString loweredWakeWord = wakeWord.trimmed().toLower();
+    const QStringList prefixes = {
+        loweredWakeWord,
+        QStringLiteral("hey %1").arg(loweredWakeWord),
+        QStringLiteral("ok %1").arg(loweredWakeWord),
+        QStringLiteral("okay %1").arg(loweredWakeWord)
+    };
+
+    for (const QString &prefix : prefixes) {
+        if (lowered == prefix) {
+            return {};
+        }
+
+        if (lowered.startsWith(prefix)) {
+            return normalizeForRouting(trimmed.mid(prefix.size()));
+        }
+    }
+
+    return trimmed;
+}
+
+bool isCurrentTimeQuery(const QString &input)
+{
+    const QString lowered = input.toLower();
+    return lowered.contains(QStringLiteral("what time is it"))
+        || lowered.contains(QStringLiteral("what's the time"))
+        || lowered.contains(QStringLiteral("whats the time"))
+        || lowered.contains(QStringLiteral("time now"))
+        || lowered.contains(QStringLiteral("current time"));
+}
+
+bool isCurrentDateQuery(const QString &input)
+{
+    const QString lowered = input.toLower();
+    return lowered.contains(QStringLiteral("what day is it"))
+        || lowered.contains(QStringLiteral("what's the date"))
+        || lowered.contains(QStringLiteral("whats the date"))
+        || lowered.contains(QStringLiteral("today's date"))
+        || lowered.contains(QStringLiteral("todays date"))
+        || lowered.contains(QStringLiteral("current date"));
 }
 }
 
@@ -174,6 +236,11 @@ void AssistantController::submitText(const QString &text)
         return;
     }
 
+    const QString wakeWord = m_settings->wakeWordPhrase().trimmed().isEmpty()
+        ? QStringLiteral("Jarvis")
+        : m_settings->wakeWordPhrase().trimmed();
+    const QString routedInput = stripWakeWordPrefix(trimmed, wakeWord);
+
     m_transcript = trimmed;
     m_responseText.clear();
     m_streamAssembler->reset();
@@ -181,10 +248,34 @@ void AssistantController::submitText(const QString &text)
     emit transcriptChanged();
     emit responseTextChanged();
     setStatus(QStringLiteral("Processing request"));
-    updateUserProfileFromInput(trimmed);
+    updateUserProfileFromInput(routedInput.isEmpty() ? trimmed : routedInput);
     m_memoryStore->appendConversation(QStringLiteral("user"), trimmed);
 
-    const LocalIntent intent = m_intentRouter->classify(trimmed);
+    if (routedInput.isEmpty()) {
+        deliverLocalResponse(
+            m_localResponseEngine->wakeWordReady(buildLocalResponseContext()),
+            QStringLiteral("Wake phrase detected"),
+            true);
+        return;
+    }
+
+    if (isCurrentTimeQuery(routedInput)) {
+        deliverLocalResponse(
+            m_localResponseEngine->currentTimeResponse(buildLocalResponseContext()),
+            QStringLiteral("Local time response"),
+            true);
+        return;
+    }
+
+    if (isCurrentDateQuery(routedInput)) {
+        deliverLocalResponse(
+            m_localResponseEngine->currentDateResponse(buildLocalResponseContext()),
+            QStringLiteral("Local date response"),
+            true);
+        return;
+    }
+
+    const LocalIntent intent = m_intentRouter->classify(routedInput);
     const AiAvailability availability = m_modelCatalogService->availability();
 
     if (intent == LocalIntent::Greeting || intent == LocalIntent::SmallTalk) {
@@ -203,10 +294,10 @@ void AssistantController::submitText(const QString &text)
         return;
     }
 
-    if (intent == LocalIntent::Command || m_reasoningRouter->isLikelyCommand(trimmed)) {
-        startCommandRequest(trimmed);
+    if (intent == LocalIntent::Command || m_reasoningRouter->isLikelyCommand(routedInput)) {
+        startCommandRequest(routedInput);
     } else {
-        startConversationRequest(trimmed);
+        startConversationRequest(routedInput);
     }
 }
 
@@ -340,7 +431,8 @@ void AssistantController::updateUserProfileFromInput(const QString &input)
 
 LocalResponseContext AssistantController::buildLocalResponseContext() const
 {
-    const int hour = QTime::currentTime().hour();
+    const QDateTime now = QDateTime::currentDateTime();
+    const int hour = now.time().hour();
     QString timeOfDay = QStringLiteral("afternoon");
     if (hour < 12) {
         timeOfDay = QStringLiteral("morning");
@@ -348,15 +440,22 @@ LocalResponseContext AssistantController::buildLocalResponseContext() const
         timeOfDay = QStringLiteral("evening");
     }
 
+    const UserProfile profile = m_identityProfileService->userProfile();
+    const QString displayName = profile.displayName.isEmpty() ? profile.userName : profile.displayName;
+    const QString spokenName = profile.spokenName.isEmpty() ? displayName : profile.spokenName;
+
     return {
         .assistantName = m_identityProfileService->identity().assistantName,
-        .userName = m_identityProfileService->userProfile().userName.isEmpty()
-            ? m_memoryStore->userName()
-            : m_identityProfileService->userProfile().userName,
+        .userName = spokenName.isEmpty()
+            ? (displayName.isEmpty() ? m_memoryStore->userName() : displayName)
+            : spokenName,
         .timeOfDay = timeOfDay,
         .systemState = stateName(),
         .tone = m_identityProfileService->identity().tone,
-        .addressingStyle = m_identityProfileService->identity().addressingStyle
+        .addressingStyle = m_identityProfileService->identity().addressingStyle,
+        .currentTime = QLocale::system().toString(now.time(), QLocale::ShortFormat),
+        .currentDate = QLocale::system().toString(now.date(), QLocale::LongFormat),
+        .wakeWord = m_settings->wakeWordPhrase()
     };
 }
 

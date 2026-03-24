@@ -17,6 +17,9 @@ public:
     QString respondToIntent(LocalIntent intent, const LocalResponseContext &context);
     QString respondToError(const QString &errorKey, const LocalResponseContext &context);
     QString acknowledgement(const QString &target, const LocalResponseContext &context);
+    QString wakeWordReady(const LocalResponseContext &context);
+    QString currentTimeResponse(const LocalResponseContext &context);
+    QString currentDateResponse(const LocalResponseContext &context);
 
 private:
     QString resolveGroup(LocalIntent intent, const LocalResponseContext &context) const;

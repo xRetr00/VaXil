@@ -1,4 +1,7 @@
 #include <QStringList>
+#include <QDateTime>
+#include <QLocale>
+#include <QTimeZone>
 
 #include "ai/PromptAdapter.h"
 
@@ -21,6 +24,27 @@ QString profilePreferencesText(const UserProfile &userProfile)
     }
 
     return lines.join(QStringLiteral("; "));
+}
+
+QString currentTimeContext()
+{
+    const QDateTime now = QDateTime::currentDateTime();
+    const QLocale locale = QLocale::system();
+
+    return QStringLiteral("- local datetime: %1\n- timezone: %2")
+        .arg(locale.toString(now, QLocale::LongFormat),
+             QString::fromUtf8(now.timeZone().id()));
+}
+
+QString resolvedDisplayName(const UserProfile &userProfile)
+{
+    return userProfile.displayName.isEmpty() ? userProfile.userName : userProfile.displayName;
+}
+
+QString resolvedSpokenName(const UserProfile &userProfile)
+{
+    const QString displayName = resolvedDisplayName(userProfile);
+    return userProfile.spokenName.isEmpty() ? displayName : userProfile.spokenName;
 }
 }
 
@@ -48,9 +72,16 @@ QList<AiMessage> PromptAdapter::buildConversationMessages(
                        "Sound intelligent, precise, controlled, and directly useful.")
             .arg(identity.assistantName, identity.personality, identity.tone, identity.addressingStyle);
 
+    const QString displayName = resolvedDisplayName(userProfile);
+    const QString spokenName = resolvedSpokenName(userProfile);
+
     systemPrompt += QStringLiteral("\nUser profile:");
-    systemPrompt += QStringLiteral("\n- name: %1").arg(userProfile.userName.isEmpty() ? QStringLiteral("unknown") : userProfile.userName);
+    systemPrompt += QStringLiteral("\n- display name: %1").arg(displayName.isEmpty() ? QStringLiteral("unknown") : displayName);
+    systemPrompt += QStringLiteral("\n- spoken name: %1").arg(spokenName.isEmpty() ? QStringLiteral("unknown") : spokenName);
     systemPrompt += QStringLiteral("\n- preferences: %1").arg(profilePreferencesText(userProfile));
+    systemPrompt += QStringLiteral("\nCurrent runtime context:");
+    systemPrompt += QStringLiteral("\n%1").arg(currentTimeContext());
+    systemPrompt += QStringLiteral("\n- wake phrase: Jarvis");
 
     if (!memory.isEmpty()) {
         systemPrompt += QStringLiteral("\nRelevant user memory:");
@@ -82,17 +113,24 @@ QList<AiMessage> PromptAdapter::buildCommandMessages(
     const UserProfile &userProfile,
     ReasoningMode mode) const
 {
+    const QString displayName = resolvedDisplayName(userProfile);
+    const QString spokenName = resolvedSpokenName(userProfile);
+
     return {
         {
             .role = QStringLiteral("system"),
             .content =
                 QStringLiteral("You are %1. "
-                               "The user name is %2. "
+                               "The user display name is %2. "
+                               "The user spoken name is %3. "
                                "You extract desktop assistant commands. "
+                               "Current runtime context:\n%4\n"
                                "Return strict JSON only with keys: intent, target, action, confidence, args. "
                                "Use confidence from 0.0 to 1.0. If uncertain, return intent as \"unknown\".")
                     .arg(identity.assistantName,
-                         userProfile.userName.isEmpty() ? QStringLiteral("unknown") : userProfile.userName)
+                         displayName.isEmpty() ? QStringLiteral("unknown") : displayName,
+                         spokenName.isEmpty() ? QStringLiteral("unknown") : spokenName,
+                         currentTimeContext())
         },
         {
             .role = QStringLiteral("user"),
