@@ -3,8 +3,10 @@
 #include <algorithm>
 
 #include <QtConcurrent>
+#include <QAudioDevice>
 #include <QAudioOutput>
 #include <QDir>
+#include <QMediaDevices>
 #include <QMediaPlayer>
 #include <QProcess>
 #include <QRegularExpression>
@@ -116,6 +118,7 @@ PiperTtsEngine::PiperTtsEngine(AppSettings *settings, QObject *parent)
     m_player = new QMediaPlayer(this);
     m_audioOutput = new QAudioOutput(this);
     m_player->setAudioOutput(m_audioOutput);
+    applySelectedOutputDevice();
 
     connect(&m_synthesisWatcher, &QFutureWatcher<QString>::finished, this, [this]() {
         const QString outputFile = m_synthesisWatcher.result();
@@ -178,6 +181,7 @@ void PiperTtsEngine::processNext()
     }
 
     m_processing = true;
+    applySelectedOutputDevice();
     emit playbackStarted();
     const QString sentence = m_sentences.dequeue();
     m_synthesisWatcher.setFuture(QtConcurrent::run([this, sentence]() {
@@ -234,4 +238,26 @@ void PiperTtsEngine::playFile(const QString &path)
 {
     m_player->setSource(QUrl::fromLocalFile(path));
     m_player->play();
+}
+
+void PiperTtsEngine::applySelectedOutputDevice()
+{
+    if (!m_audioOutput || !m_settings) {
+        return;
+    }
+
+    const QString selectedId = m_settings->selectedAudioOutputDeviceId();
+    if (selectedId.isEmpty()) {
+        m_audioOutput->setDevice(QMediaDevices::defaultAudioOutput());
+        return;
+    }
+
+    for (const QAudioDevice &device : QMediaDevices::audioOutputs()) {
+        if (QString::fromUtf8(device.id()) == selectedId) {
+            m_audioOutput->setDevice(device);
+            return;
+        }
+    }
+
+    m_audioOutput->setDevice(QMediaDevices::defaultAudioOutput());
 }

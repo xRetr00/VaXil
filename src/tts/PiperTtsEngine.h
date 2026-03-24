@@ -25,6 +25,7 @@ signals:
     void playbackFailed(const QString &errorText);
 
 private:
+    void applySelectedOutputDevice();
     void processNext();
     QString synthesizeAndProcess(const QString &sentence);
     void playFile(const QString &path);

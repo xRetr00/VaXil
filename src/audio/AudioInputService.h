@@ -5,6 +5,7 @@
 #include <QByteArray>
 #include <QObject>
 #include <QPointer>
+#include <QString>
 #include <QTimer>
 #include <memory>
 
@@ -18,7 +19,7 @@ public:
     explicit AudioInputService(QObject *parent = nullptr);
     ~AudioInputService() override;
 
-    bool start(double sensitivity);
+    bool start(double sensitivity, const QString &preferredDeviceId = {});
     void stop();
     QByteArray recordedPcm() const;
     bool isActive() const;

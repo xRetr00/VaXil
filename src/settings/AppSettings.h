@@ -54,6 +54,12 @@ public:
     double micSensitivity() const;
     void setMicSensitivity(double sensitivity);
 
+    QString selectedAudioInputDeviceId() const;
+    void setSelectedAudioInputDeviceId(const QString &deviceId);
+
+    QString selectedAudioOutputDeviceId() const;
+    void setSelectedAudioOutputDeviceId(const QString &deviceId);
+
     bool clickThroughEnabled() const;
     void setClickThroughEnabled(bool enabled);
 
@@ -79,6 +85,8 @@ private:
     double m_voiceSpeed = 0.88;
     double m_voicePitch = 0.94;
     double m_micSensitivity = 0.02;
+    QString m_selectedAudioInputDeviceId;
+    QString m_selectedAudioOutputDeviceId;
     bool m_clickThroughEnabled = false;
     bool m_initialSetupCompleted = false;
 };

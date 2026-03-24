@@ -77,6 +77,8 @@ bool AppSettings::load()
     m_voiceSpeed = parsed.value("voiceSpeed", 0.88);
     m_voicePitch = parsed.value("voicePitch", 0.94);
     m_micSensitivity = parsed.value("micSensitivity", 0.02);
+    m_selectedAudioInputDeviceId = QString::fromStdString(parsed.value("selectedAudioInputDeviceId", std::string{}));
+    m_selectedAudioOutputDeviceId = QString::fromStdString(parsed.value("selectedAudioOutputDeviceId", std::string{}));
     m_clickThroughEnabled = parsed.value("clickThroughEnabled", false);
     m_initialSetupCompleted = parsed.value("initialSetupCompleted", false);
     emit settingsChanged();
@@ -99,6 +101,8 @@ bool AppSettings::save() const
         {"voiceSpeed", m_voiceSpeed},
         {"voicePitch", m_voicePitch},
         {"micSensitivity", m_micSensitivity},
+        {"selectedAudioInputDeviceId", m_selectedAudioInputDeviceId.toStdString()},
+        {"selectedAudioOutputDeviceId", m_selectedAudioOutputDeviceId.toStdString()},
         {"clickThroughEnabled", m_clickThroughEnabled},
         {"initialSetupCompleted", m_initialSetupCompleted}
     };
@@ -138,6 +142,10 @@ double AppSettings::voicePitch() const { return m_voicePitch; }
 void AppSettings::setVoicePitch(double pitch) { m_voicePitch = pitch; emit settingsChanged(); }
 double AppSettings::micSensitivity() const { return m_micSensitivity; }
 void AppSettings::setMicSensitivity(double sensitivity) { m_micSensitivity = sensitivity; emit settingsChanged(); }
+QString AppSettings::selectedAudioInputDeviceId() const { return m_selectedAudioInputDeviceId; }
+void AppSettings::setSelectedAudioInputDeviceId(const QString &deviceId) { m_selectedAudioInputDeviceId = deviceId; emit settingsChanged(); }
+QString AppSettings::selectedAudioOutputDeviceId() const { return m_selectedAudioOutputDeviceId; }
+void AppSettings::setSelectedAudioOutputDeviceId(const QString &deviceId) { m_selectedAudioOutputDeviceId = deviceId; emit settingsChanged(); }
 bool AppSettings::clickThroughEnabled() const { return m_clickThroughEnabled; }
 void AppSettings::setClickThroughEnabled(bool enabled) { m_clickThroughEnabled = enabled; emit settingsChanged(); }
 bool AppSettings::initialSetupCompleted() const { return m_initialSetupCompleted; }

@@ -68,6 +68,8 @@ public slots:
         double voiceSpeed,
         double voicePitch,
         double micSensitivity,
+        const QString &audioInputDeviceId,
+        const QString &audioOutputDeviceId,
         bool clickThrough);
 
 signals:

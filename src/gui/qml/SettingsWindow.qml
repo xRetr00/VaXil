@@ -302,6 +302,28 @@ Window {
                     Text { text: "Mic sensitivity"; color: "#c9def3"; font.pixelSize: 13 }
                     Slider { id: micSlider; Layout.fillWidth: true; from: 0.01; to: 0.10; value: backend.micSensitivity }
 
+                    Text { text: "Input device (microphone)"; color: "#c9def3"; font.pixelSize: 13 }
+                    ComboBox {
+                        id: inputDeviceCombo
+                        Layout.fillWidth: true
+                        model: backend.audioInputDeviceNames
+                        Component.onCompleted: {
+                            const index = backend.audioInputDeviceIds.indexOf(backend.selectedAudioInputDeviceId)
+                            currentIndex = index >= 0 ? index : 0
+                        }
+                    }
+
+                    Text { text: "Output device (speaker/headset)"; color: "#c9def3"; font.pixelSize: 13 }
+                    ComboBox {
+                        id: outputDeviceCombo
+                        Layout.fillWidth: true
+                        model: backend.audioOutputDeviceNames
+                        Component.onCompleted: {
+                            const index = backend.audioOutputDeviceIds.indexOf(backend.selectedAudioOutputDeviceId)
+                            currentIndex = index >= 0 ? index : 0
+                        }
+                    }
+
                     CheckBox { id: clickThroughCheck; text: "Click-through overlay"; checked: backend.clickThroughEnabled }
 
                     RowLayout {
@@ -325,7 +347,14 @@ Window {
                             MouseArea {
                                 anchors.fill: parent
                                 cursorShape: Qt.PointingHandCursor
-                                onClicked: backend.refreshModels()
+                                onClicked: {
+                                    backend.refreshModels()
+                                    backend.refreshAudioDevices()
+                                    const inputIndex = backend.audioInputDeviceIds.indexOf(backend.selectedAudioInputDeviceId)
+                                    inputDeviceCombo.currentIndex = inputIndex >= 0 ? inputIndex : 0
+                                    const outputIndex = backend.audioOutputDeviceIds.indexOf(backend.selectedAudioOutputDeviceId)
+                                    outputDeviceCombo.currentIndex = outputIndex >= 0 ? outputIndex : 0
+                                }
                             }
                         }
 
@@ -363,6 +392,8 @@ Window {
                                         speedSlider.value,
                                         pitchSlider.value,
                                         micSlider.value,
+                                        inputDeviceCombo.currentIndex >= 0 ? backend.audioInputDeviceIds[inputDeviceCombo.currentIndex] : "",
+                                        outputDeviceCombo.currentIndex >= 0 ? backend.audioOutputDeviceIds[outputDeviceCombo.currentIndex] : "",
                                         clickThroughCheck.checked
                                     )
                                 }

@@ -212,7 +212,7 @@ void AssistantController::submitText(const QString &text)
 
 void AssistantController::startListening()
 {
-    if (m_audioInputService->start(m_settings->micSensitivity())) {
+    if (m_audioInputService->start(m_settings->micSensitivity(), m_settings->selectedAudioInputDeviceId())) {
         setStatus(QStringLiteral("Listening"));
         emit listeningRequested();
     } else {
@@ -263,6 +263,8 @@ void AssistantController::saveSettings(
     double voiceSpeed,
     double voicePitch,
     double micSensitivity,
+    const QString &audioInputDeviceId,
+    const QString &audioOutputDeviceId,
     bool clickThrough)
 {
     m_settings->setLmStudioEndpoint(endpoint);
@@ -278,6 +280,8 @@ void AssistantController::saveSettings(
     m_settings->setVoiceSpeed(voiceSpeed);
     m_settings->setVoicePitch(voicePitch);
     m_settings->setMicSensitivity(micSensitivity);
+    m_settings->setSelectedAudioInputDeviceId(audioInputDeviceId);
+    m_settings->setSelectedAudioOutputDeviceId(audioOutputDeviceId);
     m_settings->setClickThroughEnabled(clickThrough);
     m_settings->save();
     refreshModels();

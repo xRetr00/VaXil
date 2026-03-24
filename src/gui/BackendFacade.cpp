@@ -2,7 +2,9 @@
 
 #include <QDir>
 #include <QDirIterator>
+#include <QAudioDevice>
 #include <QFileInfo>
+#include <QMediaDevices>
 #include <QProcess>
 #include <QStandardPaths>
 
@@ -121,6 +123,10 @@ BackendFacade::BackendFacade(
     });
     connect(m_overlayController, &OverlayController::visibilityChanged, this, &BackendFacade::overlayVisibleChanged);
     connect(m_settings, &AppSettings::settingsChanged, this, &BackendFacade::settingsChanged);
+
+    auto *mediaDevices = new QMediaDevices(this);
+    connect(mediaDevices, &QMediaDevices::audioInputsChanged, this, &BackendFacade::audioDevicesChanged);
+    connect(mediaDevices, &QMediaDevices::audioOutputsChanged, this, &BackendFacade::audioDevicesChanged);
 }
 
 QString BackendFacade::stateName() const { return m_assistantController->stateName(); }
@@ -143,6 +149,44 @@ QString BackendFacade::ffmpegExecutable() const { return m_settings->ffmpegExecu
 double BackendFacade::voiceSpeed() const { return m_settings->voiceSpeed(); }
 double BackendFacade::voicePitch() const { return m_settings->voicePitch(); }
 double BackendFacade::micSensitivity() const { return m_settings->micSensitivity(); }
+QStringList BackendFacade::audioInputDeviceNames() const
+{
+    QStringList names;
+    for (const QAudioDevice &device : QMediaDevices::audioInputs()) {
+        names.push_back(device.description());
+    }
+    return names;
+}
+
+QStringList BackendFacade::audioInputDeviceIds() const
+{
+    QStringList ids;
+    for (const QAudioDevice &device : QMediaDevices::audioInputs()) {
+        ids.push_back(QString::fromUtf8(device.id()));
+    }
+    return ids;
+}
+
+QStringList BackendFacade::audioOutputDeviceNames() const
+{
+    QStringList names;
+    for (const QAudioDevice &device : QMediaDevices::audioOutputs()) {
+        names.push_back(device.description());
+    }
+    return names;
+}
+
+QStringList BackendFacade::audioOutputDeviceIds() const
+{
+    QStringList ids;
+    for (const QAudioDevice &device : QMediaDevices::audioOutputs()) {
+        ids.push_back(QString::fromUtf8(device.id()));
+    }
+    return ids;
+}
+
+QString BackendFacade::selectedAudioInputDeviceId() const { return m_settings->selectedAudioInputDeviceId(); }
+QString BackendFacade::selectedAudioOutputDeviceId() const { return m_settings->selectedAudioOutputDeviceId(); }
 bool BackendFacade::clickThroughEnabled() const { return m_settings->clickThroughEnabled(); }
 QString BackendFacade::assistantName() const { return m_identityProfileService->identity().assistantName; }
 QString BackendFacade::userName() const { return m_identityProfileService->userProfile().userName; }
@@ -154,6 +198,12 @@ void BackendFacade::submitText(const QString &text) { m_assistantController->sub
 void BackendFacade::startListening() { m_assistantController->startListening(); }
 void BackendFacade::cancelRequest() { m_assistantController->cancelActiveRequest(); }
 void BackendFacade::setSelectedModel(const QString &modelId) { m_assistantController->setSelectedModel(modelId); }
+void BackendFacade::refreshAudioDevices()
+{
+    emit audioDevicesChanged();
+    emit settingsChanged();
+}
+
 void BackendFacade::saveSettings(
     const QString &endpoint,
     const QString &modelId,
@@ -168,11 +218,22 @@ void BackendFacade::saveSettings(
     double voiceSpeed,
     double voicePitch,
     double micSensitivity,
+    const QString &audioInputDeviceId,
+    const QString &audioOutputDeviceId,
     bool clickThrough)
 {
     m_assistantController->saveSettings(
         endpoint, modelId, defaultMode, autoRouting, streaming, timeoutMs,
-        whisperPath, piperPath, voicePath, ffmpegPath, voiceSpeed, voicePitch, micSensitivity, clickThrough);
+        whisperPath,
+        piperPath,
+        voicePath,
+        ffmpegPath,
+        voiceSpeed,
+        voicePitch,
+        micSensitivity,
+        audioInputDeviceId,
+        audioOutputDeviceId,
+        clickThrough);
     m_overlayController->setClickThrough(clickThrough);
     emit settingsChanged();
 }
@@ -185,6 +246,8 @@ void BackendFacade::completeInitialSetup(
     const QString &piperPath,
     const QString &voicePath,
     const QString &ffmpegPath,
+    const QString &audioInputDeviceId,
+    const QString &audioOutputDeviceId,
     bool clickThrough)
 {
     if (!userName.trimmed().isEmpty()) {
@@ -205,6 +268,8 @@ void BackendFacade::completeInitialSetup(
         0.88,
         0.94,
         0.02,
+        audioInputDeviceId,
+        audioOutputDeviceId,
         clickThrough);
 
     m_overlayController->setClickThrough(clickThrough);

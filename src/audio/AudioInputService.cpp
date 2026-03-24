@@ -19,11 +19,21 @@ AudioInputService::~AudioInputService()
     stop();
 }
 
-bool AudioInputService::start(double sensitivity)
+bool AudioInputService::start(double sensitivity, const QString &preferredDeviceId)
 {
     stop();
 
-    const auto device = QMediaDevices::defaultAudioInput();
+    QAudioDevice device = QMediaDevices::defaultAudioInput();
+    if (!preferredDeviceId.isEmpty()) {
+        const auto inputs = QMediaDevices::audioInputs();
+        for (const QAudioDevice &candidate : inputs) {
+            if (QString::fromUtf8(candidate.id()) == preferredDeviceId) {
+                device = candidate;
+                break;
+            }
+        }
+    }
+
     if (device.isNull()) {
         return false;
     }

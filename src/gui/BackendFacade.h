@@ -30,6 +30,12 @@ class BackendFacade : public QObject
     Q_PROPERTY(double voiceSpeed READ voiceSpeed NOTIFY settingsChanged)
     Q_PROPERTY(double voicePitch READ voicePitch NOTIFY settingsChanged)
     Q_PROPERTY(double micSensitivity READ micSensitivity NOTIFY settingsChanged)
+    Q_PROPERTY(QStringList audioInputDeviceNames READ audioInputDeviceNames NOTIFY audioDevicesChanged)
+    Q_PROPERTY(QStringList audioInputDeviceIds READ audioInputDeviceIds NOTIFY audioDevicesChanged)
+    Q_PROPERTY(QStringList audioOutputDeviceNames READ audioOutputDeviceNames NOTIFY audioDevicesChanged)
+    Q_PROPERTY(QStringList audioOutputDeviceIds READ audioOutputDeviceIds NOTIFY audioDevicesChanged)
+    Q_PROPERTY(QString selectedAudioInputDeviceId READ selectedAudioInputDeviceId NOTIFY settingsChanged)
+    Q_PROPERTY(QString selectedAudioOutputDeviceId READ selectedAudioOutputDeviceId NOTIFY settingsChanged)
     Q_PROPERTY(bool clickThroughEnabled READ clickThroughEnabled NOTIFY settingsChanged)
     Q_PROPERTY(QString assistantName READ assistantName NOTIFY profileChanged)
     Q_PROPERTY(QString userName READ userName NOTIFY profileChanged)
@@ -64,6 +70,12 @@ public:
     double voiceSpeed() const;
     double voicePitch() const;
     double micSensitivity() const;
+    QStringList audioInputDeviceNames() const;
+    QStringList audioInputDeviceIds() const;
+    QStringList audioOutputDeviceNames() const;
+    QStringList audioOutputDeviceIds() const;
+    QString selectedAudioInputDeviceId() const;
+    QString selectedAudioOutputDeviceId() const;
     bool clickThroughEnabled() const;
     QString assistantName() const;
     QString userName() const;
@@ -90,6 +102,8 @@ public:
         double voiceSpeed,
         double voicePitch,
         double micSensitivity,
+        const QString &audioInputDeviceId,
+        const QString &audioOutputDeviceId,
         bool clickThrough);
     Q_INVOKABLE void completeInitialSetup(
         const QString &userName,
@@ -99,9 +113,12 @@ public:
         const QString &piperPath,
         const QString &voicePath,
         const QString &ffmpegPath,
+        const QString &audioInputDeviceId,
+        const QString &audioOutputDeviceId,
         bool clickThrough);
     Q_INVOKABLE bool autoDetectVoiceTools();
     Q_INVOKABLE bool installAndDetectVoiceTools();
+    Q_INVOKABLE void refreshAudioDevices();
 
 signals:
     void stateNameChanged();
@@ -112,6 +129,7 @@ signals:
     void modelsChanged();
     void selectedModelChanged();
     void overlayVisibleChanged();
+    void audioDevicesChanged();
     void settingsChanged();
     void profileChanged();
     void initialSetupFinished();

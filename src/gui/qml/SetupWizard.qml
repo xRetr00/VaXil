@@ -25,6 +25,12 @@ Window {
         piperPathField.text = backend.piperExecutable
         voicePathField.text = backend.piperVoiceModel
         ffmpegPathField.text = backend.ffmpegExecutable
+
+        const inputIndex = backend.audioInputDeviceIds.indexOf(backend.selectedAudioInputDeviceId)
+        inputDeviceCombo.currentIndex = inputIndex >= 0 ? inputIndex : 0
+
+        const outputIndex = backend.audioOutputDeviceIds.indexOf(backend.selectedAudioOutputDeviceId)
+        outputDeviceCombo.currentIndex = outputIndex >= 0 ? outputIndex : 0
     }
 
     onVisibleChanged: {
@@ -245,6 +251,22 @@ Window {
                         Text { text: "ffmpeg executable"; color: "#d0e3f5"; font.pixelSize: 13 }
                         TextField { id: ffmpegPathField; Layout.fillWidth: true; text: backend.ffmpegExecutable }
 
+                        Text { text: "Input device (microphone)"; color: "#d0e3f5"; font.pixelSize: 13 }
+                        ComboBox {
+                            id: inputDeviceCombo
+                            Layout.fillWidth: true
+                            model: backend.audioInputDeviceNames
+                            currentIndex: 0
+                        }
+
+                        Text { text: "Output device (speaker/headset)"; color: "#d0e3f5"; font.pixelSize: 13 }
+                        ComboBox {
+                            id: outputDeviceCombo
+                            Layout.fillWidth: true
+                            model: backend.audioOutputDeviceNames
+                            currentIndex: 0
+                        }
+
                         RowLayout {
                             Layout.fillWidth: true
 
@@ -267,6 +289,7 @@ Window {
                                     anchors.fill: parent
                                     cursorShape: Qt.PointingHandCursor
                                     onClicked: {
+                                        backend.refreshAudioDevices()
                                         backend.autoDetectVoiceTools()
                                         wizard.syncVoiceFieldsFromBackend()
                                     }
@@ -294,6 +317,7 @@ Window {
                                     cursorShape: Qt.PointingHandCursor
                                     onClicked: {
                                         backend.installAndDetectVoiceTools()
+                                        backend.refreshAudioDevices()
                                         wizard.syncVoiceFieldsFromBackend()
                                     }
                                 }
@@ -388,6 +412,8 @@ Window {
                                     piperPathField.text,
                                     voicePathField.text,
                                     ffmpegPathField.text,
+                                    inputDeviceCombo.currentIndex >= 0 ? backend.audioInputDeviceIds[inputDeviceCombo.currentIndex] : "",
+                                    outputDeviceCombo.currentIndex >= 0 ? backend.audioOutputDeviceIds[outputDeviceCombo.currentIndex] : "",
                                     clickThroughCheck.checked
                                 )
                             }
