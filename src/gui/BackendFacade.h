@@ -28,6 +28,7 @@ class BackendFacade : public QObject
     Q_PROPERTY(bool streamingEnabled READ streamingEnabled NOTIFY settingsChanged)
     Q_PROPERTY(int requestTimeoutMs READ requestTimeoutMs NOTIFY settingsChanged)
     Q_PROPERTY(QString whisperExecutable READ whisperExecutable NOTIFY settingsChanged)
+    Q_PROPERTY(QString whisperModelPath READ whisperModelPath NOTIFY settingsChanged)
     Q_PROPERTY(QString piperExecutable READ piperExecutable NOTIFY settingsChanged)
     Q_PROPERTY(QString piperVoiceModel READ piperVoiceModel NOTIFY settingsChanged)
     Q_PROPERTY(QString ffmpegExecutable READ ffmpegExecutable NOTIFY settingsChanged)
@@ -73,6 +74,7 @@ public:
     bool streamingEnabled() const;
     int requestTimeoutMs() const;
     QString whisperExecutable() const;
+    QString whisperModelPath() const;
     QString piperExecutable() const;
     QString piperVoiceModel() const;
     QString ffmpegExecutable() const;
@@ -108,6 +110,7 @@ public:
         bool streaming,
         int timeoutMs,
         const QString &whisperPath,
+        const QString &whisperModelPath,
         const QString &piperPath,
         const QString &voicePath,
         const QString &ffmpegPath,
@@ -124,6 +127,7 @@ public:
         const QString &endpoint,
         const QString &modelId,
         const QString &whisperPath,
+        const QString &whisperModelPath,
         const QString &piperPath,
         const QString &voicePath,
         const QString &ffmpegPath,
@@ -136,6 +140,7 @@ public:
         const QString &endpoint,
         const QString &modelId,
         const QString &whisperPath,
+        const QString &whisperModelPath,
         const QString &piperPath,
         const QString &voicePath,
         const QString &ffmpegPath,
@@ -147,6 +152,7 @@ public:
         const QString &endpoint,
         const QString &modelId,
         const QString &whisperPath,
+        const QString &whisperModelPath,
         const QString &piperPath,
         const QString &voicePath,
         const QString &ffmpegPath);

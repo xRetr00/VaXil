@@ -51,6 +51,8 @@ public slots:
     void refreshModels();
     void submitText(const QString &text);
     void startListening();
+    void startWakeMonitor();
+    void stopWakeMonitor();
     void stopListening();
     void cancelActiveRequest();
     void setSelectedModel(const QString &modelId);
@@ -62,6 +64,7 @@ public slots:
         bool streaming,
         int timeoutMs,
         const QString &whisperPath,
+        const QString &whisperModelPath,
         const QString &piperPath,
         const QString &voicePath,
         const QString &ffmpegPath,
@@ -85,12 +88,21 @@ signals:
     void idleRequested();
 
 private:
+    enum class AudioCaptureMode {
+        None,
+        Direct,
+        WakeMonitor
+    };
+
     void setupStateMachine();
     void transitionToState(AssistantState state);
     void setStatus(const QString &status);
     void updateUserProfileFromInput(const QString &input);
     LocalResponseContext buildLocalResponseContext() const;
     void deliverLocalResponse(const QString &text, const QString &status, bool speak = true);
+    void scheduleWakeMonitorRestart(int delayMs = 250);
+    bool canStartWakeMonitor() const;
+    bool startAudioCapture(AudioCaptureMode mode, bool announceListening);
     void startConversationRequest(const QString &input);
     void startCommandRequest(const QString &input);
     void handleConversationFinished(const QString &text);
@@ -119,4 +131,8 @@ private:
     float m_audioLevel = 0.0f;
     quint64 m_activeRequestId = 0;
     RequestKind m_activeRequestKind = RequestKind::Conversation;
+    AudioCaptureMode m_audioCaptureMode = AudioCaptureMode::None;
+    AudioCaptureMode m_lastCompletedCaptureMode = AudioCaptureMode::None;
+    bool m_wakeMonitorEnabled = false;
+    bool m_followUpListeningAfterWakeAck = false;
 };

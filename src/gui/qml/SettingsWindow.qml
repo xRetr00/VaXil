@@ -33,6 +33,7 @@ Window {
             endpointField.text,
             modelCombo.currentText,
             whisperPathField.text,
+            whisperModelPathField.text,
             piperPathField.text,
             voicePathField.text,
             ffmpegPathField.text
@@ -300,6 +301,18 @@ Window {
                             font.pixelSize: 12
                         }
                     }
+
+                    Text { text: "Whisper model"; color: "#c9def3"; font.pixelSize: 13 }
+                    TextField { id: whisperModelPathField; Layout.fillWidth: true; text: backend.whisperModelPath }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        Rectangle { width: 10; height: 10; radius: 5; color: settingsWindow.statusColor(requirementStatus.whisperModelOk === true) }
+                        Text {
+                            text: "Whisper model: " + settingsWindow.statusText(requirementStatus.whisperModelOk === true)
+                            color: "#9ab0ca"
+                            font.pixelSize: 12
+                        }
+                    }
                     RowLayout {
                         Layout.fillWidth: true
                         Rectangle { width: 10; height: 10; radius: 5; color: settingsWindow.statusColor(requirementStatus.whisperLatestOk === true) }
@@ -519,6 +532,7 @@ Window {
                                         streamCheck.checked,
                                         timeoutSpin.value,
                                         whisperPathField.text,
+                                        whisperModelPathField.text,
                                         piperPathField.text,
                                         voicePathField.text,
                                         ffmpegPathField.text,

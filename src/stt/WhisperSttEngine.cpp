@@ -57,6 +57,24 @@ void WhisperSttEngine::transcribePcm(const QByteArray &pcmData)
         return;
     }
 
+    if (m_settings->whisperModelPath().isEmpty()) {
+        const QString message = QStringLiteral("whisper.cpp model file is not configured");
+        if (m_loggingService) {
+            m_loggingService->error(message);
+        }
+        emit transcriptionFailed(message);
+        return;
+    }
+
+    if (!QFileInfo::exists(m_settings->whisperModelPath())) {
+        const QString message = QStringLiteral("whisper.cpp model file is missing");
+        if (m_loggingService) {
+            m_loggingService->error(QStringLiteral("%1: %2").arg(message, m_settings->whisperModelPath()));
+        }
+        emit transcriptionFailed(message);
+        return;
+    }
+
     const QString waveFile = writeWaveFile(pcmData);
     if (waveFile.isEmpty() || !QFileInfo::exists(waveFile)) {
         const QString message = QStringLiteral("whisper.cpp input WAV could not be created");
@@ -69,16 +87,17 @@ void WhisperSttEngine::transcribePcm(const QByteArray &pcmData)
 
     if (m_loggingService) {
         m_loggingService->info(
-            QStringLiteral("Starting whisper.cpp transcription. executable=\"%1\" input=\"%2\" bytes=%3")
-                .arg(m_settings->whisperExecutable(), waveFile)
+            QStringLiteral("Starting whisper.cpp transcription. executable=\"%1\" model=\"%2\" input=\"%3\" bytes=%4")
+                .arg(m_settings->whisperExecutable(), m_settings->whisperModelPath(), waveFile)
                 .arg(pcmData.size()));
     }
 
     auto *process = new QProcess(this);
     connect(process, &QProcess::errorOccurred, this, [this, process, waveFile](QProcess::ProcessError error) {
-        const QString message = QStringLiteral("whisper.cpp process error (%1). executable=\"%2\" input=\"%3\" stderr=\"%4\"")
+            const QString message = QStringLiteral("whisper.cpp process error (%1). executable=\"%2\" model=\"%3\" input=\"%4\" stderr=\"%5\"")
                                     .arg(static_cast<int>(error))
                                     .arg(m_settings->whisperExecutable(),
+                                         m_settings->whisperModelPath(),
                                          waveFile,
                                          QString::fromUtf8(process->readAllStandardError()).trimmed());
         if (m_loggingService) {
@@ -95,12 +114,13 @@ void WhisperSttEngine::transcribePcm(const QByteArray &pcmData)
             const QString uiMessage = QStringLiteral("whisper.cpp failed to transcribe input");
             if (m_loggingService) {
                 m_loggingService->error(
-                    QStringLiteral("whisper.cpp failed. exitCode=%1 status=%2 executable=\"%3\" input=\"%4\" stdout=\"%5\" stderr=\"%6\"")
+                    QStringLiteral("whisper.cpp failed. exitCode=%1 status=%2 executable=\"%3\" model=\"%4\" input=\"%5\" stdout=\"%6\" stderr=\"%7\"")
                         .arg(exitCode)
                         .arg(status == QProcess::NormalExit ? QStringLiteral("normal") : QStringLiteral("crashed"))
-                        .arg(m_settings->whisperExecutable(), waveFile, stdoutText, stderrText));
+                        .arg(m_settings->whisperExecutable(), m_settings->whisperModelPath(), waveFile, stdoutText, stderrText));
             }
-            emit transcriptionFailed(uiMessage);
+            const QString uiDetailed = stderrText.isEmpty() ? uiMessage : QStringLiteral("%1: %2").arg(uiMessage, stderrText.left(180));
+            emit transcriptionFailed(uiDetailed);
             return;
         }
 
@@ -117,7 +137,13 @@ void WhisperSttEngine::transcribePcm(const QByteArray &pcmData)
         emit transcriptionReady({text, text.isEmpty() ? 0.0f : 0.85f});
     });
 
-    process->start(m_settings->whisperExecutable(), {QStringLiteral("-f"), waveFile});
+    process->start(
+        m_settings->whisperExecutable(),
+        {
+            QStringLiteral("-m"), m_settings->whisperModelPath(),
+            QStringLiteral("-f"), waveFile,
+            QStringLiteral("-nt")
+        });
 }
 
 QString WhisperSttEngine::writeWaveFile(const QByteArray &pcmData) const

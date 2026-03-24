@@ -17,6 +17,7 @@ Window {
 
     function syncVoiceFieldsFromBackend() {
         whisperPathField.text = backend.whisperExecutable
+        whisperModelPathField.text = backend.whisperModelPath
         piperPathField.text = backend.piperExecutable
         voicePathField.text = backend.piperVoiceModel
         ffmpegPathField.text = backend.ffmpegExecutable
@@ -272,6 +273,19 @@ Window {
                             Button { text: "Open Dir"; onClicked: backend.openContainingDirectory(whisperPathField.text) }
                         }
 
+                        Text { text: "Whisper model"; color: "#d0e3f5"; font.pixelSize: 13 }
+                        RowLayout {
+                            Layout.fillWidth: true
+                            TextField { id: whisperModelPathField; Layout.fillWidth: true; text: backend.whisperModelPath }
+                            Button { text: "Open Dir"; onClicked: backend.openContainingDirectory(whisperModelPathField.text) }
+                        }
+                        Text {
+                            text: "Use a valid whisper.cpp ggml model such as ggml-base.en.bin."
+                            color: "#9ab0ca"
+                            font.pixelSize: 12
+                            wrapMode: Text.Wrap
+                        }
+
                         Text { text: "Piper executable"; color: "#d0e3f5"; font.pixelSize: 13 }
                         RowLayout {
                             Layout.fillWidth: true
@@ -462,6 +476,7 @@ Window {
                                             endpointField.text,
                                             modelCombo.currentText,
                                             whisperPathField.text,
+                                            whisperModelPathField.text,
                                             piperPathField.text,
                                             voicePathField.text,
                                             ffmpegPathField.text,
@@ -483,6 +498,7 @@ Window {
                                             endpointField.text,
                                             modelCombo.currentText,
                                             whisperPathField.text,
+                                            whisperModelPathField.text,
                                             piperPathField.text,
                                             voicePathField.text,
                                             ffmpegPathField.text,
@@ -527,6 +543,7 @@ Window {
                                     endpointField.text,
                                     modelCombo.currentText,
                                     whisperPathField.text,
+                                    whisperModelPathField.text,
                                     piperPathField.text,
                                     voicePathField.text,
                                     ffmpegPathField.text,
@@ -553,6 +570,7 @@ Window {
                                     endpointField.text,
                                     modelCombo.currentText,
                                     whisperPathField.text,
+                                    whisperModelPathField.text,
                                     piperPathField.text,
                                     voicePathField.text,
                                     ffmpegPathField.text,

@@ -36,6 +36,9 @@ public:
     QString whisperExecutable() const;
     void setWhisperExecutable(const QString &path);
 
+    QString whisperModelPath() const;
+    void setWhisperModelPath(const QString &path);
+
     QString piperExecutable() const;
     void setPiperExecutable(const QString &path);
 
@@ -85,6 +88,7 @@ private:
     bool m_streamingEnabled = true;
     int m_requestTimeoutMs = 12000;
     QString m_whisperExecutable;
+    QString m_whisperModelPath;
     QString m_piperExecutable;
     QString m_piperVoiceModel;
     QString m_selectedVoicePresetId = QStringLiteral("en_GB-alba-medium");

@@ -26,9 +26,9 @@ QHash<QString, QStringList> defaultResponses()
              QStringLiteral("Running smoothly with a {tone} tone. Let me know what you need.")
          }},
         {QStringLiteral("wakeword_ready"), {
-             QStringLiteral("Ready, {user_name}."),
+             QStringLiteral("Yes, {user_name}."),
              QStringLiteral("Standing by, {user_name}."),
-             QStringLiteral("{assistant_name} is listening, {user_name}.")
+             QStringLiteral("How may I assist, {user_name}?")
          }},
         {QStringLiteral("time_status"), {
              QStringLiteral("It is {current_time}, {user_name}."),
@@ -138,7 +138,7 @@ QString LocalResponseEngine::resolveGroup(LocalIntent intent, const LocalRespons
 QString LocalResponseEngine::renderTemplate(const QString &variant, const LocalResponseContext &context, const QString &target) const
 {
     QString text = variant;
-    const QString fallbackName = context.userName.isEmpty() ? QStringLiteral("there") : context.userName;
+    const QString fallbackName = context.userName.isEmpty() ? QStringLiteral("sir") : context.userName;
     text.replace(QStringLiteral("{assistant_name}"), context.assistantName);
     text.replace(QStringLiteral("{user_name}"), fallbackName);
     text.replace(QStringLiteral("{time_of_day}"), context.timeOfDay);

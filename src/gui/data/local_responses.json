@@ -15,9 +15,9 @@
     "Running smoothly with a {tone} tone. Let me know what you need."
   ],
   "wakeword_ready": [
-    "Ready, {user_name}.",
+    "Yes, {user_name}.",
     "Standing by, {user_name}.",
-    "{assistant_name} is listening, {user_name}."
+    "How may I assist, {user_name}?"
   ],
   "time_status": [
     "It is {current_time}, {user_name}.",

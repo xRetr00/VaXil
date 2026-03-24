@@ -212,6 +212,7 @@ bool JarvisApplication::initialize()
             m_setupWindow->hide();
         }
         m_overlayController->showOverlay();
+        m_assistantController->startWakeMonitor();
         qInfo() << "Initial setup completed";
     });
     return true;

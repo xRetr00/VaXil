@@ -29,6 +29,8 @@ bool LoggingService::initialize()
         m_logger = std::make_shared<spdlog::logger>("jarvis", sinks.begin(), sinks.end());
         spdlog::register_logger(m_logger);
         m_logger->set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%l] %v");
+        m_logger->set_level(spdlog::level::info);
+        m_logger->flush_on(spdlog::level::info);
         return true;
     } catch (...) {
         return false;

@@ -69,6 +69,25 @@ QString findFileRecursive(const QString &rootPath, const QString &fileName)
     return {};
 }
 
+QString findFirstMatchingFileRecursive(const QString &rootPath, const QStringList &patterns)
+{
+    if (rootPath.isEmpty()) {
+        return {};
+    }
+
+    QDir root(rootPath);
+    if (!root.exists()) {
+        return {};
+    }
+
+    QDirIterator it(rootPath, patterns, QDir::Files | QDir::Readable, QDirIterator::Subdirectories);
+    if (it.hasNext()) {
+        return it.next();
+    }
+
+    return {};
+}
+
 const QList<PiperVoicePreset> &voicePresets()
 {
     static const QList<PiperVoicePreset> presets{
@@ -249,6 +268,39 @@ QString detectPiperVoiceModel(const QString &appDataRoot)
     return {};
 }
 
+QString detectWhisperModel(const QString &appDataRoot)
+{
+    const QStringList roots = {
+        appDataRoot + QStringLiteral("/tools/whisper/models"),
+        appDataRoot + QStringLiteral("/tools/whisper"),
+        QDir::currentPath() + QStringLiteral("/models"),
+        QStringLiteral(JARVIS_SOURCE_DIR) + QStringLiteral("/models")
+    };
+
+    const QStringList preferredFiles = {
+        QStringLiteral("ggml-base.en.bin"),
+        QStringLiteral("ggml-small.en.bin"),
+        QStringLiteral("ggml-tiny.en.bin"),
+        QStringLiteral("ggml-base.bin")
+    };
+
+    for (const QString &rootPath : roots) {
+        for (const QString &preferred : preferredFiles) {
+            const QString match = findFileRecursive(rootPath, preferred);
+            if (!match.isEmpty()) {
+                return match;
+            }
+        }
+
+        const QString fallback = findFirstMatchingFileRecursive(rootPath, {QStringLiteral("ggml-*.bin")});
+        if (!fallback.isEmpty()) {
+            return fallback;
+        }
+    }
+
+    return {};
+}
+
 QString resolveExecutableFromDirectory(const QString &directoryPath, const QStringList &candidateNames)
 {
     QDir directory(directoryPath);
@@ -320,6 +372,27 @@ QString resolveVoiceModelSelection(const QString &selection)
     if (info.exists() && info.isDir()) {
         const QString found = findFileRecursive(info.absoluteFilePath(), QStringLiteral("*.onnx"));
         return found;
+    }
+
+    return {};
+}
+
+QString resolveWhisperModelSelection(const QString &selection)
+{
+    const QString trimmed = selection.trimmed();
+    if (trimmed.isEmpty()) {
+        return {};
+    }
+
+    QFileInfo info(trimmed);
+    if (info.exists() && info.isFile()
+        && info.fileName().startsWith(QStringLiteral("ggml-"), Qt::CaseInsensitive)
+        && info.suffix().compare(QStringLiteral("bin"), Qt::CaseInsensitive) == 0) {
+        return info.absoluteFilePath();
+    }
+
+    if (info.exists() && info.isDir()) {
+        return findFirstMatchingFileRecursive(info.absoluteFilePath(), {QStringLiteral("ggml-*.bin")});
     }
 
     return {};
@@ -444,6 +517,7 @@ bool BackendFacade::autoRoutingEnabled() const { return m_settings->autoRoutingE
 bool BackendFacade::streamingEnabled() const { return m_settings->streamingEnabled(); }
 int BackendFacade::requestTimeoutMs() const { return m_settings->requestTimeoutMs(); }
 QString BackendFacade::whisperExecutable() const { return m_settings->whisperExecutable(); }
+QString BackendFacade::whisperModelPath() const { return m_settings->whisperModelPath(); }
 QString BackendFacade::piperExecutable() const { return m_settings->piperExecutable(); }
 QString BackendFacade::piperVoiceModel() const { return m_settings->piperVoiceModel(); }
 QString BackendFacade::ffmpegExecutable() const { return m_settings->ffmpegExecutable(); }
@@ -534,6 +608,7 @@ void BackendFacade::saveSettings(
     bool streaming,
     int timeoutMs,
     const QString &whisperPath,
+    const QString &whisperModelPath,
     const QString &piperPath,
     const QString &voicePath,
     const QString &ffmpegPath,
@@ -552,6 +627,7 @@ void BackendFacade::saveSettings(
     m_assistantController->saveSettings(
         endpoint, modelId, defaultMode, autoRouting, streaming, timeoutMs,
         whisperPath,
+        whisperModelPath,
         piperPath,
         voicePath,
         ffmpegPath,
@@ -607,6 +683,7 @@ bool BackendFacade::completeInitialSetup(
     const QString &endpoint,
     const QString &modelId,
     const QString &whisperPath,
+    const QString &whisperModelPath,
     const QString &piperPath,
     const QString &voicePath,
     const QString &ffmpegPath,
@@ -635,6 +712,12 @@ bool BackendFacade::completeInitialSetup(
         });
     if (resolvedWhisper.isEmpty()) {
         setToolInstallStatus(QStringLiteral("Whisper executable is invalid. Use whisper-cli.exe or main.exe from the whisper Release folder."));
+        return false;
+    }
+
+    const QString resolvedWhisperModel = resolveWhisperModelSelection(whisperModelPath);
+    if (resolvedWhisperModel.isEmpty()) {
+        setToolInstallStatus(QStringLiteral("Whisper model is invalid. Select a valid ggml-*.bin model file."));
         return false;
     }
 
@@ -689,6 +772,7 @@ bool BackendFacade::completeInitialSetup(
         true,
         12000,
         resolvedWhisper,
+        resolvedWhisperModel,
         resolvedPiper,
         resolvedVoiceModel,
         resolvedFfmpeg,
@@ -715,6 +799,7 @@ bool BackendFacade::runSetupScenario(
     const QString &endpoint,
     const QString &modelId,
     const QString &whisperPath,
+    const QString &whisperModelPath,
     const QString &piperPath,
     const QString &voicePath,
     const QString &ffmpegPath,
@@ -747,6 +832,12 @@ bool BackendFacade::runSetupScenario(
         return false;
     }
 
+    const QString resolvedWhisperModel = resolveWhisperModelSelection(whisperModelPath);
+    if (resolvedWhisperModel.isEmpty()) {
+        setToolInstallStatus(QStringLiteral("Whisper model is invalid. Select a valid ggml-*.bin model file."));
+        return false;
+    }
+
     const QString resolvedPiper = resolveExecutableSelection(
         piperPath,
         {
@@ -798,6 +889,7 @@ bool BackendFacade::runSetupScenario(
         true,
         12000,
         resolvedWhisper,
+        resolvedWhisperModel,
         resolvedPiper,
         resolvedVoiceModel,
         resolvedFfmpeg,
@@ -828,6 +920,7 @@ QVariantMap BackendFacade::evaluateSetupRequirements(
     const QString &endpoint,
     const QString &modelId,
     const QString &whisperPath,
+    const QString &whisperModelPath,
     const QString &piperPath,
     const QString &voicePath,
     const QString &ffmpegPath)
@@ -844,6 +937,7 @@ QVariantMap BackendFacade::evaluateSetupRequirements(
             QStringLiteral("main.exe"),
             QStringLiteral("whisper.exe")
         });
+    const QString resolvedWhisperModel = resolveWhisperModelSelection(whisperModelPath);
     const QString resolvedPiper = resolveExecutableSelection(
         piperPath,
         {
@@ -857,6 +951,7 @@ QVariantMap BackendFacade::evaluateSetupRequirements(
     const QString resolvedVoice = resolveVoiceModelSelection(voicePath);
 
     const bool whisperOk = !resolvedWhisper.isEmpty();
+    const bool whisperModelOk = !resolvedWhisperModel.isEmpty();
     const bool piperOk = !resolvedPiper.isEmpty();
     const bool ffmpegOk = !resolvedFfmpeg.isEmpty();
     const bool voiceOk = !resolvedVoice.isEmpty();
@@ -872,11 +967,13 @@ QVariantMap BackendFacade::evaluateSetupRequirements(
     result.insert(QStringLiteral("endpointOk"), endpointOk);
     result.insert(QStringLiteral("modelOk"), modelOk);
     result.insert(QStringLiteral("whisperOk"), whisperOk);
+    result.insert(QStringLiteral("whisperModelOk"), whisperModelOk);
     result.insert(QStringLiteral("piperOk"), piperOk);
     result.insert(QStringLiteral("voiceOk"), voiceOk);
     result.insert(QStringLiteral("ffmpegOk"), ffmpegOk);
 
     result.insert(QStringLiteral("whisperPathResolved"), resolvedWhisper);
+    result.insert(QStringLiteral("whisperModelPathResolved"), resolvedWhisperModel);
     result.insert(QStringLiteral("piperPathResolved"), resolvedPiper);
     result.insert(QStringLiteral("voicePathResolved"), resolvedVoice);
     result.insert(QStringLiteral("ffmpegPathResolved"), resolvedFfmpeg);
@@ -891,7 +988,7 @@ QVariantMap BackendFacade::evaluateSetupRequirements(
     result.insert(QStringLiteral("piperLatestOk"), looksLatestEnough(piperVersion, piperLatest));
     result.insert(QStringLiteral("ffmpegLatestOk"), looksLatestEnough(ffmpegVersion, ffmpegLatest));
 
-    const bool allValid = endpointOk && modelOk && whisperOk && piperOk && voiceOk && ffmpegOk;
+    const bool allValid = endpointOk && modelOk && whisperOk && whisperModelOk && piperOk && voiceOk && ffmpegOk;
     result.insert(QStringLiteral("allValid"), allValid);
 
     return result;
@@ -950,6 +1047,11 @@ bool BackendFacade::autoDetectVoiceTools()
         whisper = findFileRecursive(toolsRoot, QStringLiteral("main.exe"));
     }
 
+    QString whisperModel = m_settings->whisperModelPath();
+    if (whisperModel.isEmpty() || !QFileInfo::exists(whisperModel)) {
+        whisperModel = detectWhisperModel(appDataRoot);
+    }
+
     QString piper = resolveExecutable(
         {QStringLiteral("piper")},
         {
@@ -980,6 +1082,9 @@ bool BackendFacade::autoDetectVoiceTools()
     if (!whisper.isEmpty()) {
         m_settings->setWhisperExecutable(whisper);
     }
+    if (!whisperModel.isEmpty()) {
+        m_settings->setWhisperModelPath(whisperModel);
+    }
     if (!piper.isEmpty()) {
         m_settings->setPiperExecutable(piper);
     }
@@ -995,6 +1100,7 @@ bool BackendFacade::autoDetectVoiceTools()
     }
 
     const bool complete = !m_settings->whisperExecutable().isEmpty()
+        && !m_settings->whisperModelPath().isEmpty()
         && !m_settings->piperExecutable().isEmpty()
         && !m_settings->ffmpegExecutable().isEmpty()
         && !m_settings->piperVoiceModel().isEmpty();
@@ -1063,6 +1169,13 @@ if (-not (Get-Command ffmpeg -ErrorAction SilentlyContinue)) {
 $whisperDir = Join-Path $toolsRoot 'whisper'
 if (-not (Test-Path (Join-Path $whisperDir 'whisper-cli.exe')) -and -not (Test-Path (Join-Path $whisperDir 'main.exe'))) {
     Install-LatestZip -Repo 'ggerganov/whisper.cpp' -NamePatterns @('*bin*x64*.zip', '*windows*x64*.zip') -Destination $whisperDir
+}
+
+$whisperModelDir = Join-Path $whisperDir 'models'
+New-Item -ItemType Directory -Force -Path $whisperModelDir | Out-Null
+$whisperModel = Join-Path $whisperModelDir 'ggml-base.en.bin'
+if (-not (Test-Path $whisperModel)) {
+    Invoke-WebRequest -Uri 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en.bin?download=true' -OutFile $whisperModel
 }
 
 $piperDir = Join-Path $toolsRoot 'piper'

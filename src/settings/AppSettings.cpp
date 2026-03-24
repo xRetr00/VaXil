@@ -90,6 +90,7 @@ bool AppSettings::load()
     m_streamingEnabled = parsed.value("streamingEnabled", true);
     m_requestTimeoutMs = parsed.value("requestTimeoutMs", 12000);
     m_whisperExecutable = QString::fromStdString(parsed.value("whisperExecutable", std::string{}));
+    m_whisperModelPath = QString::fromStdString(parsed.value("whisperModelPath", std::string{}));
     m_piperExecutable = QString::fromStdString(parsed.value("piperExecutable", std::string{}));
     m_piperVoiceModel = QString::fromStdString(parsed.value("piperVoiceModel", std::string{}));
     m_selectedVoicePresetId = QString::fromStdString(parsed.value("selectedVoicePresetId", m_selectedVoicePresetId.toStdString()));
@@ -116,6 +117,7 @@ bool AppSettings::save() const
         {"streamingEnabled", m_streamingEnabled},
         {"requestTimeoutMs", m_requestTimeoutMs},
         {"whisperExecutable", m_whisperExecutable.toStdString()},
+        {"whisperModelPath", m_whisperModelPath.toStdString()},
         {"piperExecutable", m_piperExecutable.toStdString()},
         {"piperVoiceModel", m_piperVoiceModel.toStdString()},
         {"selectedVoicePresetId", m_selectedVoicePresetId.toStdString()},
@@ -153,6 +155,8 @@ int AppSettings::requestTimeoutMs() const { return m_requestTimeoutMs; }
 void AppSettings::setRequestTimeoutMs(int timeoutMs) { m_requestTimeoutMs = timeoutMs; emit settingsChanged(); }
 QString AppSettings::whisperExecutable() const { return m_whisperExecutable; }
 void AppSettings::setWhisperExecutable(const QString &path) { m_whisperExecutable = path; emit settingsChanged(); }
+QString AppSettings::whisperModelPath() const { return m_whisperModelPath; }
+void AppSettings::setWhisperModelPath(const QString &path) { m_whisperModelPath = path; emit settingsChanged(); }
 QString AppSettings::piperExecutable() const { return m_piperExecutable; }
 void AppSettings::setPiperExecutable(const QString &path) { m_piperExecutable = path; emit settingsChanged(); }
 QString AppSettings::piperVoiceModel() const { return m_piperVoiceModel; }
