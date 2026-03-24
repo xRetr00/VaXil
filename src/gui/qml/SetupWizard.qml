@@ -244,13 +244,47 @@ Window {
                     ColumnLayout {
                         spacing: 14
                         Text { text: "whisper.cpp executable"; color: "#d0e3f5"; font.pixelSize: 13 }
-                        TextField { id: whisperPathField; Layout.fillWidth: true; text: backend.whisperExecutable }
+                        RowLayout {
+                            Layout.fillWidth: true
+                            TextField { id: whisperPathField; Layout.fillWidth: true; text: backend.whisperExecutable }
+                            Button {
+                                text: "Open Dir"
+                                onClicked: backend.openContainingDirectory(whisperPathField.text)
+                            }
+                        }
+                        Text {
+                            text: "Use whisper-cli.exe or main.exe from the whisper Release folder."
+                            color: "#9ab0ca"
+                            font.pixelSize: 12
+                            wrapMode: Text.Wrap
+                        }
                         Text { text: "Piper executable"; color: "#d0e3f5"; font.pixelSize: 13 }
-                        TextField { id: piperPathField; Layout.fillWidth: true; text: backend.piperExecutable }
+                        RowLayout {
+                            Layout.fillWidth: true
+                            TextField { id: piperPathField; Layout.fillWidth: true; text: backend.piperExecutable }
+                            Button {
+                                text: "Open Dir"
+                                onClicked: backend.openContainingDirectory(piperPathField.text)
+                            }
+                        }
                         Text { text: "Piper voice model"; color: "#d0e3f5"; font.pixelSize: 13 }
-                        TextField { id: voicePathField; Layout.fillWidth: true; text: backend.piperVoiceModel }
+                        RowLayout {
+                            Layout.fillWidth: true
+                            TextField { id: voicePathField; Layout.fillWidth: true; text: backend.piperVoiceModel }
+                            Button {
+                                text: "Open Dir"
+                                onClicked: backend.openContainingDirectory(voicePathField.text)
+                            }
+                        }
                         Text { text: "ffmpeg executable"; color: "#d0e3f5"; font.pixelSize: 13 }
-                        TextField { id: ffmpegPathField; Layout.fillWidth: true; text: backend.ffmpegExecutable }
+                        RowLayout {
+                            Layout.fillWidth: true
+                            TextField { id: ffmpegPathField; Layout.fillWidth: true; text: backend.ffmpegExecutable }
+                            Button {
+                                text: "Open Dir"
+                                onClicked: backend.openContainingDirectory(ffmpegPathField.text)
+                            }
+                        }
 
                         Text { text: "Input device (microphone)"; color: "#d0e3f5"; font.pixelSize: 13 }
                         ComboBox {
@@ -381,6 +415,44 @@ Window {
                     Item { Layout.fillWidth: true }
 
                     Rectangle {
+                        visible: wizard.stepIndex === 3
+                        Layout.preferredWidth: 160
+                        Layout.preferredHeight: 50
+                        radius: 25
+                        color: "#12404a"
+                        border.width: 1
+                        border.color: "#3b97aa"
+
+                        Text {
+                            anchors.centerIn: parent
+                            text: "Test voice"
+                            color: "#eaffff"
+                            font.pixelSize: 14
+                            font.weight: Font.Medium
+                        }
+
+                        MouseArea {
+                            anchors.fill: parent
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: {
+                                if (!backend.runSetupVoiceTest(
+                                        userNameField.text,
+                                        endpointField.text,
+                                        modelCombo.currentText,
+                                        whisperPathField.text,
+                                        piperPathField.text,
+                                        voicePathField.text,
+                                        ffmpegPathField.text,
+                                        inputDeviceCombo.currentIndex >= 0 ? backend.audioInputDeviceIds[inputDeviceCombo.currentIndex] : "",
+                                        outputDeviceCombo.currentIndex >= 0 ? backend.audioOutputDeviceIds[outputDeviceCombo.currentIndex] : "",
+                                        clickThroughCheck.checked)) {
+                                    wizard.stepIndex = 2
+                                }
+                            }
+                        }
+                    }
+
+                    Rectangle {
                         Layout.preferredWidth: 168
                         Layout.preferredHeight: 50
                         radius: 25
@@ -405,18 +477,19 @@ Window {
                                     return
                                 }
 
-                                backend.completeInitialSetup(
-                                    userNameField.text,
-                                    endpointField.text,
-                                    modelCombo.currentText,
-                                    whisperPathField.text,
-                                    piperPathField.text,
-                                    voicePathField.text,
-                                    ffmpegPathField.text,
-                                    inputDeviceCombo.currentIndex >= 0 ? backend.audioInputDeviceIds[inputDeviceCombo.currentIndex] : "",
-                                    outputDeviceCombo.currentIndex >= 0 ? backend.audioOutputDeviceIds[outputDeviceCombo.currentIndex] : "",
-                                    clickThroughCheck.checked
-                                )
+                                if (!backend.completeInitialSetup(
+                                        userNameField.text,
+                                        endpointField.text,
+                                        modelCombo.currentText,
+                                        whisperPathField.text,
+                                        piperPathField.text,
+                                        voicePathField.text,
+                                        ffmpegPathField.text,
+                                        inputDeviceCombo.currentIndex >= 0 ? backend.audioInputDeviceIds[inputDeviceCombo.currentIndex] : "",
+                                        outputDeviceCombo.currentIndex >= 0 ? backend.audioOutputDeviceIds[outputDeviceCombo.currentIndex] : "",
+                                        clickThroughCheck.checked)) {
+                                    wizard.stepIndex = 2
+                                }
                             }
                         }
                     }

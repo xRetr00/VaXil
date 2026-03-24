@@ -105,7 +105,7 @@ public:
         const QString &audioInputDeviceId,
         const QString &audioOutputDeviceId,
         bool clickThrough);
-    Q_INVOKABLE void completeInitialSetup(
+    Q_INVOKABLE bool completeInitialSetup(
         const QString &userName,
         const QString &endpoint,
         const QString &modelId,
@@ -116,6 +116,18 @@ public:
         const QString &audioInputDeviceId,
         const QString &audioOutputDeviceId,
         bool clickThrough);
+    Q_INVOKABLE bool runSetupVoiceTest(
+        const QString &userName,
+        const QString &endpoint,
+        const QString &modelId,
+        const QString &whisperPath,
+        const QString &piperPath,
+        const QString &voicePath,
+        const QString &ffmpegPath,
+        const QString &audioInputDeviceId,
+        const QString &audioOutputDeviceId,
+        bool clickThrough);
+    Q_INVOKABLE void openContainingDirectory(const QString &path);
     Q_INVOKABLE bool autoDetectVoiceTools();
     Q_INVOKABLE bool installAndDetectVoiceTools();
     Q_INVOKABLE void refreshAudioDevices();

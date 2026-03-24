@@ -17,82 +17,127 @@ Item {
         : stateName === "SPEAKING" ? 3.0
         : 0.0
 
-    implicitWidth: 360
-    implicitHeight: 360
+    implicitWidth: 460
+    implicitHeight: 460
 
     Rectangle {
         anchors.centerIn: parent
-        width: parent.width * (0.8 + root.glow * 0.18)
+        width: parent.width * 0.94
         height: width
         radius: width / 2
-        color: "#101625"
-        opacity: 0.16 + root.glow * 0.12
-        scale: root.orbScale * 1.18
-
-        Behavior on opacity { NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
-        Behavior on scale { NumberAnimation { duration: 240; easing.type: Easing.OutCubic } }
+        color: "#060911"
+        opacity: 0.08 + root.glow * 0.08
+        scale: 1.0 + root.glow * 0.12
     }
 
     Rectangle {
         anchors.centerIn: parent
-        width: parent.width * (0.7 + root.glow * 0.14)
+        width: parent.width * 0.8
         height: width
         radius: width / 2
-        color: root.stateName === "SPEAKING" ? "#5036d8ff" : "#38269dff"
-        opacity: 0.12 + root.glow * 0.12
-        scale: root.orbScale * 1.1
-
-        Behavior on opacity { NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
-        Behavior on scale { NumberAnimation { duration: 240; easing.type: Easing.OutCubic } }
+        color: root.stateName === "SPEAKING" ? "#5b31c9" : "#1f58b2"
+        opacity: 0.14 + root.glow * 0.08
+        scale: 1.02 + root.glow * 0.08
     }
 
     Rectangle {
+        id: shell
         anchors.centerIn: parent
-        width: parent.width * (0.56 + root.glow * 0.14)
+        width: parent.width * 0.72
         height: width
         radius: width / 2
-        color: root.stateName === "LISTENING" ? "#2f8ee6ff" : "#2b3fa8ff"
-        opacity: 0.2 + root.glow * 0.14
+        color: "#1b234033"
+        border.width: 1
+        border.color: root.stateName === "SPEAKING" ? "#d286ff" : "#9cc9ff"
+        opacity: 0.98
+        clip: true
         scale: root.orbScale
 
-        Behavior on opacity { NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
+        gradient: Gradient {
+            GradientStop { position: 0.0; color: "#60dbf3ff" }
+            GradientStop { position: 0.16; color: "#25376777" }
+            GradientStop { position: 0.72; color: "#12193144" }
+            GradientStop { position: 1.0; color: "#06091210" }
+        }
+
         Behavior on scale { NumberAnimation { duration: 240; easing.type: Easing.OutCubic } }
-    }
 
-    ShaderEffect {
-        id: orbShader
-        anchors.centerIn: parent
-        width: parent.width * 0.68
-        height: width
-        blending: true
-        mesh: Qt.size(1, 1)
+        Repeater {
+            model: 5
 
-        property real time: root.time
-        property real level: root.audioLevel
-        property real speaking: root.speakingLevel
-        property real mode: root.stateIndex
-        property real distortion: root.distortion
-        property vector2d resolution: Qt.vector2d(width, height)
-        property color colorA: root.stateName === "SPEAKING" ? "#a6f2ff" : "#8ff4ff"
-        property color colorB: root.stateName === "PROCESSING" ? "#5b5cff" : "#35bcff"
-        property color colorC: root.stateName === "SPEAKING" ? "#a03dff" : "#0e2349"
+            delegate: Rectangle {
+                required property int index
 
-        scale: root.orbScale
-        fragmentShader: "qrc:/qt/qml/JARVIS/gui/shaders/src/gui/shaders/orb.frag.qsb"
+                width: shell.width * (0.18 + index * 0.02)
+                height: shell.height * (0.82 - index * 0.06)
+                radius: width / 2
+                anchors.centerIn: parent
+                x: Math.sin(root.time * 0.55 + index * 1.2) * shell.width * 0.05
+                y: Math.cos(root.time * 0.75 + index * 0.9) * shell.height * 0.04
+                rotation: root.orbitalRotation * 0.35 + index * 34 + Math.sin(root.time * 0.8 + index) * 14
+                opacity: 0.18 + index * 0.08 + root.glow * 0.08
 
-        Behavior on scale { NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
-    }
+                gradient: Gradient {
+                    GradientStop { position: 0.0; color: index % 2 === 0 ? "#ffd1ff" : "#d5fdff" }
+                    GradientStop { position: 0.28; color: index % 2 === 0 ? "#7e6fff" : "#3f95ff" }
+                    GradientStop { position: 1.0; color: "#05142a" }
+                }
+            }
+        }
 
-    Rectangle {
-        anchors.centerIn: orbShader
-        width: orbShader.width * 0.28
-        height: width
-        radius: width / 2
-        color: "#ecfbff"
-        opacity: 0.12 + root.glow * 0.12 + root.speakingLevel * 0.08
-        scale: 0.92 + root.orbScale * 0.08
+        Rectangle {
+            width: shell.width * 0.92
+            height: width
+            anchors.centerIn: parent
+            radius: width / 2
+            color: "transparent"
+            border.width: 1
+            border.color: "#5ea9ff"
+            opacity: 0.16
+        }
 
-        Behavior on opacity { NumberAnimation { duration: 180; easing.type: Easing.OutQuad } }
+        Rectangle {
+            width: shell.width * 0.58
+            height: shell.height * 0.22
+            radius: height / 2
+            anchors.horizontalCenter: parent.horizontalCenter
+            anchors.top: parent.top
+            anchors.topMargin: shell.height * 0.08
+            color: "#f4fbff"
+            opacity: 0.18
+            rotation: -12
+        }
+
+        ShaderEffect {
+            id: orbShader
+            anchors.centerIn: parent
+            width: shell.width * 0.64
+            height: width
+            blending: true
+            mesh: Qt.size(1, 1)
+
+            property real time: root.time
+            property real level: root.audioLevel
+            property real speaking: root.speakingLevel
+            property real mode: root.stateIndex
+            property real distortion: root.distortion
+            property vector2d resolution: Qt.vector2d(width, height)
+            property color colorA: root.stateName === "SPEAKING" ? "#bdf8ff" : "#b1fbff"
+            property color colorB: root.stateName === "PROCESSING" ? "#6d6fff" : "#3ba8ff"
+            property color colorC: root.stateName === "SPEAKING" ? "#bb56ff" : "#143160"
+
+            fragmentShader: "qrc:/qt/qml/JARVIS/gui/shaders/src/gui/shaders/orb.frag.qsb"
+            scale: 0.94 + root.orbScale * 0.06
+        }
+
+        Rectangle {
+            anchors.centerIn: orbShader
+            width: orbShader.width * 0.24
+            height: width
+            radius: width / 2
+            color: "#f1fbff"
+            opacity: 0.2 + root.glow * 0.12 + root.speakingLevel * 0.06
+        }
     }
 
     Repeater {
@@ -101,19 +146,19 @@ Item {
         delegate: Item {
             width: root.width
             height: root.height
-            opacity: root.stateName === "PROCESSING" ? 0.78 : 0.0
+            opacity: root.stateName === "PROCESSING" ? 0.7 : 0.0
             rotation: root.orbitalRotation + index * 120
 
             Behavior on opacity { NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
 
             Rectangle {
-                width: 12
-                height: 12
-                radius: 6
+                width: 14
+                height: 14
+                radius: 7
                 color: index === 0 ? "#89f4ff" : index === 1 ? "#7c91ff" : "#c06cff"
                 anchors.horizontalCenter: parent.horizontalCenter
                 anchors.verticalCenter: parent.verticalCenter
-                anchors.verticalCenterOffset: -root.height * 0.18
+                anchors.verticalCenterOffset: -root.height * 0.26
                 opacity: 0.78
             }
         }
@@ -121,14 +166,14 @@ Item {
 
     Rectangle {
         anchors.centerIn: parent
-        width: parent.width * 0.76
+        width: parent.width * 0.78
         height: width
         radius: width / 2
         color: "transparent"
         border.width: 1
-        border.color: root.stateName === "SPEAKING" ? "#68c4ff" : "#3c6fff"
-        opacity: 0.18 + root.glow * 0.16
-        scale: 1.0 + root.glow * 0.08
+        border.color: root.stateName === "SPEAKING" ? "#ff9cff" : "#66b5ff"
+        opacity: 0.1 + root.glow * 0.12
+        scale: 1.0 + root.glow * 0.04
 
         Behavior on opacity { NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
         Behavior on scale { NumberAnimation { duration: 240; easing.type: Easing.OutCubic } }

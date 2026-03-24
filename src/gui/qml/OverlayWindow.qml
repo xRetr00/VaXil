@@ -7,8 +7,8 @@ import "." as JarvisUi
 Window {
     id: root
 
-    width: 760
-    height: 820
+    width: 1920
+    height: 1080
     visible: false
     color: "transparent"
     flags: Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool | Qt.NoDropShadowWindowHint
@@ -68,213 +68,228 @@ Window {
         overlayVisible: backend.overlayVisible
     }
 
-    Rectangle {
+    Item {
         anchors.fill: parent
-        color: "transparent"
-
-        Rectangle {
-            anchors.centerIn: parent
-            width: 640
-            height: 760
-            radius: 48
-            color: "#04070e10"
-            border.width: 1
-            border.color: "#1d2d4a"
-            opacity: 0.98
-        }
 
         Rectangle {
             anchors.horizontalCenter: parent.horizontalCenter
             anchors.top: parent.top
-            anchors.topMargin: 42
-            width: 220
-            height: 34
-            radius: 17
-            color: "#88060b14"
+            anchors.topMargin: 34
+            width: 232
+            height: 42
+            radius: 21
+            color: "#8a0a111d"
             border.width: 1
-            border.color: "#203454"
-            opacity: 0.92
+            border.color: "#314c71"
+            opacity: 0.96
 
             Row {
                 anchors.centerIn: parent
-                spacing: 10
+                spacing: 12
 
                 Rectangle {
                     width: 8
                     height: 8
                     radius: 4
-                    color: backend.stateName === "LISTENING" ? "#75f0ff"
-                        : backend.stateName === "PROCESSING" ? "#8ba5ff"
-                        : backend.stateName === "SPEAKING" ? "#cf8fff"
-                        : "#6a84aa"
+                    color: backend.stateName === "LISTENING" ? "#7feeff"
+                        : backend.stateName === "PROCESSING" ? "#9ab3ff"
+                        : backend.stateName === "SPEAKING" ? "#f2a0ff"
+                        : "#8fa4c8"
                 }
 
                 Text {
                     text: backend.assistantName + "  ·  " + backend.stateName
-                    color: "#dcedff"
+                    color: "#dfefff"
                     font.pixelSize: 12
-                    font.letterSpacing: 1.6
+                    font.letterSpacing: 1.7
                 }
             }
         }
 
-        Item {
-            anchors.centerIn: parent
-            width: 560
-            height: 620
+        Rectangle {
+            anchors.horizontalCenter: parent.horizontalCenter
+            anchors.verticalCenter: parent.verticalCenter
+            anchors.verticalCenterOffset: -96
+            width: 740
+            height: 740
+            radius: 370
+            color: "#17304d"
+            opacity: 0.06 + motion.glow * 0.04
+            scale: 0.96 + motion.glow * 0.08
+        }
 
-            JarvisUi.OrbRenderer {
-                id: orb
-                anchors.horizontalCenter: parent.horizontalCenter
-                anchors.top: parent.top
-                anchors.topMargin: 36
-                width: 360
-                height: 360
-                stateName: backend.stateName
-                time: motion.time
-                audioLevel: motion.inputBoost
-                speakingLevel: motion.speakingSignal
-                distortion: motion.distortion
-                glow: motion.glow
-                orbScale: motion.orbScale
-                orbitalRotation: motion.orbitalRotation
-            }
+        Rectangle {
+            anchors.horizontalCenter: parent.horizontalCenter
+            anchors.verticalCenter: parent.verticalCenter
+            anchors.verticalCenterOffset: -96
+            width: 520
+            height: 520
+            radius: 260
+            color: "#7bcfff"
+            opacity: 0.035 + motion.glow * 0.03
+            scale: 0.98 + motion.glow * 0.04
+        }
 
-            MouseArea {
-                anchors.fill: orb
-                hoverEnabled: true
-                cursorShape: Qt.PointingHandCursor
-                onClicked: {
-                    if (backend.stateName === "LISTENING" || backend.stateName === "PROCESSING") {
-                        backend.cancelRequest()
-                    } else {
-                        backend.startListening()
-                    }
+        JarvisUi.OrbRenderer {
+            id: orb
+            anchors.horizontalCenter: parent.horizontalCenter
+            anchors.verticalCenter: parent.verticalCenter
+            anchors.verticalCenterOffset: -96
+            width: 460
+            height: 460
+            stateName: backend.stateName
+            time: motion.time
+            audioLevel: motion.inputBoost
+            speakingLevel: motion.speakingSignal
+            distortion: motion.distortion
+            glow: motion.glow
+            orbScale: motion.orbScale
+            orbitalRotation: motion.orbitalRotation
+        }
+
+        MouseArea {
+            anchors.fill: orb
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: {
+                if (backend.stateName === "LISTENING" || backend.stateName === "PROCESSING") {
+                    backend.cancelRequest()
+                } else {
+                    backend.startListening()
                 }
             }
+        }
 
-            Column {
-                anchors.top: orb.bottom
-                anchors.topMargin: 26
-                anchors.horizontalCenter: parent.horizontalCenter
-                width: 500
-                spacing: 8
+        Column {
+            anchors.top: orb.bottom
+            anchors.topMargin: 18
+            anchors.horizontalCenter: parent.horizontalCenter
+            width: Math.min(parent.width * 0.58, 760)
+            spacing: 8
 
-                Text {
-                    width: parent.width
-                    horizontalAlignment: Text.AlignHCenter
-                    text: primaryLine()
-                    color: "#eef8ff"
-                    font.pixelSize: 30
-                    font.weight: Font.Medium
-                    wrapMode: Text.Wrap
-                    maximumLineCount: 2
-                    elide: Text.ElideRight
-                }
-
-                Text {
-                    width: parent.width
-                    horizontalAlignment: Text.AlignHCenter
-                    text: secondaryLine()
-                    color: "#7e95b9"
-                    font.pixelSize: 15
-                    wrapMode: Text.Wrap
-                    maximumLineCount: 1
-                    elide: Text.ElideRight
-                }
+            Text {
+                width: parent.width
+                horizontalAlignment: Text.AlignHCenter
+                text: primaryLine()
+                color: "#eef7ff"
+                font.pixelSize: 42
+                font.weight: Font.Normal
+                wrapMode: Text.Wrap
+                maximumLineCount: 2
+                elide: Text.ElideRight
             }
+
+            Text {
+                width: parent.width
+                horizontalAlignment: Text.AlignHCenter
+                text: secondaryLine()
+                color: "#8aa7cf"
+                font.pixelSize: 16
+                wrapMode: Text.Wrap
+                maximumLineCount: 1
+                elide: Text.ElideRight
+            }
+        }
+
+        Rectangle {
+            id: inputRibbon
+            anchors.horizontalCenter: parent.horizontalCenter
+            anchors.bottom: parent.bottom
+            anchors.bottomMargin: 58
+            width: Math.min(parent.width * 0.42, 620)
+            height: 78
+            radius: 39
+            color: "#7f08111a"
+            border.width: 1
+            border.color: backend.stateName === "LISTENING" ? "#4ea6ff" : "#29476b"
+            opacity: 0.97
 
             Rectangle {
-                id: inputRibbon
-                anchors.bottom: parent.bottom
-                anchors.horizontalCenter: parent.horizontalCenter
-                width: 520
-                height: 74
-                radius: 37
-                color: "#99071018"
+                anchors.fill: parent
+                radius: parent.radius
+                color: "transparent"
                 border.width: 1
-                border.color: backend.stateName === "LISTENING" ? "#3c94d9" : "#213753"
+                border.color: "#2292d8ff"
+                opacity: 0.1 + motion.glow * 0.1
+            }
 
-                Behavior on border.color { ColorAnimation { duration: 220 } }
+            RowLayout {
+                anchors.fill: parent
+                anchors.margins: 10
+                spacing: 12
 
-                RowLayout {
-                    anchors.fill: parent
-                    anchors.margins: 10
-                    spacing: 10
+                Rectangle {
+                    Layout.preferredWidth: 56
+                    Layout.preferredHeight: 56
+                    radius: 28
+                    color: backend.stateName === "LISTENING" ? "#123f69" : "#101c2e"
+                    border.width: 1
+                    border.color: backend.stateName === "LISTENING" ? "#8fe9ff" : "#29476b"
 
-                    Rectangle {
-                        Layout.preferredWidth: 54
-                        Layout.preferredHeight: 54
-                        radius: 27
-                        color: backend.stateName === "LISTENING" ? "#1f70b8" : "#13253b"
-                        border.width: 1
-                        border.color: backend.stateName === "LISTENING" ? "#90e7ff" : "#28445f"
+                    Text {
+                        anchors.centerIn: parent
+                        text: backend.stateName === "LISTENING" ? "■" : "•"
+                        color: "#effbff"
+                        font.pixelSize: backend.stateName === "LISTENING" ? 16 : 26
+                    }
 
-                        Text {
-                            anchors.centerIn: parent
-                            text: backend.stateName === "LISTENING" ? "■" : "●"
-                            color: "#effbff"
-                            font.pixelSize: 16
-                        }
-
-                        MouseArea {
-                            anchors.fill: parent
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: {
-                                if (backend.stateName === "LISTENING" || backend.stateName === "PROCESSING") {
-                                    backend.cancelRequest()
-                                } else {
-                                    backend.startListening()
-                                }
+                    MouseArea {
+                        anchors.fill: parent
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: {
+                            if (backend.stateName === "LISTENING" || backend.stateName === "PROCESSING") {
+                                backend.cancelRequest()
+                            } else {
+                                backend.startListening()
                             }
                         }
                     }
+                }
 
-                    TextField {
-                        id: promptField
-                        Layout.fillWidth: true
-                        color: "#eff7ff"
-                        font.pixelSize: 16
-                        placeholderText: "Ask naturally"
-                        placeholderTextColor: "#6884a3"
-                        selectByMouse: true
-                        background: Item {}
-                        onAccepted: {
-                            const prompt = text.trim()
+                TextField {
+                    id: promptField
+                    Layout.fillWidth: true
+                    color: "#eff7ff"
+                    font.pixelSize: 17
+                    placeholderText: "Ask naturally"
+                    placeholderTextColor: "#6d89ad"
+                    selectByMouse: true
+                    background: Item {}
+                    onAccepted: {
+                        const prompt = text.trim()
+                        if (prompt.length === 0) {
+                            return
+                        }
+                        backend.submitText(prompt)
+                        text = ""
+                    }
+                }
+
+                Rectangle {
+                    Layout.preferredWidth: 56
+                    Layout.preferredHeight: 56
+                    radius: 28
+                    color: "#142a46"
+                    border.width: 1
+                    border.color: "#3a6fa4"
+
+                    Text {
+                        anchors.centerIn: parent
+                        text: "↗"
+                        color: "#effbff"
+                        font.pixelSize: 18
+                    }
+
+                    MouseArea {
+                        anchors.fill: parent
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: {
+                            const prompt = promptField.text.trim()
                             if (prompt.length === 0) {
                                 return
                             }
                             backend.submitText(prompt)
-                            text = ""
-                        }
-                    }
-
-                    Rectangle {
-                        Layout.preferredWidth: 54
-                        Layout.preferredHeight: 54
-                        radius: 27
-                        color: "#182b45"
-                        border.width: 1
-                        border.color: "#32557d"
-
-                        Text {
-                            anchors.centerIn: parent
-                            text: "↗"
-                            color: "#effbff"
-                            font.pixelSize: 18
-                        }
-
-                        MouseArea {
-                            anchors.fill: parent
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: {
-                                const prompt = promptField.text.trim()
-                                if (prompt.length === 0) {
-                                    return
-                                }
-                                backend.submitText(prompt)
-                                promptField.text = ""
-                            }
+                            promptField.text = ""
                         }
                     }
                 }
@@ -284,9 +299,9 @@ Window {
         JarvisUi.ToastManager {
             id: toastManager
             anchors.right: parent.right
-            anchors.rightMargin: 36
+            anchors.rightMargin: 34
             anchors.bottom: parent.bottom
-            anchors.bottomMargin: 34
+            anchors.bottomMargin: 40
         }
     }
 

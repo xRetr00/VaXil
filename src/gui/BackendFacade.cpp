@@ -3,10 +3,12 @@
 #include <QDir>
 #include <QDirIterator>
 #include <QAudioDevice>
+#include <QDesktopServices>
 #include <QFileInfo>
 #include <QMediaDevices>
 #include <QProcess>
 #include <QStandardPaths>
+#include <QUrl>
 
 #include "core/AssistantController.h"
 #include "overlay/OverlayController.h"
@@ -111,6 +113,82 @@ QString detectPiperVoiceModel(const QString &appDataRoot)
                 }
             }
         }
+    }
+
+    return {};
+}
+
+QString resolveExecutableFromDirectory(const QString &directoryPath, const QStringList &candidateNames)
+{
+    QDir directory(directoryPath);
+    if (!directory.exists()) {
+        return {};
+    }
+
+    for (const QString &name : candidateNames) {
+        const QString direct = directory.absoluteFilePath(name);
+        if (QFileInfo::exists(direct)) {
+            return QFileInfo(direct).absoluteFilePath();
+        }
+    }
+
+    QDirIterator it(directoryPath, QDirIterator::Subdirectories);
+    while (it.hasNext()) {
+        const QString filePath = it.next();
+        QFileInfo info(filePath);
+        if (!info.isFile()) {
+            continue;
+        }
+
+        for (const QString &name : candidateNames) {
+            if (info.fileName().compare(name, Qt::CaseInsensitive) == 0) {
+                return info.absoluteFilePath();
+            }
+        }
+    }
+
+    return {};
+}
+
+QString resolveExecutableSelection(const QString &selection, const QStringList &candidateNames)
+{
+    const QString trimmed = selection.trimmed();
+    if (trimmed.isEmpty()) {
+        return {};
+    }
+
+    QFileInfo info(trimmed);
+    if (info.exists() && info.isFile()) {
+        for (const QString &name : candidateNames) {
+            if (info.fileName().compare(name, Qt::CaseInsensitive) == 0) {
+                return info.absoluteFilePath();
+            }
+        }
+        return {};
+    }
+
+    if (info.exists() && info.isDir()) {
+        return resolveExecutableFromDirectory(info.absoluteFilePath(), candidateNames);
+    }
+
+    return {};
+}
+
+QString resolveVoiceModelSelection(const QString &selection)
+{
+    const QString trimmed = selection.trimmed();
+    if (trimmed.isEmpty()) {
+        return {};
+    }
+
+    QFileInfo info(trimmed);
+    if (info.exists() && info.isFile() && info.suffix().compare(QStringLiteral("onnx"), Qt::CaseInsensitive) == 0) {
+        return info.absoluteFilePath();
+    }
+
+    if (info.exists() && info.isDir()) {
+        const QString found = findFileRecursive(info.absoluteFilePath(), QStringLiteral("*.onnx"));
+        return found;
     }
 
     return {};
@@ -255,7 +333,7 @@ void BackendFacade::saveSettings(
     emit settingsChanged();
 }
 
-void BackendFacade::completeInitialSetup(
+bool BackendFacade::completeInitialSetup(
     const QString &userName,
     const QString &endpoint,
     const QString &modelId,
@@ -267,21 +345,81 @@ void BackendFacade::completeInitialSetup(
     const QString &audioOutputDeviceId,
     bool clickThrough)
 {
+    const QString normalizedEndpoint = endpoint.trimmed();
+    if (normalizedEndpoint.isEmpty()) {
+        setToolInstallStatus(QStringLiteral("LM Studio endpoint is required."));
+        return false;
+    }
+
+    const QStringList modelIds = m_assistantController->availableModelIds();
+    if (modelIds.isEmpty() || !modelIds.contains(modelId)) {
+        setToolInstallStatus(QStringLiteral("Selected AI model is invalid. Refresh models and choose a valid one."));
+        return false;
+    }
+
+    const QString resolvedWhisper = resolveExecutableSelection(
+        whisperPath,
+        {
+            QStringLiteral("whisper-cli.exe"),
+            QStringLiteral("main.exe"),
+            QStringLiteral("whisper.exe")
+        });
+    if (resolvedWhisper.isEmpty()) {
+        setToolInstallStatus(QStringLiteral("Whisper executable is invalid. Use whisper-cli.exe or main.exe from the whisper Release folder."));
+        return false;
+    }
+
+    const QString resolvedPiper = resolveExecutableSelection(
+        piperPath,
+        {
+            QStringLiteral("piper.exe")
+        });
+    if (resolvedPiper.isEmpty()) {
+        setToolInstallStatus(QStringLiteral("Piper executable is invalid. Select piper.exe."));
+        return false;
+    }
+
+    const QString resolvedFfmpeg = resolveExecutableSelection(
+        ffmpegPath,
+        {
+            QStringLiteral("ffmpeg.exe")
+        });
+    if (resolvedFfmpeg.isEmpty()) {
+        setToolInstallStatus(QStringLiteral("FFmpeg executable is invalid. Select ffmpeg.exe."));
+        return false;
+    }
+
+    const QString resolvedVoiceModel = resolveVoiceModelSelection(voicePath);
+    if (resolvedVoiceModel.isEmpty()) {
+        setToolInstallStatus(QStringLiteral("Piper voice model is invalid. Select a valid .onnx model file."));
+        return false;
+    }
+
+    if (!audioInputDeviceId.isEmpty() && !audioInputDeviceIds().contains(audioInputDeviceId)) {
+        setToolInstallStatus(QStringLiteral("Selected microphone is not available anymore."));
+        return false;
+    }
+
+    if (!audioOutputDeviceId.isEmpty() && !audioOutputDeviceIds().contains(audioOutputDeviceId)) {
+        setToolInstallStatus(QStringLiteral("Selected speaker is not available anymore."));
+        return false;
+    }
+
     if (!userName.trimmed().isEmpty()) {
         m_identityProfileService->setUserName(userName.trimmed());
     }
 
     m_assistantController->saveSettings(
-        endpoint,
+        normalizedEndpoint,
         modelId,
         static_cast<int>(ReasoningMode::Balanced),
         true,
         true,
         12000,
-        whisperPath,
-        piperPath,
-        voicePath,
-        ffmpegPath,
+        resolvedWhisper,
+        resolvedPiper,
+        resolvedVoiceModel,
+        resolvedFfmpeg,
         0.89,
         0.93,
         0.02,
@@ -292,9 +430,129 @@ void BackendFacade::completeInitialSetup(
     m_overlayController->setClickThrough(clickThrough);
     m_settings->setInitialSetupCompleted(true);
     m_settings->save();
+    setToolInstallStatus(QStringLiteral("Setup validation passed. Configuration saved."));
     emit profileChanged();
     emit settingsChanged();
     emit initialSetupFinished();
+    return true;
+}
+
+bool BackendFacade::runSetupVoiceTest(
+    const QString &userName,
+    const QString &endpoint,
+    const QString &modelId,
+    const QString &whisperPath,
+    const QString &piperPath,
+    const QString &voicePath,
+    const QString &ffmpegPath,
+    const QString &audioInputDeviceId,
+    const QString &audioOutputDeviceId,
+    bool clickThrough)
+{
+    const QString normalizedEndpoint = endpoint.trimmed();
+    if (normalizedEndpoint.isEmpty()) {
+        setToolInstallStatus(QStringLiteral("LM Studio endpoint is required before running a voice test."));
+        return false;
+    }
+
+    const QStringList modelIds = m_assistantController->availableModelIds();
+    if (modelIds.isEmpty() || !modelIds.contains(modelId)) {
+        setToolInstallStatus(QStringLiteral("Selected AI model is invalid. Refresh models and choose a valid one."));
+        return false;
+    }
+
+    const QString resolvedWhisper = resolveExecutableSelection(
+        whisperPath,
+        {
+            QStringLiteral("whisper-cli.exe"),
+            QStringLiteral("main.exe"),
+            QStringLiteral("whisper.exe")
+        });
+    if (resolvedWhisper.isEmpty()) {
+        setToolInstallStatus(QStringLiteral("Whisper executable is invalid. Use whisper-cli.exe or main.exe from the whisper Release folder."));
+        return false;
+    }
+
+    const QString resolvedPiper = resolveExecutableSelection(
+        piperPath,
+        {
+            QStringLiteral("piper.exe")
+        });
+    if (resolvedPiper.isEmpty()) {
+        setToolInstallStatus(QStringLiteral("Piper executable is invalid. Select piper.exe."));
+        return false;
+    }
+
+    const QString resolvedFfmpeg = resolveExecutableSelection(
+        ffmpegPath,
+        {
+            QStringLiteral("ffmpeg.exe")
+        });
+    if (resolvedFfmpeg.isEmpty()) {
+        setToolInstallStatus(QStringLiteral("FFmpeg executable is invalid. Select ffmpeg.exe."));
+        return false;
+    }
+
+    const QString resolvedVoiceModel = resolveVoiceModelSelection(voicePath);
+    if (resolvedVoiceModel.isEmpty()) {
+        setToolInstallStatus(QStringLiteral("Piper voice model is invalid. Select a valid .onnx model file."));
+        return false;
+    }
+
+    if (!audioInputDeviceId.isEmpty() && !audioInputDeviceIds().contains(audioInputDeviceId)) {
+        setToolInstallStatus(QStringLiteral("Selected microphone is not available anymore."));
+        return false;
+    }
+
+    if (!audioOutputDeviceId.isEmpty() && !audioOutputDeviceIds().contains(audioOutputDeviceId)) {
+        setToolInstallStatus(QStringLiteral("Selected speaker is not available anymore."));
+        return false;
+    }
+
+    m_assistantController->saveSettings(
+        normalizedEndpoint,
+        modelId,
+        static_cast<int>(ReasoningMode::Balanced),
+        true,
+        true,
+        12000,
+        resolvedWhisper,
+        resolvedPiper,
+        resolvedVoiceModel,
+        resolvedFfmpeg,
+        0.89,
+        0.93,
+        0.02,
+        audioInputDeviceId,
+        audioOutputDeviceId,
+        clickThrough);
+
+    const QString caller = userName.trimmed().isEmpty() ? QStringLiteral("Sir") : userName.trimmed();
+    const QString testPrompt = QStringLiteral("Reply with exactly one calm, confident sentence greeting %1. No markdown.").arg(caller);
+    m_assistantController->submitText(testPrompt);
+    setToolInstallStatus(QStringLiteral("Voice test sent to the AI model. Listen for J.A.R.V.I.S output."));
+    emit settingsChanged();
+    return true;
+}
+
+void BackendFacade::openContainingDirectory(const QString &path)
+{
+    const QString trimmed = path.trimmed();
+    if (trimmed.isEmpty()) {
+        return;
+    }
+
+    QFileInfo info(trimmed);
+    QString directoryPath;
+    if (info.exists() && info.isDir()) {
+        directoryPath = info.absoluteFilePath();
+    } else if (info.exists() && info.isFile()) {
+        directoryPath = info.absolutePath();
+    } else {
+        return;
+    }
+
+    QDesktopServices::openUrl(QUrl::fromLocalFile(directoryPath));
 }
 
 void BackendFacade::setToolInstallStatus(const QString &status)

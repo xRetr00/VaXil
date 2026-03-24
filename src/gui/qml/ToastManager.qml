@@ -7,7 +7,7 @@ Item {
     property string lastMessage: ""
 
     width: 320
-    height: 240
+    height: 360
 
     ListModel {
         id: toastModel
@@ -45,7 +45,7 @@ Item {
     Column {
         anchors.right: parent.right
         anchors.bottom: parent.bottom
-        spacing: 10
+        spacing: 12
 
         Repeater {
             model: toastModel
@@ -55,20 +55,29 @@ Item {
                 required property string message
                 required property string tone
 
-                width: 300
-                height: 64
-                radius: 22
-                color: "#8f09101a"
+                width: 286
+                height: 58
+                radius: 29
+                color: "#7d07111a"
                 border.width: 1
-                border.color: tone === "error" ? "#7d4b6d" : tone === "response" ? "#3567aa" : "#274c6a"
-                opacity: 0.94
+                border.color: tone === "error" ? "#7e4964" : tone === "response" ? "#426aa8" : "#2d4662"
+                opacity: 0.96
+
+                Rectangle {
+                    anchors.fill: parent
+                    radius: parent.radius
+                    color: "transparent"
+                    border.width: 1
+                    border.color: "#30d7e8ff"
+                    opacity: tone === "response" ? 0.18 : 0.08
+                }
 
                 Rectangle {
                     x: 14
                     y: parent.height / 2 - height / 2
-                    width: 8
-                    height: 8
-                    radius: 4
+                    width: 10
+                    height: 10
+                    radius: 5
                     color: tone === "error" ? "#ff8fb5" : tone === "response" ? "#8ae6ff" : "#8da7ff"
                 }
 
@@ -76,22 +85,20 @@ Item {
                     anchors.left: parent.left
                     anchors.right: parent.right
                     anchors.verticalCenter: parent.verticalCenter
-                    anchors.leftMargin: 34
-                    anchors.rightMargin: 18
+                    anchors.leftMargin: 36
+                    anchors.rightMargin: 20
                     text: message
                     color: "#ecf7ff"
-                    font.pixelSize: 14
+                    font.pixelSize: 13
                     wrapMode: Text.Wrap
                     maximumLineCount: 2
                     elide: Text.ElideRight
                 }
 
-                transform: Translate { y: index * 0 }
-
                 SequentialAnimation on opacity {
                     running: true
                     loops: 1
-                    PauseAnimation { duration: 4200 }
+                    PauseAnimation { duration: 3800 }
                     NumberAnimation { to: 0.0; duration: 260; easing.type: Easing.InCubic }
                     onFinished: {
                         if (index < toastModel.count) {

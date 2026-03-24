@@ -198,10 +198,8 @@ void OverlayController::positionWindow() const
         return;
     }
 
-    const QRect area = screen->availableGeometry();
-    const int x = area.x() + (area.width() - m_window->width()) / 2;
-    const int y = area.y() + (area.height() - m_window->height()) / 2 - area.height() / 12;
-    m_window->setPosition(x, y);
+    const QRect area = screen->geometry();
+    m_window->setGeometry(area);
 }
 
 bool OverlayController::isUserActive() const
