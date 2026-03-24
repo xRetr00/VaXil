@@ -93,12 +93,25 @@ bool matchesWakeWordToken(const QString &token, const QString &wakeWord)
         return false;
     }
 
-    if (normalizedToken == normalizedWakeWord) {
-        return true;
+    const QStringList candidates = {
+        normalizedWakeWord,
+        QStringLiteral("jervis"),
+        QStringLiteral("jervus"),
+        QStringLiteral("jarviss")
+    };
+
+    for (const QString &candidate : candidates) {
+        if (normalizedToken == candidate) {
+            return true;
+        }
+
+        const int distance = editDistance(normalizedToken, candidate);
+        if (distance <= 2 && normalizedToken.size() >= std::max(3, static_cast<int>(candidate.size()) - 2)) {
+            return true;
+        }
     }
 
-    const int distance = editDistance(normalizedToken, normalizedWakeWord);
-    return distance <= 2 && normalizedToken.size() >= std::max(3, normalizedWakeWord.size() - 2);
+    return false;
 }
 
 bool extractWakeWordPayload(const QString &input, const QString &wakeWord, QString *payload)
@@ -220,6 +233,33 @@ void AssistantController::initialize()
             m_loggingService->info(QStringLiteral("Audio speech detected. mode=%1").arg(mode));
         }
     });
+    connect(m_audioInputService, &AudioInputService::captureWindowElapsed, this, [this](bool hadSpeech) {
+        if (m_loggingService) {
+            const QString mode = m_audioCaptureMode == AudioCaptureMode::WakeMonitor
+                ? QStringLiteral("wake-monitor")
+                : m_audioCaptureMode == AudioCaptureMode::Direct
+                    ? QStringLiteral("direct")
+                    : QStringLiteral("none");
+            m_loggingService->info(QStringLiteral("Audio capture window elapsed. mode=%1 hadSpeech=%2")
+                .arg(mode)
+                .arg(hadSpeech ? QStringLiteral("true") : QStringLiteral("false")));
+        }
+
+        if (!hadSpeech) {
+            m_audioInputService->stop();
+            m_audioCaptureMode = AudioCaptureMode::None;
+            m_lastCompletedCaptureMode = AudioCaptureMode::None;
+            if (m_wakeMonitorEnabled) {
+                scheduleWakeMonitorRestart(50);
+            } else {
+                setStatus(QStringLiteral("No speech detected"));
+                emit idleRequested();
+            }
+            return;
+        }
+
+        stopListening();
+    });
     connect(m_audioInputService, &AudioInputService::speechEnded, this, &AssistantController::stopListening);
 
     connect(m_whisperSttEngine, &WhisperSttEngine::transcriptionReady, this, [this](const TranscriptionResult &result) {
@@ -329,7 +369,7 @@ void AssistantController::initialize()
         if (requestId == m_activeRequestId) {
             if (m_loggingService) {
                 m_loggingService->error(QStringLiteral("LM Studio request failed. requestId=%1 error=\"%2\"")
-                    .arg(requestId, errorText));
+                    .arg(QString::number(requestId), errorText));
             }
             const QString errorGroup = errorText.contains(QStringLiteral("timed out"), Qt::CaseInsensitive)
                 ? QStringLiteral("error_timeout")

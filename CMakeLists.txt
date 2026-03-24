@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.27)
 
-project(JARVIS VERSION 0.1.0 LANGUAGES CXX)
+project(JARVIS VERSION 0.1.0 LANGUAGES C CXX)
 
 include(FetchContent)
 enable_language(RC)
@@ -45,6 +45,13 @@ if(NOT spdlog_FOUND)
     )
     FetchContent_MakeAvailable(spdlog)
 endif()
+
+FetchContent_Declare(
+    libfvad
+    GIT_REPOSITORY https://github.com/dpirch/libfvad.git
+    GIT_TAG v1.0
+)
+FetchContent_MakeAvailable(libfvad)
 
 qt_standard_project_setup(REQUIRES 6.6)
 
@@ -112,7 +119,12 @@ qt_add_shaders(jarvis_lib "jarvis_shaders"
         src/gui/shaders/orb.frag
 )
 
-target_include_directories(jarvis_lib PUBLIC src)
+target_include_directories(jarvis_lib
+    PUBLIC
+        src
+    PRIVATE
+        ${libfvad_SOURCE_DIR}/include
+)
 target_compile_definitions(jarvis_lib PUBLIC JARVIS_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
 
 target_link_libraries(jarvis_lib
@@ -128,6 +140,7 @@ target_link_libraries(jarvis_lib
         Qt6::Widgets
         nlohmann_json::nlohmann_json
         spdlog::spdlog
+        fvad
 )
 
 qt_add_executable(jarvis
