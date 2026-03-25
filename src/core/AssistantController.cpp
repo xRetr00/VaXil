@@ -380,6 +380,8 @@ bool isExplicitAgentWorldQuery(const QString &input)
         QStringLiteral("search the web"),
         QStringLiteral("reach the web"),
         QStringLiteral("browse the web"),
+        QStringLiteral("search web"),
+        QStringLiteral("web search"),
         QStringLiteral("latest news"),
         QStringLiteral("today"),
         QStringLiteral("read your own logs"),
@@ -387,11 +389,81 @@ bool isExplicitAgentWorldQuery(const QString &input)
         QStringLiteral("startup log"),
         QStringLiteral("jarvis log"),
         QStringLiteral("correct tools available"),
+        QStringLiteral("what are the tools"),
         QStringLiteral("what tools"),
+        QStringLiteral("reach the tools"),
+        QStringLiteral("what are your tools"),
+        QStringLiteral("tool list"),
         QStringLiteral("tools available"),
         QStringLiteral("what can you access"),
         QStringLiteral("latest model")
     });
+}
+
+bool isExplicitToolInventoryQuery(const QString &input)
+{
+    return containsAnyNormalized(input, {
+        QStringLiteral("what are the tools"),
+        QStringLiteral("what tools"),
+        QStringLiteral("what are your tools"),
+        QStringLiteral("tool list"),
+        QStringLiteral("tools available"),
+        QStringLiteral("reach the tools"),
+        QStringLiteral("what can you access"),
+        QStringLiteral("what tools can you reach"),
+        QStringLiteral("correct tools available")
+    });
+}
+
+bool isExplicitWebSearchQuery(const QString &input)
+{
+    return containsAnyNormalized(input, {
+        QStringLiteral("search the web"),
+        QStringLiteral("search web"),
+        QStringLiteral("browse the web"),
+        QStringLiteral("web search"),
+        QStringLiteral("latest news"),
+        QStringLiteral("latest model"),
+        QStringLiteral("reach the web")
+    });
+}
+
+QString extractWebSearchQuery(QString input)
+{
+    input = input.trimmed();
+    input.remove(QRegularExpression(QStringLiteral("^(yeah|yes|okay|ok|please|jarvis)\\s*,?\\s*"),
+                                    QRegularExpression::CaseInsensitiveOption));
+    input.remove(QRegularExpression(QStringLiteral("^(can you|could you|would you|please)\\s+"),
+                                    QRegularExpression::CaseInsensitiveOption));
+    input.remove(QRegularExpression(QStringLiteral("^(search|browse)\\s+(the\\s+)?web\\s+(for|about|on)\\s+"),
+                                    QRegularExpression::CaseInsensitiveOption));
+    input.remove(QRegularExpression(QStringLiteral("^(search|browse)\\s+(the\\s+)?web\\s*"),
+                                    QRegularExpression::CaseInsensitiveOption));
+    input.remove(QRegularExpression(QStringLiteral("^(what('?s| is)\\s+the\\s+latest\\s+model)"),
+                                    QRegularExpression::CaseInsensitiveOption));
+    input.remove(QRegularExpression(QStringLiteral("^(latest\\s+news\\s+(in|about)\\s+)"),
+                                    QRegularExpression::CaseInsensitiveOption));
+    input = input.trimmed();
+    input.remove(QRegularExpression(QStringLiteral("^[\\s,.:;!?-]+|[\\s,.:;!?-]+$")));
+    return input.trimmed();
+}
+
+QString groundedToolInventoryText(const QList<AgentToolSpec> &tools)
+{
+    QStringList names;
+    for (const auto &tool : tools) {
+        if (!tool.name.isEmpty()) {
+            names.push_back(tool.name);
+        }
+    }
+    names.removeDuplicates();
+    return QStringLiteral("I can use these tools right now: %1. File reads can access readable paths on this PC. File writes stay sandboxed to the app roots.")
+        .arg(names.join(QStringLiteral(", ")));
+}
+
+int effectiveRequestTimeoutMs(const AppSettings *settings)
+{
+    return std::max(30000, settings != nullptr ? settings->requestTimeoutMs() : 30000);
 }
 
 IntentType expectedAgentIntentForQuery(const QString &input)
@@ -941,6 +1013,36 @@ void AssistantController::submitText(const QString &text)
         deliverLocalResponse(
             m_localResponseEngine->respondToError(QStringLiteral("ai_offline"), buildLocalResponseContext()),
             QStringLiteral("AI unavailable"),
+            true);
+        return;
+    }
+
+    if (isExplicitToolInventoryQuery(routedInput)) {
+        deliverLocalResponse(
+            groundedToolInventoryText(m_agentToolbox->builtInTools()),
+            QStringLiteral("Tool inventory"),
+            true);
+        return;
+    }
+
+    if (isExplicitWebSearchQuery(routedInput)) {
+        const QString extractedQuery = extractWebSearchQuery(routedInput);
+        if (extractedQuery.isEmpty() || extractedQuery.compare(routedInput, Qt::CaseInsensitive) == 0) {
+            deliverLocalResponse(
+                QStringLiteral("Yes. Tell me what you want me to search for, and I'll show the result in the panel."),
+                QStringLiteral("Web search ready"),
+                true);
+            return;
+        }
+
+        AgentTask task;
+        task.type = QStringLiteral("web_search");
+        task.args = QJsonObject{{QStringLiteral("query"), extractedQuery}};
+        task.priority = 85;
+        dispatchBackgroundTasks({task});
+        deliverLocalResponse(
+            QStringLiteral("All right, I'm searching the web now. The result will show up in the panel."),
+            QStringLiteral("Background task queued"),
             true);
         return;
     }
@@ -1904,7 +2006,7 @@ void AssistantController::startConversationRequest(const QString &input)
         .topP = m_settings->conversationTopP(),
         .providerTopK = m_settings->providerTopK(),
         .maxTokens = m_settings->maxOutputTokens(),
-        .timeout = std::chrono::milliseconds(m_settings->requestTimeoutMs())
+        .timeout = std::chrono::milliseconds(effectiveRequestTimeoutMs(m_settings))
     });
 }
 
@@ -1952,7 +2054,7 @@ void AssistantController::startAgentConversationRequest(const QString &input, In
         .topP = m_settings->conversationTopP(),
         .providerTopK = m_settings->providerTopK(),
         .maxTokens = m_settings->maxOutputTokens(),
-        .timeout = std::chrono::milliseconds(m_settings->requestTimeoutMs())
+        .timeout = std::chrono::milliseconds(effectiveRequestTimeoutMs(m_settings))
     });
 }
 
@@ -1987,7 +2089,7 @@ void AssistantController::continueAgentConversation(const QList<AgentToolResult>
         .toolResults = results,
         .sampling = samplingProfile(),
         .mode = m_settings->defaultReasoningMode(),
-        .timeout = std::chrono::milliseconds(m_settings->requestTimeoutMs())
+        .timeout = std::chrono::milliseconds(effectiveRequestTimeoutMs(m_settings))
     };
     m_activeRequestId = m_aiBackendClient->sendAgentRequest(request);
 }
@@ -2020,7 +2122,7 @@ void AssistantController::startCommandRequest(const QString &input)
          .topP = m_settings->conversationTopP(),
          .providerTopK = m_settings->providerTopK(),
          .maxTokens = m_settings->maxOutputTokens(),
-         .timeout = std::chrono::milliseconds(m_settings->requestTimeoutMs())});
+         .timeout = std::chrono::milliseconds(effectiveRequestTimeoutMs(m_settings))});
 }
 
 void AssistantController::handleConversationFinished(const QString &text)

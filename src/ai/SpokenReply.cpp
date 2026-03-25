@@ -13,7 +13,8 @@ QString stripCodeFences(QString text)
 
 QString stripHiddenReasoning(QString text)
 {
-    text.replace(QRegularExpression(QStringLiteral("(?is)<think>.*?</think>")), QStringLiteral(" "));
+    text.replace(QRegularExpression(QStringLiteral("(?is)<think>.*?(</think>|$)")), QStringLiteral(" "));
+    text.replace(QRegularExpression(QStringLiteral("(?is)</?think>")), QStringLiteral(" "));
     text.replace(QRegularExpression(QStringLiteral("(?im)^\\s*(reasoning|analysis|thought process)\\s*:\\s*.*$")), QStringLiteral(" "));
     text.replace(QRegularExpression(QStringLiteral("(?im)^\\s*(assistant|system|developer)\\s*:\\s*")), QStringLiteral(" "));
     text.replace(QStringLiteral("/no_think"), QStringLiteral(" "));
