@@ -79,6 +79,9 @@ QList<ToolInfo> ToolManager::scan()
                       root + QStringLiteral("/sherpa-onnx/bin/sherpa-onnx.exe"),
                       sourceRoot + QStringLiteral("/sherpa-onnx/sherpa-onnx-v1.12.33-win-x64-shared-MD-Release-no-tts/bin/sherpa-onnx.exe")
                   }, false, true),
+        probeTool(QStringLiteral("sentencepiece"), QStringLiteral("wake"), {
+                      sourceRoot + QStringLiteral("/sentencepiece/CMakeLists.txt")
+                  }, false, true),
         probeTool(QStringLiteral("silero-vad-model"), QStringLiteral("vad"), {
                       root + QStringLiteral("/models/silero/silero_vad.onnx"),
                       sourceRoot + QStringLiteral("/models/silero_vad.onnx")
@@ -218,6 +221,15 @@ ToolManager::DownloadDescriptor ToolManager::descriptorForName(const QString &na
             .category = QStringLiteral("wake"),
             .url = QStringLiteral("https://github.com/k2-fsa/sherpa-onnx/archive/refs/heads/master.zip"),
             .relativeTargetPath = QStringLiteral("archives/sherpa-onnx-master.zip"),
+            .extractArchive = true
+        };
+    }
+    if (name == QStringLiteral("sentencepiece")) {
+        return {
+            .name = name,
+            .category = QStringLiteral("wake"),
+            .url = QStringLiteral("https://github.com/google/sentencepiece/archive/refs/tags/v0.2.1.zip"),
+            .relativeTargetPath = QStringLiteral("archives/sentencepiece-v0.2.1.zip"),
             .extractArchive = true
         };
     }

@@ -6,6 +6,7 @@
 #include <QFileInfo>
 #include <QLocale>
 #include <QRegularExpression>
+#include <QStandardPaths>
 #include <QTimer>
 #include <QTime>
 #include <QVector>
@@ -596,8 +597,8 @@ void AssistantController::startWakeMonitor()
     }
 
     if (!m_wakeWordEngine->start(
-            m_settings->preciseEngineExecutable(),
-            m_settings->preciseModelPath(),
+            resolveWakeEngineRuntimePath(),
+            resolveWakeEngineModelPath(),
             static_cast<float>(m_settings->preciseTriggerThreshold()),
             m_settings->preciseTriggerCooldownMs(),
             m_settings->selectedAudioInputDeviceId())) {
@@ -693,6 +694,7 @@ void AssistantController::saveSettings(
     const QString &audioOutputDeviceId,
     bool clickThrough)
 {
+    const QString previousWakeEngineKind = m_settings->wakeEngineKind();
     m_settings->setChatBackendEndpoint(endpoint);
     m_settings->setChatBackendModel(modelId);
     m_settings->setDefaultReasoningMode(static_cast<ReasoningMode>(defaultMode));
@@ -722,6 +724,10 @@ void AssistantController::saveSettings(
     m_settings->save();
     refreshModels();
     setStatus(QStringLiteral("Settings saved"));
+    if (previousWakeEngineKind != m_settings->wakeEngineKind()) {
+        createWakeWordEngine();
+        bindWakeWordEngineSignals();
+    }
     if (m_wakeWordEngine->isActive()) {
         stopWakeMonitor();
     }
@@ -1003,8 +1009,45 @@ bool AssistantController::canStartWakeMonitor() const
         && !isMicrophoneBlocked()
         && !m_audioInputService->isActive()
         && !m_ttsEngine->isSpeaking()
-        && !m_settings->preciseEngineExecutable().isEmpty()
-        && !m_settings->preciseModelPath().isEmpty();
+        && !resolveWakeEngineRuntimePath().isEmpty()
+        && !resolveWakeEngineModelPath().isEmpty();
+}
+
+QString AssistantController::resolveWakeEngineRuntimePath() const
+{
+    if (m_settings->wakeEngineKind() == QStringLiteral("sherpa-onnx")) {
+        return firstExistingPath({
+            QStringLiteral(JARVIS_SOURCE_DIR) + QStringLiteral("/third_party/sherpa-onnx/sherpa-onnx-v1.12.33-win-x64-shared-MD-Release-no-tts"),
+            QStandardPaths::writableLocation(QStandardPaths::AppDataLocation)
+                + QStringLiteral("/third_party/sherpa-onnx/sherpa-onnx-v1.12.33-win-x64-shared-MD-Release-no-tts"),
+            QStandardPaths::writableLocation(QStandardPaths::AppDataLocation)
+                + QStringLiteral("/third_party/sherpa-onnx")
+        });
+    }
+
+    return m_settings->preciseEngineExecutable();
+}
+
+QString AssistantController::resolveWakeEngineModelPath() const
+{
+    if (m_settings->wakeEngineKind() == QStringLiteral("sherpa-onnx")) {
+        return firstExistingPath({
+            QStringLiteral(JARVIS_SOURCE_DIR) + QStringLiteral("/third_party/sherpa-kws-model/sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01"),
+            QStandardPaths::writableLocation(QStandardPaths::AppDataLocation)
+                + QStringLiteral("/third_party/sherpa-kws-model/sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01"),
+            QStandardPaths::writableLocation(QStandardPaths::AppDataLocation)
+                + QStringLiteral("/third_party/models/sherpa-kws/sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01")
+        });
+    }
+
+    return m_settings->preciseModelPath();
+}
+
+QString AssistantController::wakeEngineDisplayName() const
+{
+    return m_settings->wakeEngineKind() == QStringLiteral("sherpa-onnx")
+        ? QStringLiteral("sherpa-onnx")
+        : QStringLiteral("Precise");
 }
 
 bool AssistantController::startAudioCapture(AudioCaptureMode mode, bool announceListening)

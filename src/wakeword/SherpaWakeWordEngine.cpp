@@ -8,6 +8,7 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QMediaDevices>
+#include <QRegularExpression>
 #include <QStandardPaths>
 #include <QStringList>
 

@@ -284,7 +284,7 @@ void AppSettings::setWakeWordPhrase(const QString &wakeWordPhrase)
 QString AppSettings::wakeEngineKind() const { return m_wakeEngineKind; }
 void AppSettings::setWakeEngineKind(const QString &kind)
 {
-    m_wakeEngineKind = kind.trimmed().isEmpty() ? QStringLiteral("precise") : kind.trimmed();
+    m_wakeEngineKind = kind.trimmed().isEmpty() ? QStringLiteral("sherpa-onnx") : kind.trimmed();
     emit settingsChanged();
 }
 QString AppSettings::storagePath() const { return settingsFilePath(); }

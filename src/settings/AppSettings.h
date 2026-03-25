@@ -148,5 +148,5 @@ private:
     bool m_clickThroughEnabled = true;
     bool m_initialSetupCompleted = false;
     QString m_wakeWordPhrase = QStringLiteral("Jarvis");
-    QString m_wakeEngineKind = QStringLiteral("precise");
+    QString m_wakeEngineKind = QStringLiteral("sherpa-onnx");
 };

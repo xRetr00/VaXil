@@ -81,6 +81,10 @@ $sherpaKwsArchive = Join-Path $downloadsRoot $sherpaKwsAsset
 $sherpaKwsExtractRoot = Join-Path $thirdPartyRoot "sherpa-kws-model"
 $sherpaKwsUrl = "https://github.com/k2-fsa/sherpa-onnx/releases/download/kws-models/$sherpaKwsAsset"
 
+$sentencepieceArchive = Join-Path $downloadsRoot "sentencepiece-v0.2.1.zip"
+$sentencepieceExtractRoot = Join-Path $thirdPartyRoot "sentencepiece"
+$sentencepieceUrl = "https://github.com/google/sentencepiece/archive/refs/tags/v0.2.1.zip"
+
 $rnnoiseArchive = Join-Path $downloadsRoot "rnnoise-main.zip"
 $rnnoiseExtractRoot = Join-Path $thirdPartyRoot "rnnoise"
 $rnnoiseUrl = "https://github.com/xiph/rnnoise/archive/refs/heads/main.zip"
@@ -104,6 +108,15 @@ if (-not (Test-Path $sherpaKwsArchive)) {
 }
 Expand-TarBz2 $sherpaKwsArchive $sherpaKwsExtractRoot
 
+if (-not (Test-Path $sentencepieceArchive)) {
+    Download-File $sentencepieceUrl $sentencepieceArchive
+}
+Expand-Zip $sentencepieceArchive $thirdPartyRoot
+if (Test-Path (Join-Path $thirdPartyRoot "sentencepiece")) {
+    Remove-Item -Recurse -Force (Join-Path $thirdPartyRoot "sentencepiece")
+}
+Rename-Item (Join-Path $thirdPartyRoot "sentencepiece-0.2.1") $sentencepieceExtractRoot
+
 if (-not (Test-Path $rnnoiseArchive)) {
     Download-File $rnnoiseUrl $rnnoiseArchive
 }
@@ -115,4 +128,5 @@ Write-Host "ONNX Runtime: $onnxExtractRoot"
 Write-Host "Silero model: $sileroModelPath"
 Write-Host "sherpa-onnx: $sherpaExtractRoot"
 Write-Host "sherpa kws model: $sherpaKwsExtractRoot"
+Write-Host "SentencePiece source: $sentencepieceExtractRoot"
 Write-Host "RNNoise source: $rnnoiseExtractRoot"
