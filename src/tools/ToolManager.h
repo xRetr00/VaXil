@@ -51,6 +51,7 @@ private:
         QString url;
         QString relativeTargetPath;
         bool extractArchive = false;
+        QString extractDestinationDir;
         QString sha256;
     };
 

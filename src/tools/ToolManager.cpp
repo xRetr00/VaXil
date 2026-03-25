@@ -9,6 +9,7 @@
 #include <QProcess>
 #include <QRegularExpression>
 #include <QStandardPaths>
+#include <QDirIterator>
 #include <QVariantMap>
 
 namespace {
@@ -44,6 +45,27 @@ QString sha256ForFile(const QString &path)
     return QString::fromLatin1(hash.result().toHex());
 }
 
+QString findFirstRecursive(const QString &rootPath, const QStringList &patterns)
+{
+    if (rootPath.isEmpty() || !QFileInfo::exists(rootPath)) {
+        return {};
+    }
+
+    QDirIterator it(rootPath, patterns, QDir::Files | QDir::Readable, QDirIterator::Subdirectories);
+    if (it.hasNext()) {
+        return QFileInfo(it.next()).absoluteFilePath();
+    }
+
+    return {};
+}
+
+QString appToolsRoot()
+{
+    const QString root = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + QStringLiteral("/tools");
+    QDir().mkpath(root);
+    return root;
+}
+
 QVariantMap toVariantMap(const ToolInfo &info)
 {
     QVariantMap map;
@@ -67,19 +89,23 @@ ToolManager::ToolManager(QObject *parent)
 QList<ToolInfo> ToolManager::scan()
 {
     const QString root = toolsRoot();
+    const QString appTools = appToolsRoot();
     const QString sourceRoot = QStringLiteral(JARVIS_SOURCE_DIR) + QStringLiteral("/third_party");
     m_tools = {
         probeTool(QStringLiteral("onnxruntime"), QStringLiteral("runtime"), {
-                      root + QStringLiteral("/onnxruntime/lib/onnxruntime.dll"),
-                      root + QStringLiteral("/onnxruntime/bin/onnxruntime.dll"),
-                      sourceRoot + QStringLiteral("/onnxruntime/onnxruntime-win-x64-1.24.4/lib/onnxruntime.dll")
+                      findFirstRecursive(root + QStringLiteral("/onnxruntime"), {QStringLiteral("onnxruntime.dll")}),
+                      findFirstRecursive(sourceRoot + QStringLiteral("/onnxruntime"), {QStringLiteral("onnxruntime.dll")})
                   }, true, true),
         probeTool(QStringLiteral("sherpa-onnx"), QStringLiteral("wake"), {
-                      root + QStringLiteral("/sherpa-onnx/sherpa-onnx.exe"),
-                      root + QStringLiteral("/sherpa-onnx/bin/sherpa-onnx.exe"),
-                      sourceRoot + QStringLiteral("/sherpa-onnx/sherpa-onnx-v1.12.33-win-x64-shared-MD-Release-no-tts/bin/sherpa-onnx.exe")
-                  }, false, true),
+                      findFirstRecursive(root + QStringLiteral("/sherpa-onnx"), {QStringLiteral("sherpa-onnx.exe"), QStringLiteral("sherpa-onnx-c-api.dll")}),
+                      findFirstRecursive(sourceRoot + QStringLiteral("/sherpa-onnx"), {QStringLiteral("sherpa-onnx.exe"), QStringLiteral("sherpa-onnx-c-api.dll")})
+                  }, true, true),
+        probeTool(QStringLiteral("sherpa-kws-model"), QStringLiteral("wake"), {
+                      findFirstRecursive(root + QStringLiteral("/sherpa-kws-model"), {QStringLiteral("tokens.txt"), QStringLiteral("encoder-*.onnx")}),
+                      findFirstRecursive(sourceRoot + QStringLiteral("/sherpa-kws-model"), {QStringLiteral("tokens.txt"), QStringLiteral("encoder-*.onnx")})
+                  }, true, true),
         probeTool(QStringLiteral("sentencepiece"), QStringLiteral("wake"), {
+                      findFirstRecursive(root + QStringLiteral("/sentencepiece"), {QStringLiteral("CMakeLists.txt")}),
                       sourceRoot + QStringLiteral("/sentencepiece/CMakeLists.txt")
                   }, false, true),
         probeTool(QStringLiteral("silero-vad-model"), QStringLiteral("vad"), {
@@ -87,15 +113,31 @@ QList<ToolInfo> ToolManager::scan()
                       sourceRoot + QStringLiteral("/models/silero_vad.onnx")
                   }, true, true),
         probeTool(QStringLiteral("rnnoise"), QStringLiteral("audio"), {
-                      root + QStringLiteral("/rnnoise/rnnoise.dll"),
-                      root + QStringLiteral("/rnnoise/bin/rnnoise.dll"),
-                      sourceRoot + QStringLiteral("/rnnoise/rnnoise-main")
+                      findFirstRecursive(root + QStringLiteral("/rnnoise"), {QStringLiteral("rnnoise.h")}),
+                      findFirstRecursive(sourceRoot + QStringLiteral("/rnnoise"), {QStringLiteral("rnnoise.h")})
                   }, false, true),
-        probeTool(QStringLiteral("piper"), QStringLiteral("tts"), {
-                      root + QStringLiteral("/piper/piper.exe")
+        probeTool(QStringLiteral("speexdsp"), QStringLiteral("audio"), {
+                      findFirstRecursive(root + QStringLiteral("/speexdsp"), {QStringLiteral("speex_echo.h")}),
+                      findFirstRecursive(sourceRoot + QStringLiteral("/speexdsp"), {QStringLiteral("speex_echo.h")})
+                  }, false, true),
+        probeTool(QStringLiteral("whisper.cpp"), QStringLiteral("stt"), {
+                      QStandardPaths::findExecutable(QStringLiteral("whisper-cli")),
+                      QStandardPaths::findExecutable(QStringLiteral("main")),
+                      appTools + QStringLiteral("/whisper/whisper-cli.exe"),
+                      appTools + QStringLiteral("/whisper/main.exe"),
+                      findFirstRecursive(appTools + QStringLiteral("/whisper"), {QStringLiteral("whisper-cli.exe"), QStringLiteral("main.exe")})
                   }, true, false),
-        probeTool(QStringLiteral("qwen3-tts"), QStringLiteral("tts"), {
-                      root + QStringLiteral("/qwen3-tts/qwen3-tts.exe")
+        probeTool(QStringLiteral("ffmpeg"), QStringLiteral("audio"), {
+                      QStandardPaths::findExecutable(QStringLiteral("ffmpeg")),
+                      appTools + QStringLiteral("/ffmpeg/ffmpeg.exe"),
+                      appTools + QStringLiteral("/ffmpeg/bin/ffmpeg.exe"),
+                      findFirstRecursive(appTools + QStringLiteral("/ffmpeg"), {QStringLiteral("ffmpeg.exe")})
+                  }, true, false),
+        probeTool(QStringLiteral("piper"), QStringLiteral("tts"), {
+                      QStandardPaths::findExecutable(QStringLiteral("piper")),
+                      appTools + QStringLiteral("/piper/piper.exe"),
+                      appTools + QStringLiteral("/piper/bin/piper.exe"),
+                      findFirstRecursive(appTools + QStringLiteral("/piper"), {QStringLiteral("piper.exe")})
                   }, false, false)
     };
     return m_tools;
@@ -201,9 +243,10 @@ ToolManager::DownloadDescriptor ToolManager::descriptorForName(const QString &na
         return {
             .name = name,
             .category = QStringLiteral("runtime"),
-            .url = QStringLiteral("https://github.com/microsoft/onnxruntime/archive/refs/heads/main.zip"),
-            .relativeTargetPath = QStringLiteral("archives/onnxruntime-main.zip"),
-            .extractArchive = true
+            .url = QStringLiteral("https://github.com/microsoft/onnxruntime/releases/download/v1.23.2/onnxruntime-win-x64-1.23.2.zip"),
+            .relativeTargetPath = QStringLiteral("archives/onnxruntime-win-x64-1.23.2.zip"),
+            .extractArchive = true,
+            .extractDestinationDir = QStringLiteral("onnxruntime")
         };
     }
     if (name == QStringLiteral("rnnoise-source") || name == QStringLiteral("rnnoise")) {
@@ -212,16 +255,38 @@ ToolManager::DownloadDescriptor ToolManager::descriptorForName(const QString &na
             .category = QStringLiteral("audio"),
             .url = QStringLiteral("https://github.com/xiph/rnnoise/archive/refs/heads/main.zip"),
             .relativeTargetPath = QStringLiteral("archives/rnnoise-main.zip"),
-            .extractArchive = true
+            .extractArchive = true,
+            .extractDestinationDir = QStringLiteral("rnnoise")
+        };
+    }
+    if (name == QStringLiteral("speexdsp")) {
+        return {
+            .name = name,
+            .category = QStringLiteral("audio"),
+            .url = QStringLiteral("https://github.com/xiph/speexdsp/archive/refs/heads/master.zip"),
+            .relativeTargetPath = QStringLiteral("archives/speexdsp-master.zip"),
+            .extractArchive = true,
+            .extractDestinationDir = QStringLiteral("speexdsp")
         };
     }
     if (name == QStringLiteral("sherpa-onnx-source") || name == QStringLiteral("sherpa-onnx")) {
         return {
             .name = name,
             .category = QStringLiteral("wake"),
-            .url = QStringLiteral("https://github.com/k2-fsa/sherpa-onnx/archive/refs/heads/master.zip"),
-            .relativeTargetPath = QStringLiteral("archives/sherpa-onnx-master.zip"),
-            .extractArchive = true
+            .url = QStringLiteral("https://github.com/k2-fsa/sherpa-onnx/releases/download/v1.12.33/sherpa-onnx-v1.12.33-win-x64-shared-MD-Release-no-tts.tar.bz2"),
+            .relativeTargetPath = QStringLiteral("archives/sherpa-onnx-v1.12.33-win-x64-shared-MD-Release-no-tts.tar.bz2"),
+            .extractArchive = true,
+            .extractDestinationDir = QStringLiteral("sherpa-onnx")
+        };
+    }
+    if (name == QStringLiteral("sherpa-kws-model")) {
+        return {
+            .name = name,
+            .category = QStringLiteral("wake"),
+            .url = QStringLiteral("https://github.com/k2-fsa/sherpa-onnx/releases/download/kws-models/sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01.tar.bz2"),
+            .relativeTargetPath = QStringLiteral("archives/sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01.tar.bz2"),
+            .extractArchive = true,
+            .extractDestinationDir = QStringLiteral("sherpa-kws-model")
         };
     }
     if (name == QStringLiteral("sentencepiece")) {
@@ -230,7 +295,8 @@ ToolManager::DownloadDescriptor ToolManager::descriptorForName(const QString &na
             .category = QStringLiteral("wake"),
             .url = QStringLiteral("https://github.com/google/sentencepiece/archive/refs/tags/v0.2.1.zip"),
             .relativeTargetPath = QStringLiteral("archives/sentencepiece-v0.2.1.zip"),
-            .extractArchive = true
+            .extractArchive = true,
+            .extractDestinationDir = QStringLiteral("sentencepiece")
         };
     }
     return {
@@ -260,6 +326,7 @@ void ToolManager::beginDownload(const DownloadDescriptor &descriptor)
     reply->setProperty("toolName", descriptor.name);
     reply->setProperty("targetPath", targetPath);
     reply->setProperty("extractArchive", descriptor.extractArchive);
+    reply->setProperty("extractDestinationDir", descriptor.extractDestinationDir);
     reply->setProperty("sha256", descriptor.sha256);
     reply->setProperty("filePointer", QVariant::fromValue(static_cast<quintptr>(reinterpret_cast<quintptr>(file))));
 
@@ -287,6 +354,7 @@ void ToolManager::finalizeDownload(QNetworkReply *reply)
     const QString toolName = reply->property("toolName").toString();
     const QString targetPath = reply->property("targetPath").toString();
     const bool extractArchive = reply->property("extractArchive").toBool();
+    const QString extractDestinationDir = reply->property("extractDestinationDir").toString();
     const QString expectedSha256 = reply->property("sha256").toString();
     auto *file = reinterpret_cast<QFile *>(reply->property("filePointer").value<quintptr>());
 
@@ -316,16 +384,31 @@ void ToolManager::finalizeDownload(QNetworkReply *reply)
     }
 
     if (extractArchive) {
-        const QString destinationDir = QFileInfo(targetPath).absolutePath() + QStringLiteral("/") + QFileInfo(targetPath).completeBaseName();
+        const QString destinationDir = extractDestinationDir.isEmpty()
+            ? QFileInfo(targetPath).absolutePath() + QStringLiteral("/") + QFileInfo(targetPath).completeBaseName()
+            : toolsRoot() + QStringLiteral("/") + extractDestinationDir;
         QDir().mkpath(destinationDir);
         QProcess extractor;
-        extractor.start(QStringLiteral("powershell"), {
-            QStringLiteral("-NoProfile"),
-            QStringLiteral("-ExecutionPolicy"), QStringLiteral("Bypass"),
-            QStringLiteral("-Command"),
-            QStringLiteral("Expand-Archive -Path '%1' -DestinationPath '%2' -Force")
-                .arg(targetPath, destinationDir)
-        });
+        QString program = QStringLiteral("powershell");
+        QStringList args;
+        if (targetPath.endsWith(QStringLiteral(".zip"), Qt::CaseInsensitive)) {
+            args = {
+                QStringLiteral("-NoProfile"),
+                QStringLiteral("-ExecutionPolicy"), QStringLiteral("Bypass"),
+                QStringLiteral("-Command"),
+                QStringLiteral("Expand-Archive -Path '%1' -DestinationPath '%2' -Force")
+                    .arg(targetPath, destinationDir)
+            };
+        } else {
+            program = QStringLiteral("tar");
+            args = {
+                QStringLiteral("-xf"),
+                targetPath,
+                QStringLiteral("-C"),
+                destinationDir
+            };
+        }
+        extractor.start(program, args);
         if (!extractor.waitForFinished(60000) || extractor.exitCode() != 0) {
             m_activeDownloadName.clear();
             m_activeDownloadPercent = -1;

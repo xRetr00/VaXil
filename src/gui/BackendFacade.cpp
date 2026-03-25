@@ -27,6 +27,12 @@ struct PiperVoicePreset {
     QString configUrl;
 };
 
+struct WhisperModelPreset {
+    QString id;
+    QString label;
+    QString modelUrl;
+};
+
 QString firstValidPath(const QStringList &candidates)
 {
     for (const QString &candidate : candidates) {
@@ -145,6 +151,45 @@ const PiperVoicePreset *findVoicePreset(const QString &voiceId)
     return nullptr;
 }
 
+const QList<WhisperModelPreset> &whisperModelPresets()
+{
+    static const QList<WhisperModelPreset> presets{
+        {
+            QStringLiteral("ggml-tiny.en"),
+            QStringLiteral("Tiny English  |  Fastest  |  Lowest accuracy"),
+            QStringLiteral("https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.en.bin?download=true")
+        },
+        {
+            QStringLiteral("ggml-base.en"),
+            QStringLiteral("Base English  |  Recommended balance"),
+            QStringLiteral("https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en.bin?download=true")
+        },
+        {
+            QStringLiteral("ggml-small.en"),
+            QStringLiteral("Small English  |  Better accuracy"),
+            QStringLiteral("https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.en.bin?download=true")
+        },
+        {
+            QStringLiteral("ggml-base"),
+            QStringLiteral("Base Multilingual  |  General use"),
+            QStringLiteral("https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin?download=true")
+        }
+    };
+
+    return presets;
+}
+
+const WhisperModelPreset *findWhisperModelPreset(const QString &modelId)
+{
+    for (const WhisperModelPreset &preset : whisperModelPresets()) {
+        if (preset.id == modelId) {
+            return &preset;
+        }
+    }
+
+    return nullptr;
+}
+
 QString detectVoicePresetIdFromPath(const QString &path)
 {
     const QString fileName = QFileInfo(path).fileName();
@@ -157,9 +202,26 @@ QString detectVoicePresetIdFromPath(const QString &path)
     return {};
 }
 
+QString detectWhisperModelPresetIdFromPath(const QString &path)
+{
+    const QString fileName = QFileInfo(path).fileName();
+    for (const WhisperModelPreset &preset : whisperModelPresets()) {
+        if (fileName.compare(preset.id + QStringLiteral(".bin"), Qt::CaseInsensitive) == 0) {
+            return preset.id;
+        }
+    }
+
+    return {};
+}
+
 QString piperVoicesRoot(const QString &appDataRoot)
 {
     return appDataRoot + QStringLiteral("/tools/piper-voices");
+}
+
+QString whisperModelsRoot(const QString &appDataRoot)
+{
+    return appDataRoot + QStringLiteral("/tools/whisper/models");
 }
 
 QString quotePowerShell(const QString &value)
@@ -595,6 +657,9 @@ BackendFacade::BackendFacade(
             : QStringLiteral("%1: %2 bytes").arg(name).arg(received));
     });
     connect(m_toolManager, &ToolManager::downloadFinished, this, [this](const QString &name, bool success, const QString &message) {
+        if (success) {
+            autoDetectVoiceTools();
+        }
         setToolInstallStatus(QStringLiteral("%1: %2").arg(name, success ? message : QStringLiteral("failed - %1").arg(message)));
         emit toolStatusesChanged();
     });
@@ -625,6 +690,26 @@ QStringList BackendFacade::voicePresetIds() const
     return values;
 }
 QString BackendFacade::selectedVoicePresetId() const { return m_settings->selectedVoicePresetId(); }
+QStringList BackendFacade::whisperModelPresetNames() const
+{
+    QStringList values;
+    for (const WhisperModelPreset &preset : whisperModelPresets()) {
+        values.push_back(preset.label);
+    }
+    return values;
+}
+QStringList BackendFacade::whisperModelPresetIds() const
+{
+    QStringList values;
+    for (const WhisperModelPreset &preset : whisperModelPresets()) {
+        values.push_back(preset.id);
+    }
+    return values;
+}
+QString BackendFacade::selectedWhisperModelPresetId() const
+{
+    return detectWhisperModelPresetIdFromPath(m_settings->whisperModelPath());
+}
 bool BackendFacade::overlayVisible() const { return m_overlayController->isVisible(); }
 double BackendFacade::presenceOffsetX() const { return m_overlayController->presenceOffsetX(); }
 double BackendFacade::presenceOffsetY() const { return m_overlayController->presenceOffsetY(); }
@@ -636,10 +721,10 @@ int BackendFacade::requestTimeoutMs() const { return m_settings->requestTimeoutM
 bool BackendFacade::aecEnabled() const { return m_settings->aecEnabled(); }
 bool BackendFacade::rnnoiseEnabled() const { return m_settings->rnnoiseEnabled(); }
 double BackendFacade::vadSensitivity() const { return m_settings->vadSensitivity(); }
-QString BackendFacade::wakeEngineKind() const { return m_settings->wakeEngineKind(); }
+QString BackendFacade::wakeEngineKind() const { return QStringLiteral("sherpa-onnx"); }
 QString BackendFacade::whisperExecutable() const { return m_settings->whisperExecutable(); }
 QString BackendFacade::whisperModelPath() const { return m_settings->whisperModelPath(); }
-QString BackendFacade::ttsEngineKind() const { return m_settings->ttsEngineKind(); }
+QString BackendFacade::ttsEngineKind() const { return QStringLiteral("piper"); }
 QString BackendFacade::piperExecutable() const { return m_settings->piperExecutable(); }
 QString BackendFacade::piperVoiceModel() const { return m_settings->piperVoiceModel(); }
 QString BackendFacade::preciseEngineExecutable() const { return m_settings->preciseEngineExecutable(); }
@@ -719,13 +804,15 @@ void BackendFacade::cancelRequest() { m_assistantController->cancelActiveRequest
 void BackendFacade::setSelectedModel(const QString &modelId) { m_assistantController->setSelectedModel(modelId); }
 void BackendFacade::setWakeEngineKind(const QString &kind)
 {
-    m_settings->setWakeEngineKind(kind);
+    Q_UNUSED(kind);
+    m_settings->setWakeEngineKind(QStringLiteral("sherpa-onnx"));
     m_settings->save();
     emit settingsChanged();
 }
 void BackendFacade::setTtsEngineKind(const QString &kind)
 {
-    m_settings->setTtsEngineKind(kind);
+    Q_UNUSED(kind);
+    m_settings->setTtsEngineKind(QStringLiteral("piper"));
     m_settings->save();
     emit settingsChanged();
 }
@@ -790,6 +877,10 @@ void BackendFacade::saveSettings(
     const QString &audioOutputDeviceId,
     bool clickThrough)
 {
+    Q_UNUSED(wakeEngineKind);
+    Q_UNUSED(preciseEnginePath);
+    Q_UNUSED(preciseModelPath);
+
     const QString detectedVoicePresetId = detectVoicePresetIdFromPath(voicePath);
     if (!detectedVoicePresetId.isEmpty()) {
         m_settings->setSelectedVoicePresetId(detectedVoicePresetId);
@@ -800,14 +891,14 @@ void BackendFacade::saveSettings(
         aecEnabled,
         rnnoiseEnabled,
         vadSensitivity,
-        wakeEngineKind,
+        QStringLiteral("sherpa-onnx"),
         whisperPath,
         whisperModelPath,
-        preciseEnginePath,
-        preciseModelPath,
+        m_settings->preciseEngineExecutable(),
+        m_settings->preciseModelPath(),
         preciseThreshold,
         preciseCooldownMs,
-        ttsEngineKind,
+        QStringLiteral("piper"),
         piperPath,
         voicePath,
         ffmpegPath,
@@ -857,6 +948,34 @@ bool BackendFacade::downloadVoiceModel(const QString &voiceId)
     return true;
 }
 
+bool BackendFacade::downloadWhisperModel(const QString &modelId)
+{
+    const WhisperModelPreset *preset = findWhisperModelPreset(modelId);
+    if (preset == nullptr) {
+        setToolInstallStatus(QStringLiteral("Selected Whisper model is not recognized."));
+        return false;
+    }
+
+    const QString appDataRoot = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+    const QString modelsRoot = whisperModelsRoot(appDataRoot);
+    QDir().mkpath(modelsRoot);
+
+    const QString modelPath = modelsRoot + QStringLiteral("/") + preset->id + QStringLiteral(".bin");
+    setToolInstallStatus(QStringLiteral("Downloading Whisper model %1...").arg(preset->id));
+
+    QString errorText;
+    if (!QFileInfo::exists(modelPath) && !downloadFileWithPowerShell(preset->modelUrl, modelPath, 10 * 60 * 1000, &errorText)) {
+        setToolInstallStatus(QStringLiteral("Whisper model download failed: %1").arg(errorText));
+        return false;
+    }
+
+    m_settings->setWhisperModelPath(modelPath);
+    m_settings->save();
+    setToolInstallStatus(QStringLiteral("Whisper model ready: %1").arg(preset->label));
+    emit settingsChanged();
+    return true;
+}
+
 bool BackendFacade::completeInitialSetup(
     const QString &displayName,
     const QString &spokenName,
@@ -876,6 +995,8 @@ bool BackendFacade::completeInitialSetup(
     bool clickThrough)
 {
     const QString normalizedEndpoint = endpoint.trimmed();
+    Q_UNUSED(preciseEnginePath);
+    Q_UNUSED(preciseModelPath);
     if (normalizedEndpoint.isEmpty()) {
         setToolInstallStatus(QStringLiteral("Local AI backend endpoint is required."));
         return false;
@@ -905,14 +1026,6 @@ bool BackendFacade::completeInitialSetup(
         return false;
     }
 
-    const QString resolvedPreciseEngine = resolveExecutableSelection(
-        preciseEnginePath,
-        { QStringLiteral("precise-engine.exe"), QStringLiteral("precise-engine") });
-    const QString resolvedPreciseModel = resolveExistingFileSelection(
-        preciseModelPath,
-        {},
-        { QStringLiteral("*.pb") });
-
     const QString resolvedPiper = resolveExecutableSelection(
         piperPath,
         {
@@ -966,14 +1079,14 @@ bool BackendFacade::completeInitialSetup(
         m_settings->aecEnabled(),
         m_settings->rnnoiseEnabled(),
         m_settings->vadSensitivity(),
-        m_settings->wakeEngineKind(),
+        QStringLiteral("sherpa-onnx"),
         resolvedWhisper,
         resolvedWhisperModel,
-        resolvedPreciseEngine,
-        resolvedPreciseModel,
+        m_settings->preciseEngineExecutable(),
+        m_settings->preciseModelPath(),
         preciseThreshold,
         preciseCooldownMs,
-        m_settings->ttsEngineKind(),
+        QStringLiteral("piper"),
         resolvedPiper,
         resolvedVoiceModel,
         resolvedFfmpeg,
@@ -987,9 +1100,7 @@ bool BackendFacade::completeInitialSetup(
     m_overlayController->setClickThrough(clickThrough);
     m_settings->setInitialSetupCompleted(true);
     m_settings->save();
-    setToolInstallStatus(resolvedPreciseModel.isEmpty()
-            ? QStringLiteral("Setup saved. Wake word model not trained yet. Record samples, run train_wake_word.bat, then restart JARVIS.")
-            : QStringLiteral("Setup validation passed. Configuration saved."));
+    setToolInstallStatus(QStringLiteral("Setup validation passed. Configuration saved."));
     emit profileChanged();
     emit settingsChanged();
     emit initialSetupFinished();
@@ -1016,6 +1127,8 @@ bool BackendFacade::runSetupScenario(
     const QString &scenarioId)
 {
     const QString normalizedEndpoint = endpoint.trimmed();
+    Q_UNUSED(preciseEnginePath);
+    Q_UNUSED(preciseModelPath);
     if (normalizedEndpoint.isEmpty()) {
         setToolInstallStatus(QStringLiteral("Local AI backend endpoint is required before running a setup scenario."));
         return false;
@@ -1045,23 +1158,6 @@ bool BackendFacade::runSetupScenario(
         return false;
     }
 
-    const QString resolvedPreciseEngine = resolveExecutableSelection(
-        preciseEnginePath,
-        { QStringLiteral("precise-engine.exe"), QStringLiteral("precise-engine") });
-    if (resolvedPreciseEngine.isEmpty()) {
-        setToolInstallStatus(QStringLiteral("Precise engine is invalid. Select precise-engine.exe or precise-engine."));
-        return false;
-    }
-
-    const QString resolvedPreciseModel = resolveExistingFileSelection(
-        preciseModelPath,
-        {},
-        { QStringLiteral("*.pb") });
-    if (resolvedPreciseModel.isEmpty()) {
-        setToolInstallStatus(QStringLiteral("Wake word model is not trained yet. Record samples and run train_wake_word.bat first."));
-        return false;
-    }
-
     const QString resolvedPiper = resolveExecutableSelection(
         piperPath,
         {
@@ -1115,14 +1211,14 @@ bool BackendFacade::runSetupScenario(
         m_settings->aecEnabled(),
         m_settings->rnnoiseEnabled(),
         m_settings->vadSensitivity(),
-        m_settings->wakeEngineKind(),
+        QStringLiteral("sherpa-onnx"),
         resolvedWhisper,
         resolvedWhisperModel,
-        resolvedPreciseEngine,
-        resolvedPreciseModel,
+        m_settings->preciseEngineExecutable(),
+        m_settings->preciseModelPath(),
         preciseThreshold,
         preciseCooldownMs,
-        m_settings->ttsEngineKind(),
+        QStringLiteral("piper"),
         resolvedPiper,
         resolvedVoiceModel,
         resolvedFfmpeg,
@@ -1311,11 +1407,14 @@ bool BackendFacade::autoDetectVoiceTools()
 {
     const QString appDataRoot = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
     const QString toolsRoot = appDataRoot + QStringLiteral("/tools");
+    const QString repoRoot = QDir::currentPath();
     QDir().mkpath(appDataRoot + QStringLiteral("/tools"));
 
     QString whisper = resolveExecutable(
         {QStringLiteral("whisper-cli"), QStringLiteral("whisper"), QStringLiteral("main")},
         {
+            repoRoot + QStringLiteral("/tools/whisper/whisper-cli.exe"),
+            repoRoot + QStringLiteral("/tools/whisper/main.exe"),
             appDataRoot + QStringLiteral("/tools/whisper/whisper-cli.exe"),
             appDataRoot + QStringLiteral("/tools/whisper/main.exe"),
             appDataRoot + QStringLiteral("/tools/whisper/Release/whisper-cli.exe"),
@@ -1329,15 +1428,22 @@ bool BackendFacade::autoDetectVoiceTools()
     if (whisper.isEmpty()) {
         whisper = findFileRecursive(toolsRoot, QStringLiteral("main.exe"));
     }
+    if (whisper.isEmpty()) {
+        whisper = findFileRecursive(repoRoot + QStringLiteral("/tools"), QStringLiteral("whisper-cli.exe"));
+    }
 
     QString whisperModel = m_settings->whisperModelPath();
     if (whisperModel.isEmpty() || !QFileInfo::exists(whisperModel)) {
         whisperModel = detectWhisperModel(appDataRoot);
     }
+    if (whisperModel.isEmpty()) {
+        whisperModel = detectWhisperModel(repoRoot);
+    }
 
     QString piper = resolveExecutable(
         {QStringLiteral("piper")},
         {
+            repoRoot + QStringLiteral("/tools/piper/piper.exe"),
             appDataRoot + QStringLiteral("/tools/piper/piper.exe"),
             appDataRoot + QStringLiteral("/tools/piper/bin/piper.exe"),
             appDataRoot + QStringLiteral("/tools/piper/piper/piper.exe")
@@ -1345,10 +1451,14 @@ bool BackendFacade::autoDetectVoiceTools()
     if (piper.isEmpty()) {
         piper = findFileRecursive(toolsRoot, QStringLiteral("piper.exe"));
     }
+    if (piper.isEmpty()) {
+        piper = findFileRecursive(repoRoot + QStringLiteral("/tools"), QStringLiteral("piper.exe"));
+    }
 
     QString ffmpeg = resolveExecutable(
         {QStringLiteral("ffmpeg")},
         {
+            repoRoot + QStringLiteral("/tools/ffmpeg/ffmpeg.exe"),
             appDataRoot + QStringLiteral("/tools/ffmpeg/ffmpeg.exe"),
             appDataRoot + QStringLiteral("/tools/ffmpeg/bin/ffmpeg.exe"),
             appDataRoot + QStringLiteral("/tools/ffmpeg_build/bin/ffmpeg.exe")
@@ -1356,10 +1466,16 @@ bool BackendFacade::autoDetectVoiceTools()
     if (ffmpeg.isEmpty()) {
         ffmpeg = findFileRecursive(toolsRoot, QStringLiteral("ffmpeg.exe"));
     }
+    if (ffmpeg.isEmpty()) {
+        ffmpeg = findFileRecursive(repoRoot + QStringLiteral("/tools"), QStringLiteral("ffmpeg.exe"));
+    }
 
     QString voiceModel = m_settings->piperVoiceModel();
     if (voiceModel.isEmpty() || !QFileInfo::exists(voiceModel)) {
         voiceModel = detectPiperVoiceModel(appDataRoot);
+    }
+    if (voiceModel.isEmpty()) {
+        voiceModel = detectPiperVoiceModel(repoRoot);
     }
 
     if (!whisper.isEmpty()) {

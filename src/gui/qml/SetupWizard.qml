@@ -18,10 +18,6 @@ Window {
     function syncVoiceFieldsFromBackend() {
         whisperPathField.text = backend.whisperExecutable
         whisperModelPathField.text = backend.whisperModelPath
-        preciseEnginePathField.text = backend.preciseEngineExecutable
-        preciseModelPathField.text = backend.preciseModelPath
-        preciseThresholdSlider.value = backend.preciseTriggerThreshold
-        preciseCooldownSpin.value = backend.preciseTriggerCooldownMs
         piperPathField.text = backend.piperExecutable
         voicePathField.text = backend.piperVoiceModel
         ffmpegPathField.text = backend.ffmpegExecutable
@@ -31,6 +27,9 @@ Window {
 
         const voiceIndex = backend.voicePresetIds.indexOf(backend.selectedVoicePresetId)
         voicePresetCombo.currentIndex = voiceIndex >= 0 ? voiceIndex : 0
+
+        const whisperModelIndex = backend.whisperModelPresetIds.indexOf(backend.selectedWhisperModelPresetId)
+        whisperModelPresetCombo.currentIndex = whisperModelIndex >= 0 ? whisperModelIndex : 1
 
         const inputIndex = backend.audioInputDeviceIds.indexOf(backend.selectedAudioInputDeviceId)
         inputDeviceCombo.currentIndex = inputIndex >= 0 ? inputIndex : 0
@@ -195,8 +194,8 @@ Window {
                 Text {
                     text: wizard.stepIndex === 0 ? "Define how the assistant should address you."
                         : wizard.stepIndex === 1 ? "Point JARVIS at the local AI backend and choose the active model."
-                        : wizard.stepIndex === 2 ? "Connect whisper.cpp, Piper, FFmpeg, and the voice model you want."
-                        : wizard.stepIndex === 3 ? "Configure the fully local Mycroft Precise wake model runtime and training path."
+                        : wizard.stepIndex === 2 ? "Connect whisper.cpp, Piper, FFmpeg, and the local speech models you want."
+                        : wizard.stepIndex === 3 ? "Review the local sherpa wake engine and microphone behavior."
                         : "Run final checks, trigger tests, and confirm the real startup behavior."
                     color: "#89a3c4"
                     font.pixelSize: 14
@@ -278,13 +277,7 @@ Window {
                         spacing: 14
 
                         Text { text: "TTS engine"; color: "#d0e3f5"; font.pixelSize: 13 }
-                        ComboBox {
-                            id: wizardTtsEngineCombo
-                            Layout.fillWidth: true
-                            model: ["piper", "qwen3-tts"]
-                            currentIndex: Math.max(0, model.indexOf(backend.ttsEngineKind))
-                            onActivated: backend.setTtsEngineKind(currentText)
-                        }
+                        TextField { Layout.fillWidth: true; readOnly: true; text: "piper" }
 
                         Text { text: "whisper.cpp executable"; color: "#d0e3f5"; font.pixelSize: 13 }
                         RowLayout {
@@ -293,11 +286,37 @@ Window {
                             Button { text: "Open Dir"; onClicked: backend.openContainingDirectory(whisperPathField.text) }
                         }
 
+                        RowLayout {
+                            Layout.fillWidth: true
+                            Button { text: "Auto Detect"; onClicked: { backend.autoDetectVoiceTools(); wizard.syncVoiceFieldsFromBackend() } }
+                            Button { text: "Install Stack"; onClicked: backend.installAllTools() }
+                        }
+
                         Text { text: "Whisper model"; color: "#d0e3f5"; font.pixelSize: 13 }
                         RowLayout {
                             Layout.fillWidth: true
                             TextField { id: whisperModelPathField; Layout.fillWidth: true; text: backend.whisperModelPath }
                             Button { text: "Open Dir"; onClicked: backend.openContainingDirectory(whisperModelPathField.text) }
+                        }
+                        Text { text: "Official Whisper model"; color: "#d0e3f5"; font.pixelSize: 13 }
+                        RowLayout {
+                            Layout.fillWidth: true
+                            ComboBox {
+                                id: whisperModelPresetCombo
+                                Layout.fillWidth: true
+                                model: backend.whisperModelPresetNames
+                                Component.onCompleted: {
+                                    const index = backend.whisperModelPresetIds.indexOf(backend.selectedWhisperModelPresetId)
+                                    currentIndex = index >= 0 ? index : 1
+                                }
+                            }
+                            Button {
+                                text: "Download"
+                                onClicked: {
+                                    backend.downloadWhisperModel(backend.whisperModelPresetIds[whisperModelPresetCombo.currentIndex])
+                                    wizard.syncVoiceFieldsFromBackend()
+                                }
+                            }
                         }
                         Text {
                             text: "Use a valid whisper.cpp ggml model such as ggml-base.en.bin."
@@ -425,115 +444,33 @@ Window {
                             font.weight: Font.Medium
                         }
 
-                        ComboBox {
-                            id: wizardWakeEngineCombo
-                            Layout.fillWidth: true
-                            model: ["precise", "sherpa-onnx"]
-                            currentIndex: Math.max(0, model.indexOf(backend.wakeEngineKind))
-                            onActivated: backend.setWakeEngineKind(currentText)
-                        }
+                        TextField { Layout.fillWidth: true; readOnly: true; text: "sherpa-onnx" }
 
                         Text {
-                            text: preciseModelPathField.text.length > 0 ? "Model status: Ready" : "Model status: Not trained"
-                            color: preciseModelPathField.text.length > 0 ? "#69d39a" : "#ffb066"
+                            text: "Model status: Bundled sherpa runtime"
+                            color: "#69d39a"
                             font.pixelSize: 14
                         }
 
-                        Text { text: "Precise engine"; color: "#d0e3f5"; font.pixelSize: 13 }
-                        RowLayout {
-                            Layout.fillWidth: true
-                            TextField { id: preciseEnginePathField; Layout.fillWidth: true; text: backend.preciseEngineExecutable; placeholderText: backend.preciseRuntimeRoot + "/precise-engine.exe" }
-                            Button { text: "Open Dir"; onClicked: backend.openContainingDirectory(preciseEnginePathField.text) }
-                        }
-
-                        Text { text: "Wake model (.pb)"; color: "#d0e3f5"; font.pixelSize: 13 }
-                        RowLayout {
-                            Layout.fillWidth: true
-                            TextField { id: preciseModelPathField; Layout.fillWidth: true; text: backend.preciseModelPath; placeholderText: backend.preciseRuntimeRoot + "/models/jarvis.pb" }
-                            Button { text: "Open Dir"; onClicked: backend.openContainingDirectory(preciseModelPathField.text) }
-                        }
-
-                        Text { text: "Trigger threshold"; color: "#d0e3f5"; font.pixelSize: 13 }
-                        RowLayout {
-                            Layout.fillWidth: true
-
-                            Slider {
-                                id: preciseThresholdSlider
-                                Layout.fillWidth: true
-                                from: 0.30
-                                to: 0.85
-                                value: backend.preciseTriggerThreshold
-                                onPressedChanged: {
-                                    if (!pressed) {
-                                        backend.saveWakeDetectionTuning(preciseThresholdSlider.value, preciseCooldownSpin.value)
-                                    }
-                                }
-                            }
-
-                            Text {
-                                text: preciseThresholdSlider.value.toFixed(2)
-                                color: "#d0e3f5"
-                                font.pixelSize: 13
-                                horizontalAlignment: Text.AlignRight
-                                Layout.preferredWidth: 44
-                            }
-                        }
-
                         Text {
-                            text: "Trigger cooldown (ms)"
-                            color: "#d0e3f5"
-                            font.pixelSize: 13
-                        }
-
-                        SpinBox {
-                            id: preciseCooldownSpin
-                            Layout.fillWidth: true
-                            from: 600
-                            to: 900
-                            value: backend.preciseTriggerCooldownMs
-                            onValueModified: backend.saveWakeDetectionTuning(preciseThresholdSlider.value, preciseCooldownSpin.value)
-                        }
-
-                        Text {
-                            text: "JARVIS uses a fully local Mycroft Precise model for wake detection. Whisper only starts after the wake model fires."
+                            text: "JARVIS uses the local sherpa-onnx wake stack. Microphone input stays gated while TTS is playing."
                             color: "#9ab0ca"
                             font.pixelSize: 14
                             wrapMode: Text.Wrap
                         }
 
                         Text {
-                            text: preciseModelPathField.text.length > 0
-                                  ? "The wake model is present. You can test the live phrase flow below."
-                                  : "Wake word model not trained yet. Please record your voice saying \"Jarvis\"."
+                            text: "The wake engine is managed automatically from the installed local tool stack."
                             color: "#7f97b7"
                             font.pixelSize: 13
                             wrapMode: Text.Wrap
-                        }
-
-                        RowLayout {
-                            Layout.fillWidth: true
-
-                            Button {
-                                Layout.fillWidth: true
-                                text: "Start Training Setup"
-                                onClicked: {
-                                    backend.startTrainingSetup()
-                                    wizard.syncVoiceFieldsFromBackend()
-                                }
-                            }
-
-                            Button {
-                                Layout.fillWidth: true
-                                text: "Open Training Folder"
-                                onClicked: backend.openContainingDirectory(backend.preciseTrainingRoot)
-                            }
                         }
 
                         Text {
                             Layout.fillWidth: true
                             text: backend.toolInstallStatus.length > 0
                                   ? backend.toolInstallStatus
-                                  : "Create the training setup, record 20-40 wake samples plus negatives, run train_wake_word.bat, then restart JARVIS."
+                                  : "Use Auto Detect after installing tools so the current local paths are populated."
                             color: "#9ab0ca"
                             font.pixelSize: 12
                             wrapMode: Text.Wrap
@@ -550,33 +487,27 @@ Window {
                         spacing: 14
 
                         Text {
-                            text: preciseModelPathField.text.length > 0 ? "Test phrases" : "Training steps"
+                            text: "Test phrases"
                             color: "#d0e3f5"
                             font.pixelSize: 13
                         }
 
                         Text {
-                            text: preciseModelPathField.text.length > 0
-                                  ? "1. Say: \"" + backend.wakeWordPhrase + "\""
-                                  : "1. Record your voice saying \"" + backend.wakeWordPhrase + "\" 20-40 times."
+                            text: "1. Say: \"" + backend.wakeWordPhrase + "\""
                             color: "#eef7ff"
                             font.pixelSize: 18
                             wrapMode: Text.Wrap
                         }
 
                         Text {
-                            text: preciseModelPathField.text.length > 0
-                                  ? "2. Say: \"" + backend.wakeWordPhrase + ", what's the time now?\""
-                                  : "2. Record 20-40 negative samples with noise or other words."
+                            text: "2. Say: \"" + backend.wakeWordPhrase + ", what's the time now?\""
                             color: "#eef7ff"
                             font.pixelSize: 18
                             wrapMode: Text.Wrap
                         }
 
                         Text {
-                            text: preciseModelPathField.text.length > 0
-                                  ? "The second test confirms that the assistant uses the real local clock instead of guessing."
-                                  : "3. Run train_wake_word.bat in " + backend.preciseTrainingRoot + "\n4. Restart JARVIS."
+                            text: "The second test confirms that the assistant uses the real local clock instead of guessing."
                             color: "#9ab0ca"
                             font.pixelSize: 14
                             wrapMode: Text.Wrap
@@ -600,10 +531,10 @@ Window {
                                             modelCombo.currentText,
                                             whisperPathField.text,
                                             whisperModelPathField.text,
-                                            preciseEnginePathField.text,
-                                            preciseModelPathField.text,
-                                            preciseThresholdSlider.value,
-                                            preciseCooldownSpin.value,
+                                            "",
+                                            "",
+                                            backend.preciseTriggerThreshold,
+                                            backend.preciseTriggerCooldownMs,
                                             piperPathField.text,
                                             voicePathField.text,
                                             ffmpegPathField.text,
@@ -626,10 +557,10 @@ Window {
                                             modelCombo.currentText,
                                             whisperPathField.text,
                                             whisperModelPathField.text,
-                                            preciseEnginePathField.text,
-                                            preciseModelPathField.text,
-                                            preciseThresholdSlider.value,
-                                            preciseCooldownSpin.value,
+                                            "",
+                                            "",
+                                            backend.preciseTriggerThreshold,
+                                            backend.preciseTriggerCooldownMs,
                                             piperPathField.text,
                                             voicePathField.text,
                                             ffmpegPathField.text,
@@ -660,6 +591,7 @@ Window {
                         RowLayout {
                             Layout.fillWidth: true
                             Button { text: "Rescan"; onClicked: backend.rescanTools() }
+                            Button { text: "Auto Detect"; onClicked: { backend.autoDetectVoiceTools(); wizard.syncVoiceFieldsFromBackend() } }
                             Button { text: "Install All"; onClicked: backend.installAllTools() }
                         }
 
@@ -701,7 +633,7 @@ Window {
                                     Button {
                                         visible: modelData.downloadable === true && modelData.installed !== true
                                         text: "Download"
-                                        onClicked: backend.downloadModel(modelData.name)
+                                        onClicked: backend.downloadTool(modelData.name)
                                     }
                                 }
                             }
@@ -732,10 +664,10 @@ Window {
                                     modelCombo.currentText,
                                     whisperPathField.text,
                                     whisperModelPathField.text,
-                                    preciseEnginePathField.text,
-                                    preciseModelPathField.text,
-                                    preciseThresholdSlider.value,
-                                    preciseCooldownSpin.value,
+                                    "",
+                                    "",
+                                    backend.preciseTriggerThreshold,
+                                    backend.preciseTriggerCooldownMs,
                                     piperPathField.text,
                                     voicePathField.text,
                                     ffmpegPathField.text,
@@ -763,10 +695,10 @@ Window {
                                     modelCombo.currentText,
                                     whisperPathField.text,
                                     whisperModelPathField.text,
-                                    preciseEnginePathField.text,
-                                    preciseModelPathField.text,
-                                    preciseThresholdSlider.value,
-                                    preciseCooldownSpin.value,
+                                    "",
+                                    "",
+                                    backend.preciseTriggerThreshold,
+                                    backend.preciseTriggerCooldownMs,
                                     piperPathField.text,
                                     voicePathField.text,
                                     ffmpegPathField.text,

@@ -34,8 +34,8 @@ Window {
             modelCombo.currentText,
             whisperPathField.text,
             whisperModelPathField.text,
-            preciseEnginePathField.text,
-            preciseModelPathField.text,
+            "",
+            "",
             piperPathField.text,
             voicePathField.text,
             ffmpegPathField.text
@@ -46,10 +46,6 @@ Window {
         endpointField.text = backend.lmStudioEndpoint
         whisperPathField.text = backend.whisperExecutable
         whisperModelPathField.text = backend.whisperModelPath
-        preciseEnginePathField.text = backend.preciseEngineExecutable
-        preciseModelPathField.text = backend.preciseModelPath
-        preciseThresholdSlider.value = backend.preciseTriggerThreshold
-        preciseCooldownSpin.value = backend.preciseTriggerCooldownMs
         piperPathField.text = backend.piperExecutable
         voicePathField.text = backend.piperVoiceModel
         ffmpegPathField.text = backend.ffmpegExecutable
@@ -70,11 +66,14 @@ Window {
         const modeIndex = backend.defaultReasoningMode
         modeCombo.currentIndex = modeIndex >= 0 ? modeIndex : 0
 
-        const ttsIndex = ["piper", "qwen3-tts"].indexOf(backend.ttsEngineKind)
+        const ttsIndex = ["piper"].indexOf(backend.ttsEngineKind)
         ttsEngineCombo.currentIndex = ttsIndex >= 0 ? ttsIndex : 0
 
-        const wakeIndex = ["precise", "sherpa-onnx"].indexOf(backend.wakeEngineKind)
+        const wakeIndex = ["sherpa-onnx"].indexOf(backend.wakeEngineKind)
         wakeEngineCombo.currentIndex = wakeIndex >= 0 ? wakeIndex : 0
+
+        const whisperModelIndex = backend.whisperModelPresetIds.indexOf(backend.selectedWhisperModelPresetId)
+        whisperModelPresetCombo.currentIndex = whisperModelIndex >= 0 ? whisperModelIndex : 1
     }
 
     onVisibleChanged: {
@@ -331,7 +330,7 @@ Window {
                     ComboBox {
                         id: ttsEngineCombo
                         Layout.fillWidth: true
-                        model: ["piper", "qwen3-tts"]
+                        model: ["piper"]
                         currentIndex: Math.max(0, model.indexOf(backend.ttsEngineKind))
                         onActivated: backend.setTtsEngineKind(currentText)
                     }
@@ -358,6 +357,35 @@ Window {
                             text: "Whisper model: " + settingsWindow.statusText(requirementStatus.whisperModelOk === true)
                             color: "#9ab0ca"
                             font.pixelSize: 12
+                        }
+                    }
+                    Text { text: "Official Whisper model"; color: "#c9def3"; font.pixelSize: 13 }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        ComboBox {
+                            id: whisperModelPresetCombo
+                            Layout.fillWidth: true
+                            model: backend.whisperModelPresetNames
+                            Component.onCompleted: {
+                                const index = backend.whisperModelPresetIds.indexOf(backend.selectedWhisperModelPresetId)
+                                currentIndex = index >= 0 ? index : 1
+                            }
+                        }
+                        Button {
+                            text: "Download"
+                            onClicked: {
+                                backend.downloadWhisperModel(backend.whisperModelPresetIds[whisperModelPresetCombo.currentIndex])
+                                settingsWindow.syncFieldsFromBackend()
+                                settingsWindow.refreshRequirementStatus()
+                            }
+                        }
+                        Button {
+                            text: "Auto Detect"
+                            onClicked: {
+                                backend.autoDetectVoiceTools()
+                                settingsWindow.syncFieldsFromBackend()
+                                settingsWindow.refreshRequirementStatus()
+                            }
                         }
                     }
                     RowLayout {
@@ -501,71 +529,17 @@ Window {
                     ComboBox {
                         id: wakeEngineCombo
                         Layout.fillWidth: true
-                        model: ["precise", "sherpa-onnx"]
+                        model: ["sherpa-onnx"]
                         currentIndex: Math.max(0, model.indexOf(backend.wakeEngineKind))
                         onActivated: backend.setWakeEngineKind(currentText)
                     }
 
-                    Text { text: "Mycroft Precise engine"; color: "#c9def3"; font.pixelSize: 13 }
-                    TextField { id: preciseEnginePathField; Layout.fillWidth: true; text: backend.preciseEngineExecutable; placeholderText: backend.preciseRuntimeRoot + "/precise-engine.exe" }
-                    RowLayout {
-                        Layout.fillWidth: true
-                        Rectangle { width: 10; height: 10; radius: 5; color: settingsWindow.statusColor(requirementStatus.preciseEngineOk === true) }
-                        Text { text: "Engine: " + settingsWindow.statusText(requirementStatus.preciseEngineOk === true); color: "#9ab0ca"; font.pixelSize: 12 }
+                    Text {
+                        text: "The app now uses sherpa-onnx for wake detection. Precise has been removed from the active setup flow."
+                        color: "#9ab0ca"
+                        font.pixelSize: 12
+                        wrapMode: Text.Wrap
                     }
-
-                    Text { text: "Wake model (.pb)"; color: "#c9def3"; font.pixelSize: 13 }
-                    TextField { id: preciseModelPathField; Layout.fillWidth: true; text: backend.preciseModelPath; placeholderText: backend.preciseRuntimeRoot + "/models/jarvis.pb" }
-                    RowLayout {
-                        Layout.fillWidth: true
-                        Rectangle { width: 10; height: 10; radius: 5; color: settingsWindow.statusColor(requirementStatus.preciseModelOk === true) }
-                        Text { text: "Model: " + settingsWindow.statusText(requirementStatus.preciseModelOk === true); color: "#9ab0ca"; font.pixelSize: 12 }
-                    }
-
-                    Text { text: "Trigger threshold"; color: "#c9def3"; font.pixelSize: 13 }
-                    RowLayout {
-                        Layout.fillWidth: true
-
-                        Slider {
-                            id: preciseThresholdSlider
-                            Layout.fillWidth: true
-                            from: 0.30
-                            to: 0.85
-                            value: backend.preciseTriggerThreshold
-                            onPressedChanged: {
-                                if (!pressed) {
-                                    backend.saveWakeDetectionTuning(preciseThresholdSlider.value, preciseCooldownSpin.value)
-                                }
-                            }
-                        }
-
-                        Text {
-                            text: preciseThresholdSlider.value.toFixed(2)
-                            color: "#c9def3"
-                            font.pixelSize: 13
-                            horizontalAlignment: Text.AlignRight
-                            Layout.preferredWidth: 44
-                        }
-                    }
-
-                    Text { text: "Trigger cooldown (ms)"; color: "#c9def3"; font.pixelSize: 13 }
-                    SpinBox {
-                        id: preciseCooldownSpin
-                        Layout.fillWidth: true
-                        from: 600
-                        to: 900
-                        value: backend.preciseTriggerCooldownMs
-                        onValueModified: backend.saveWakeDetectionTuning(preciseThresholdSlider.value, preciseCooldownSpin.value)
-                    }
-
-                    RowLayout {
-                        Layout.fillWidth: true
-                        Rectangle { width: 10; height: 10; radius: 5; color: settingsWindow.statusColor(requirementStatus.preciseReady === true) }
-                        Text { text: requirementStatus.preciseReady === true ? "Wake model ready" : "Wake model not trained" ; color: "#9ab0ca"; font.pixelSize: 12 }
-                    }
-
-                    Text { text: "Training folder"; color: "#c9def3"; font.pixelSize: 13 }
-                    TextField { Layout.fillWidth: true; readOnly: true; text: backend.preciseTrainingRoot }
 
                     Text { text: "Input device (microphone)"; color: "#c9def3"; font.pixelSize: 13 }
                     ComboBox {
@@ -634,7 +608,7 @@ Window {
 
                             Text {
                                 anchors.centerIn: parent
-                                text: "Start Training Setup"
+                                text: "Auto Detect"
                                 color: "#eafdf2"
                                 font.pixelSize: 14
                                 font.weight: Font.Medium
@@ -644,7 +618,8 @@ Window {
                                 anchors.fill: parent
                                 cursorShape: Qt.PointingHandCursor
                                 onClicked: {
-                                    backend.startTrainingSetup()
+                                    backend.autoDetectVoiceTools()
+                                    settingsWindow.syncFieldsFromBackend()
                                     settingsWindow.refreshRequirementStatus()
                                 }
                             }
@@ -683,10 +658,10 @@ Window {
                                         wakeEngineCombo.currentText,
                                         whisperPathField.text,
                                         whisperModelPathField.text,
-                                        preciseEnginePathField.text,
-                                        preciseModelPathField.text,
-                                        preciseThresholdSlider.value,
-                                        preciseCooldownSpin.value,
+                                        "",
+                                        "",
+                                        backend.preciseTriggerThreshold,
+                                        backend.preciseTriggerCooldownMs,
                                         ttsEngineCombo.currentText,
                                         piperPathField.text,
                                         voicePathField.text,
@@ -733,6 +708,14 @@ Window {
                     RowLayout {
                         Layout.fillWidth: true
                         Button { text: "Rescan"; onClicked: backend.rescanTools() }
+                        Button {
+                            text: "Auto Detect"
+                            onClicked: {
+                                backend.autoDetectVoiceTools()
+                                settingsWindow.syncFieldsFromBackend()
+                                settingsWindow.refreshRequirementStatus()
+                            }
+                        }
                         Button { text: "Install All"; onClicked: backend.installAllTools() }
                         Item { Layout.fillWidth: true }
                         Text { text: backend.toolsRoot; color: "#7f97b7"; font.pixelSize: 11; Layout.fillWidth: true; horizontalAlignment: Text.AlignRight }
@@ -779,7 +762,7 @@ Window {
                                 Button {
                                     visible: modelData.downloadable === true && modelData.installed !== true
                                     text: "Download"
-                                    onClicked: backend.downloadModel(modelData.name)
+                                    onClicked: backend.downloadTool(modelData.name)
                                 }
                             }
                         }

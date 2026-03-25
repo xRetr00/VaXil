@@ -22,6 +22,9 @@ class BackendFacade : public QObject
     Q_PROPERTY(QStringList voicePresetNames READ voicePresetNames CONSTANT)
     Q_PROPERTY(QStringList voicePresetIds READ voicePresetIds CONSTANT)
     Q_PROPERTY(QString selectedVoicePresetId READ selectedVoicePresetId NOTIFY settingsChanged)
+    Q_PROPERTY(QStringList whisperModelPresetNames READ whisperModelPresetNames CONSTANT)
+    Q_PROPERTY(QStringList whisperModelPresetIds READ whisperModelPresetIds CONSTANT)
+    Q_PROPERTY(QString selectedWhisperModelPresetId READ selectedWhisperModelPresetId NOTIFY settingsChanged)
     Q_PROPERTY(bool overlayVisible READ overlayVisible NOTIFY overlayVisibleChanged)
     Q_PROPERTY(double presenceOffsetX READ presenceOffsetX NOTIFY presenceOffsetChanged)
     Q_PROPERTY(double presenceOffsetY READ presenceOffsetY NOTIFY presenceOffsetChanged)
@@ -86,6 +89,9 @@ public:
     QStringList voicePresetNames() const;
     QStringList voicePresetIds() const;
     QString selectedVoicePresetId() const;
+    QStringList whisperModelPresetNames() const;
+    QStringList whisperModelPresetIds() const;
+    QString selectedWhisperModelPresetId() const;
     bool overlayVisible() const;
     double presenceOffsetX() const;
     double presenceOffsetY() const;
@@ -171,6 +177,7 @@ public:
         const QString &audioOutputDeviceId,
         bool clickThrough);
     Q_INVOKABLE bool downloadVoiceModel(const QString &voiceId);
+    Q_INVOKABLE bool downloadWhisperModel(const QString &modelId);
     Q_INVOKABLE bool completeInitialSetup(
         const QString &displayName,
         const QString &spokenName,
