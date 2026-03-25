@@ -225,6 +225,60 @@ QStringList transcriptWords(const QString &input)
     return input.toLower().split(QRegularExpression(QStringLiteral("\\s+")), Qt::SkipEmptyParts);
 }
 
+QString normalizePhrase(const QString &input)
+{
+    QString normalized = input.toLower();
+    normalized.replace(QRegularExpression(QStringLiteral("[^a-z0-9]+")), QStringLiteral(" "));
+    return normalized.simplified();
+}
+
+bool containsPhrase(const QString &normalizedInput, const QString &phrase)
+{
+    const QString escaped = QRegularExpression::escape(phrase);
+    const QString pattern = QStringLiteral("(^|\\s)%1(\\s|$)").arg(escaped).replace(QStringLiteral("\\ "), QStringLiteral("\\s+"));
+    return QRegularExpression(pattern).match(normalizedInput).hasMatch();
+}
+
+bool isConversationStopPhrase(const QString &input)
+{
+    const QString normalized = normalizePhrase(input);
+    if (normalized.isEmpty()) {
+        return false;
+    }
+
+    static const QStringList phrases = {
+        QStringLiteral("stop"),
+        QStringLiteral("stop listening"),
+        QStringLiteral("stop talking"),
+        QStringLiteral("sleep"),
+        QStringLiteral("go to sleep"),
+        QStringLiteral("sleep now"),
+        QStringLiteral("shutdown"),
+        QStringLiteral("shut down"),
+        QStringLiteral("bye"),
+        QStringLiteral("goodbye"),
+        QStringLiteral("good bye"),
+        QStringLiteral("thank you"),
+        QStringLiteral("thanks"),
+        QStringLiteral("no thanks"),
+        QStringLiteral("never mind"),
+        QStringLiteral("cancel"),
+        QStringLiteral("that is all"),
+        QStringLiteral("thats all"),
+        QStringLiteral("that s all"),
+        QStringLiteral("stand by"),
+        QStringLiteral("standby")
+    };
+
+    for (const QString &phrase : phrases) {
+        if (containsPhrase(normalized, phrase)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 QString firstExistingPath(const QStringList &candidates)
 {
     for (const QString &candidate : candidates) {
@@ -351,12 +405,12 @@ void AssistantController::initialize()
         }
 
         if (!hadSpeech || pcmData.isEmpty()) {
-            setStatus(QStringLiteral("No speech detected"));
-            resumeWakeMonitor(shortWakeResumeDelayMs());
-            emit idleRequested();
+            handleConversationSessionMiss(QStringLiteral("No speech detected"));
             return;
         }
 
+        m_consecutiveSessionMisses = 0;
+        refreshConversationSession();
         emit processingRequested();
         m_activeSttRequestId = m_whisperSttEngine->transcribePcm(pcmData, buildSttPrompt(), true);
     });
@@ -372,6 +426,10 @@ void AssistantController::initialize()
         }
         if (failedMode == AudioCaptureMode::WakeMonitor && m_wakeWordEngine->isActive()) {
             m_wakeWordEngine->stop();
+        }
+        if (m_conversationSessionActive && failedMode == AudioCaptureMode::Direct) {
+            handleConversationSessionMiss(errorText);
+            return;
         }
         setStatus(errorText);
         resumeWakeMonitor(shortWakeResumeDelayMs());
@@ -391,19 +449,23 @@ void AssistantController::initialize()
             if (m_loggingService && isLikelyNonSpeechTranscript(transcript)) {
                 m_loggingService->info(QStringLiteral("Ignoring non-speech transcription token. text=\"%1\"").arg(transcript.left(120)));
             }
-            setStatus(QStringLiteral("No speech detected"));
-            resumeWakeMonitor(shortWakeResumeDelayMs());
-            emit idleRequested();
+            handleConversationSessionMiss(QStringLiteral("No speech detected"));
             return;
         }
         if (shouldIgnoreAmbiguousTranscript(transcript)) {
             if (m_loggingService) {
                 m_loggingService->info(QStringLiteral("Ignoring ambiguous transcription. text=\"%1\"").arg(transcript.left(120)));
             }
+            if (m_conversationSessionActive) {
+                ++m_consecutiveSessionMisses;
+                refreshConversationSession();
+            }
             deliverLocalResponse(QStringLiteral("I didn't catch that."), QStringLiteral("Please repeat"), true);
             return;
         }
 
+        m_consecutiveSessionMisses = 0;
+        refreshConversationSession();
         if (m_loggingService) {
             m_loggingService->info(QStringLiteral("Transcription ready. mode=direct text=\"%1\"")
                 .arg(transcript.left(240)));
@@ -416,6 +478,10 @@ void AssistantController::initialize()
         }
         if (m_loggingService) {
             m_loggingService->error(QStringLiteral("Speech transcription failed: %1").arg(errorText));
+        }
+        if (m_conversationSessionActive) {
+            handleConversationSessionMiss(errorText);
+            return;
         }
         setStatus(errorText);
         resumeWakeMonitor(shortWakeResumeDelayMs());
@@ -439,28 +505,27 @@ void AssistantController::initialize()
             m_loggingService->info(QStringLiteral("TTS playback finished."));
         }
         enterPostSpeechCooldown();
-        if (m_followUpListeningAfterWakeAck) {
-            QTimer::singleShot(followUpListeningDelayMs(), this, [this]() {
-                m_followUpListeningAfterWakeAck = false;
-                if (!m_ttsEngine->isSpeaking()) {
-                    // Keep wake detection suppressed via the existing ignore-wake window,
-                    // but reopen direct listening for the post-wake follow-up turn.
-                    setDuplexState(DuplexState::Open);
-                }
-                if (!m_ttsEngine->isSpeaking() && !startAudioCapture(AudioCaptureMode::Direct, true)) {
-                    enterPostSpeechCooldown();
-                    resumeWakeMonitor(shortWakeResumeDelayMs());
-                    emit idleRequested();
-                }
-            });
+        if (m_followUpListeningAfterWakeAck || conversationSessionShouldContinue()) {
+            refreshConversationSession();
+            const int restartDelayMs = m_followUpListeningAfterWakeAck
+                ? followUpListeningDelayMs()
+                : conversationSessionRestartDelayMs();
+            if (!scheduleConversationSessionListening(restartDelayMs)) {
+                endConversationSession();
+                enterPostSpeechCooldown();
+                resumeWakeMonitor(shortWakeResumeDelayMs());
+                emit idleRequested();
+            }
             return;
         }
+        endConversationSession();
         resumeWakeMonitor(postSpeechWakeResumeDelayMs());
         emit idleRequested();
     });
     connect(m_ttsEngine, &TtsEngine::playbackFailed, this, [this](const QString &errorText) {
         enterPostSpeechCooldown();
         setStatus(errorText);
+        endConversationSession();
         resumeWakeMonitor(shortWakeResumeDelayMs());
         emit idleRequested();
     });
@@ -506,6 +571,7 @@ void AssistantController::initialize()
             const QString errorGroup = errorText.contains(QStringLiteral("timed out"), Qt::CaseInsensitive)
                 ? QStringLiteral("error_timeout")
                 : QStringLiteral("ai_offline");
+            refreshConversationSession();
             deliverLocalResponse(
                 m_localResponseEngine->respondToError(errorGroup, buildLocalResponseContext()),
                 errorText,
@@ -561,6 +627,13 @@ void AssistantController::submitText(const QString &text)
         : m_settings->wakeWordPhrase().trimmed();
     QString routedInput = trimmed;
     const bool wakeDetected = extractWakeWordPayload(trimmed, wakeWord, &routedInput);
+    const QString effectiveInput = routedInput.isEmpty() ? trimmed : routedInput;
+
+    if (wakeDetected) {
+        activateConversationSession();
+    } else if (m_conversationSessionActive) {
+        refreshConversationSession();
+    }
 
     m_transcript = trimmed;
     m_responseText.clear();
@@ -577,7 +650,7 @@ void AssistantController::submitText(const QString &text)
             .arg(wakeDetected ? QStringLiteral("true") : QStringLiteral("false"))
             .arg(routedInput.left(240)));
     }
-    updateUserProfileFromInput(routedInput.isEmpty() ? trimmed : routedInput);
+    updateUserProfileFromInput(effectiveInput);
     m_memoryStore->appendConversation(QStringLiteral("user"), trimmed);
 
     if (wakeDetected && routedInput.isEmpty()) {
@@ -586,6 +659,12 @@ void AssistantController::submitText(const QString &text)
             m_localResponseEngine->wakeWordReady(buildLocalResponseContext()),
             QStringLiteral("Wake phrase detected"),
             true);
+        return;
+    }
+
+    if (shouldEndConversationSession(effectiveInput)) {
+        endConversationSession();
+        deliverLocalResponse(QStringLiteral("All right. Standing by."), QStringLiteral("Conversation ended"), true);
         return;
     }
 
@@ -711,12 +790,14 @@ void AssistantController::stopListening()
 {
     if (isMicrophoneBlocked()) {
         clearActiveSpeechCapture();
+        endConversationSession();
         return;
     }
     invalidateWakeMonitorResume();
     if (m_loggingService) {
         m_loggingService->info(QStringLiteral("Audio capture stop requested. mode=direct"));
     }
+    endConversationSession();
     m_voicePipelineRuntime->stopInputCapture(true);
 }
 
@@ -727,6 +808,7 @@ void AssistantController::cancelActiveRequest()
     m_aiBackendClient->cancelActiveRequest();
     m_ttsEngine->clear();
     setStatus(QStringLiteral("Request cancelled"));
+    endConversationSession();
     resumeWakeMonitor(shortWakeResumeDelayMs());
     emit idleRequested();
 }
@@ -880,6 +962,7 @@ void AssistantController::bindWakeWordEngineSignals()
             m_responseText.clear();
             emit responseTextChanged();
         }
+        activateConversationSession();
         m_followUpListeningAfterWakeAck = true;
         m_lastPromptForAiLog = m_settings->wakeWordPhrase();
         deliverLocalResponse(
@@ -1063,6 +1146,75 @@ bool AssistantController::isMicrophoneBlocked() const
     return m_duplexState == DuplexState::TtsExclusive || m_duplexState == DuplexState::Cooldown;
 }
 
+void AssistantController::activateConversationSession()
+{
+    m_conversationSessionActive = true;
+    m_consecutiveSessionMisses = 0;
+    refreshConversationSession();
+}
+
+void AssistantController::refreshConversationSession()
+{
+    if (!m_conversationSessionActive) {
+        return;
+    }
+
+    m_conversationSessionExpiresAtMs = QDateTime::currentMSecsSinceEpoch() + conversationSessionTimeoutMs();
+}
+
+void AssistantController::endConversationSession()
+{
+    m_conversationSessionActive = false;
+    m_consecutiveSessionMisses = 0;
+    m_conversationSessionExpiresAtMs = 0;
+    m_followUpListeningAfterWakeAck = false;
+}
+
+bool AssistantController::conversationSessionShouldContinue() const
+{
+    if (!m_conversationSessionActive) {
+        return false;
+    }
+
+    return QDateTime::currentMSecsSinceEpoch() < m_conversationSessionExpiresAtMs;
+}
+
+bool AssistantController::scheduleConversationSessionListening(int delayMs)
+{
+    if (!m_followUpListeningAfterWakeAck && !conversationSessionShouldContinue()) {
+        return false;
+    }
+
+    const quint64 resumeSequence = ++m_wakeResumeSequence;
+    QTimer::singleShot(delayMs, this, [this, resumeSequence]() {
+        if (resumeSequence != m_wakeResumeSequence) {
+            return;
+        }
+        if (m_ttsEngine->isSpeaking()) {
+            return;
+        }
+        if (!m_followUpListeningAfterWakeAck && !conversationSessionShouldContinue()) {
+            endConversationSession();
+            resumeWakeMonitor(shortWakeResumeDelayMs());
+            emit idleRequested();
+            return;
+        }
+
+        if (m_duplexState == DuplexState::Cooldown) {
+            setDuplexState(DuplexState::Open);
+        }
+
+        m_followUpListeningAfterWakeAck = false;
+        if (!startAudioCapture(AudioCaptureMode::Direct, true)) {
+            endConversationSession();
+            enterPostSpeechCooldown();
+            resumeWakeMonitor(shortWakeResumeDelayMs());
+            emit idleRequested();
+        }
+    });
+    return true;
+}
+
 void AssistantController::pauseWakeMonitor()
 {
     invalidateWakeMonitorResume();
@@ -1140,6 +1292,21 @@ int AssistantController::followUpListeningDelayMs() const
     return 200;
 }
 
+int AssistantController::conversationSessionTimeoutMs() const
+{
+    return 45000;
+}
+
+int AssistantController::conversationSessionRestartDelayMs() const
+{
+    return 140;
+}
+
+int AssistantController::maxConversationSessionMisses() const
+{
+    return 2;
+}
+
 QString AssistantController::buildSttPrompt() const
 {
     const QString wakeWord = m_settings->wakeWordPhrase().trimmed().isEmpty()
@@ -1193,6 +1360,39 @@ bool AssistantController::shouldIgnoreAmbiguousTranscript(const QString &transcr
     }
 
     return false;
+}
+
+bool AssistantController::shouldEndConversationSession(const QString &input) const
+{
+    return m_conversationSessionActive && isConversationStopPhrase(input);
+}
+
+void AssistantController::handleConversationSessionMiss(const QString &statusText)
+{
+    if (!m_conversationSessionActive) {
+        setStatus(statusText);
+        resumeWakeMonitor(shortWakeResumeDelayMs());
+        emit idleRequested();
+        return;
+    }
+
+    ++m_consecutiveSessionMisses;
+    if (m_consecutiveSessionMisses >= maxConversationSessionMisses()) {
+        endConversationSession();
+        setStatus(QStringLiteral("Standing by"));
+        resumeWakeMonitor(shortWakeResumeDelayMs());
+        emit idleRequested();
+        return;
+    }
+
+    refreshConversationSession();
+    setStatus(QStringLiteral("Listening"));
+    setDuplexState(DuplexState::Open);
+    if (!scheduleConversationSessionListening(conversationSessionRestartDelayMs())) {
+        endConversationSession();
+        resumeWakeMonitor(shortWakeResumeDelayMs());
+        emit idleRequested();
+    }
 }
 
 void AssistantController::scheduleWakeMonitorRestart(int delayMs)
@@ -1342,9 +1542,19 @@ void AssistantController::deliverLocalResponse(const QString &text, const QStrin
     logPromptResponsePair(text, QStringLiteral("local"), status);
     setStatus(status);
     if (speak) {
+        refreshConversationSession();
         m_ttsEngine->speakText(text);
     } else {
         setDuplexState(DuplexState::Open);
+        if (conversationSessionShouldContinue()) {
+            if (!scheduleConversationSessionListening(conversationSessionRestartDelayMs())) {
+                endConversationSession();
+                scheduleWakeMonitorRestart();
+            }
+        } else {
+            endConversationSession();
+            scheduleWakeMonitorRestart();
+        }
         emit idleRequested();
     }
 }
@@ -1412,10 +1622,19 @@ void AssistantController::handleConversationFinished(const QString &text)
     m_memoryStore->appendConversation(QStringLiteral("assistant"), reply.displayText);
     m_streamAssembler->drainRemainingText();
     if (reply.shouldSpeak && !reply.spokenText.isEmpty()) {
+        refreshConversationSession();
         m_ttsEngine->speakText(reply.spokenText);
     } else if (!m_ttsEngine->isSpeaking()) {
         setDuplexState(DuplexState::Open);
-        scheduleWakeMonitorRestart();
+        if (conversationSessionShouldContinue()) {
+            if (!scheduleConversationSessionListening(conversationSessionRestartDelayMs())) {
+                endConversationSession();
+                scheduleWakeMonitorRestart();
+            }
+        } else {
+            endConversationSession();
+            scheduleWakeMonitorRestart();
+        }
         emit idleRequested();
     }
     logPromptResponsePair(reply.displayText, QStringLiteral("conversation"), QStringLiteral("Response ready"));
@@ -1442,6 +1661,7 @@ void AssistantController::handleCommandFinished(const QString &text)
     m_responseText = message;
     emit responseTextChanged();
     m_memoryStore->appendConversation(QStringLiteral("assistant"), message);
+    refreshConversationSession();
     m_ttsEngine->speakText(message);
     logPromptResponsePair(message, QStringLiteral("command"), QStringLiteral("Command executed"));
     setStatus(QStringLiteral("Command executed"));
