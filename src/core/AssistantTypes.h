@@ -239,8 +239,6 @@ struct AssistantIdentity {
 };
 
 struct UserProfile {
-    QString displayName;
-    QString spokenName;
     QString userName;
     nlohmann::json preferences = nlohmann::json::object();
 };

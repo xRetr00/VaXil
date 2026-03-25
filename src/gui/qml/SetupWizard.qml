@@ -240,20 +240,12 @@ Window {
                         width: stepStack.width
                         spacing: 14
 
-                        Text { text: "Display name"; color: "#d0e3f5"; font.pixelSize: 13 }
+                        Text { text: "Username"; color: "#d0e3f5"; font.pixelSize: 13 }
                         TextField {
-                            id: displayNameField
+                            id: userNameField
                             Layout.fillWidth: true
                             text: backend.userName
-                            placeholderText: "Name shown in the interface"
-                        }
-
-                        Text { text: "Spoken name"; color: "#d0e3f5"; font.pixelSize: 13 }
-                        TextField {
-                            id: spokenNameField
-                            Layout.fillWidth: true
-                            text: backend.spokenUserName
-                            placeholderText: "Pronunciation for voice replies (optional)"
+                            placeholderText: "Name used across interface and voice replies"
                         }
                         }
 
@@ -589,8 +581,7 @@ Window {
                                 text: "Test Jarvis"
                                 onClicked: {
                                     if (!backend.runSetupScenario(
-                                            displayNameField.text,
-                                            spokenNameField.text,
+                                            userNameField.text,
                                             endpointField.text,
                                             modelCombo.currentText,
                                             whisperPathField.text,
@@ -615,8 +606,7 @@ Window {
                                 text: "Test time query"
                                 onClicked: {
                                     if (!backend.runSetupScenario(
-                                            displayNameField.text,
-                                            spokenNameField.text,
+                                            userNameField.text,
                                             endpointField.text,
                                             modelCombo.currentText,
                                             whisperPathField.text,
@@ -722,8 +712,7 @@ Window {
                         text: "Quick test"
                         onClicked: {
                             if (!backend.runSetupScenario(
-                                    displayNameField.text,
-                                    spokenNameField.text,
+                                    userNameField.text,
                                     endpointField.text,
                                     modelCombo.currentText,
                                     whisperPathField.text,
@@ -753,8 +742,7 @@ Window {
                             }
 
                             if (!backend.completeInitialSetup(
-                                    displayNameField.text,
-                                    spokenNameField.text,
+                                    userNameField.text,
                                     endpointField.text,
                                     modelCombo.currentText,
                                     whisperPathField.text,

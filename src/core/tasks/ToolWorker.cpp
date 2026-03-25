@@ -6,7 +6,9 @@
 #include <QFileInfo>
 #include <QJsonArray>
 #include <QJsonDocument>
+#include <QProcess>
 #include <QTextStream>
+#include <QUrl>
 
 #include "logging/LoggingService.h"
 #include "memory/MemoryManager.h"
@@ -28,6 +30,44 @@ QString readText(const QString &path, int maxChars = 16000)
         return text.left(maxChars) + QStringLiteral("\n...[truncated]");
     }
     return text;
+}
+
+QString quotePowerShell(QString value)
+{
+    value.replace(QStringLiteral("'"), QStringLiteral("''"));
+    return QStringLiteral("'%1'").arg(value);
+}
+
+QString runPowerShell(const QString &command, int timeoutMs, bool *ok = nullptr)
+{
+    QProcess process;
+    process.start(QStringLiteral("powershell"),
+                  {QStringLiteral("-NoProfile"),
+                   QStringLiteral("-ExecutionPolicy"), QStringLiteral("Bypass"),
+                   QStringLiteral("-Command"),
+                   command});
+    if (!process.waitForFinished(timeoutMs)) {
+        process.kill();
+        process.waitForFinished(2000);
+        if (ok) {
+            *ok = false;
+        }
+        return {};
+    }
+
+    const bool success = process.exitStatus() == QProcess::NormalExit && process.exitCode() == 0;
+    if (ok) {
+        *ok = success;
+    }
+
+    return QString::fromUtf8(process.readAllStandardOutput());
+}
+
+QString latestAiLogPath()
+{
+    const QDir logDir(QDir::currentPath() + QStringLiteral("/bin/logs/AI"));
+    const QFileInfoList files = logDir.entryInfoList({QStringLiteral("*.log")}, QDir::Files | QDir::Readable, QDir::Time);
+    return files.isEmpty() ? QString{} : files.first().absoluteFilePath();
 }
 }
 
@@ -86,6 +126,14 @@ void ToolWorker::processTask(const AgentTask &task)
         result = processFileRead(task);
     } else if (task.type == QStringLiteral("file_write")) {
         result = processFileWrite(task);
+    } else if (task.type == QStringLiteral("log_tail")) {
+        result = processLogTail(task);
+    } else if (task.type == QStringLiteral("log_search")) {
+        result = processLogSearch(task);
+    } else if (task.type == QStringLiteral("ai_log_read")) {
+        result = processAiLogRead(task);
+    } else if (task.type == QStringLiteral("web_search")) {
+        result = processWebSearch(task);
     } else if (task.type == QStringLiteral("memory_write")) {
         result = processMemoryWrite(task);
     } else {
@@ -341,6 +389,167 @@ QJsonObject ToolWorker::processFileWrite(const AgentTask &task)
                        QJsonObject{
                            {QStringLiteral("path"), QDir::cleanPath(path)},
                            {QStringLiteral("bytes"), content.toUtf8().size()}
+                       });
+}
+
+QJsonObject ToolWorker::processLogTail(const AgentTask &task)
+{
+    const QString path = task.args.value(QStringLiteral("path")).toString();
+    const int lines = task.args.value(QStringLiteral("lines")).toInt(120);
+    if (!isReadablePath(path)) {
+        return buildResult(task,
+                           false,
+                           TaskState::Finished,
+                           QStringLiteral("Log unavailable"),
+                           QStringLiteral("That log file is not readable."),
+                           QStringLiteral("Rejected path: %1").arg(path));
+    }
+
+    bool ok = false;
+    const QString output = runPowerShell(
+        QStringLiteral("Get-Content %1 -Tail %2")
+            .arg(quotePowerShell(path))
+            .arg(lines),
+        12000,
+        &ok);
+    if (!ok) {
+        return buildResult(task,
+                           false,
+                           TaskState::Finished,
+                           QStringLiteral("Log read failed"),
+                           QStringLiteral("I couldn't read the log tail."),
+                           QStringLiteral("Failed to tail: %1").arg(QDir::cleanPath(path)));
+    }
+
+    return buildResult(task,
+                       true,
+                       TaskState::Finished,
+                       QStringLiteral("Log tail ready"),
+                       QStringLiteral("Read the latest %1 lines from %2").arg(lines).arg(QFileInfo(path).fileName()),
+                       QStringLiteral("Read log tail from %1").arg(QDir::cleanPath(path)),
+                       QJsonObject{
+                           {QStringLiteral("path"), QDir::cleanPath(path)},
+                           {QStringLiteral("content"), output}
+                       });
+}
+
+QJsonObject ToolWorker::processLogSearch(const AgentTask &task)
+{
+    const QString path = task.args.value(QStringLiteral("path")).toString();
+    const QString query = task.args.value(QStringLiteral("query")).toString();
+    if (!isReadablePath(path)) {
+        return buildResult(task,
+                           false,
+                           TaskState::Finished,
+                           QStringLiteral("Log unavailable"),
+                           QStringLiteral("That log path is not readable."),
+                           QStringLiteral("Rejected path: %1").arg(path));
+    }
+
+    const QString command = QFileInfo(path).isDir()
+        ? QStringLiteral("Get-ChildItem -Path %1 -Recurse | Select-String -Pattern %2")
+              .arg(quotePowerShell(path), quotePowerShell(query))
+        : QStringLiteral("Select-String -Path %1 -Pattern %2")
+              .arg(quotePowerShell(path), quotePowerShell(query));
+    bool ok = false;
+    const QString output = runPowerShell(command, 15000, &ok);
+    if (!ok) {
+        return buildResult(task,
+                           false,
+                           TaskState::Finished,
+                           QStringLiteral("Log search failed"),
+                           QStringLiteral("I couldn't search that log path."),
+                           QStringLiteral("Failed to search %1 for %2").arg(QDir::cleanPath(path), query));
+    }
+
+    return buildResult(task,
+                       true,
+                       TaskState::Finished,
+                       QStringLiteral("Log search ready"),
+                       QStringLiteral("Searched %1 for \"%2\"").arg(QFileInfo(path).fileName(), query),
+                       QStringLiteral("Search completed in %1").arg(QDir::cleanPath(path)),
+                       QJsonObject{
+                           {QStringLiteral("path"), QDir::cleanPath(path)},
+                           {QStringLiteral("query"), query},
+                           {QStringLiteral("content"), output}
+                       });
+}
+
+QJsonObject ToolWorker::processAiLogRead(const AgentTask &task)
+{
+    QString path = task.args.value(QStringLiteral("path")).toString();
+    if (path.isEmpty()) {
+        path = latestAiLogPath();
+    }
+
+    if (path.isEmpty() || !isReadablePath(path)) {
+        return buildResult(task,
+                           false,
+                           TaskState::Finished,
+                           QStringLiteral("AI log unavailable"),
+                           QStringLiteral("I couldn't find a readable AI log."),
+                           QStringLiteral("No readable AI log was available."));
+    }
+
+    const QString content = readText(path, 18000);
+    if (content.isEmpty()) {
+        return buildResult(task,
+                           false,
+                           TaskState::Finished,
+                           QStringLiteral("AI log read failed"),
+                           QStringLiteral("I couldn't read that AI log."),
+                           QStringLiteral("Failed to read: %1").arg(QDir::cleanPath(path)));
+    }
+
+    return buildResult(task,
+                       true,
+                       TaskState::Finished,
+                       QStringLiteral("AI log opened"),
+                       QStringLiteral("Read %1").arg(QFileInfo(path).fileName()),
+                       QStringLiteral("Read AI log: %1").arg(QDir::cleanPath(path)),
+                       QJsonObject{
+                           {QStringLiteral("path"), QDir::cleanPath(path)},
+                           {QStringLiteral("content"), content}
+                       });
+}
+
+QJsonObject ToolWorker::processWebSearch(const AgentTask &task)
+{
+    const QString query = task.args.value(QStringLiteral("query")).toString();
+    if (query.trimmed().isEmpty()) {
+        return buildResult(task,
+                           false,
+                           TaskState::Finished,
+                           QStringLiteral("Web search failed"),
+                           QStringLiteral("A search query is required."),
+                           QStringLiteral("Missing query argument."));
+    }
+
+    bool ok = false;
+    const QString output = runPowerShell(
+        QStringLiteral("(Invoke-RestMethod -Uri %1) | ConvertTo-Json -Depth 6")
+            .arg(quotePowerShell(QStringLiteral("https://api.duckduckgo.com/?q=%1&format=json&no_html=1&skip_disambig=1")
+                                     .arg(QString::fromUtf8(QUrl::toPercentEncoding(query))))),
+        20000,
+        &ok);
+    if (!ok) {
+        return buildResult(task,
+                           false,
+                           TaskState::Finished,
+                           QStringLiteral("Web search failed"),
+                           QStringLiteral("I couldn't search the web right now."),
+                           QStringLiteral("Search query failed: %1").arg(query));
+    }
+
+    return buildResult(task,
+                       true,
+                       TaskState::Finished,
+                       QStringLiteral("Web search ready"),
+                       QStringLiteral("Searched the web for \"%1\"").arg(query),
+                       QStringLiteral("Web search completed for %1").arg(query),
+                       QJsonObject{
+                           {QStringLiteral("query"), query},
+                           {QStringLiteral("content"), output}
                        });
 }
 

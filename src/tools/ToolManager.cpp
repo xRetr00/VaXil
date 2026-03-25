@@ -236,6 +236,7 @@ QString ToolManager::probeVersion(const QString &path, const QStringList &args) 
     process.start(path, args);
     if (!process.waitForFinished(2500)) {
         process.kill();
+        process.waitForFinished(2000);
         return {};
     }
     return versionFromText(QString::fromUtf8(process.readAllStandardOutput()) + QString::fromUtf8(process.readAllStandardError()));
@@ -446,6 +447,10 @@ void ToolManager::finalizeDownload(QNetworkReply *reply)
         }
         extractor.start(program, args);
         if (!extractor.waitForFinished(60000) || extractor.exitCode() != 0) {
+            if (extractor.state() != QProcess::NotRunning) {
+                extractor.kill();
+                extractor.waitForFinished(2000);
+            }
             m_activeDownloadName.clear();
             m_activeDownloadPercent = -1;
             emit downloadFinished(toolName, false, QStringLiteral("Downloaded archive but extraction failed."));

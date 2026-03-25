@@ -149,6 +149,10 @@ bool SkillStore::installSkill(const QString &sourceUrl, QString *error) const
                 .arg(quotePowerShell(downloadUrl), quotePowerShell(zipPath))
         });
     if (!downloader.waitForFinished(180000) || downloader.exitCode() != 0 || !QFileInfo::exists(zipPath)) {
+        if (downloader.state() != QProcess::NotRunning) {
+            downloader.kill();
+            downloader.waitForFinished(2000);
+        }
         if (error) {
             *error = QStringLiteral("Skill download failed.");
         }
@@ -166,6 +170,10 @@ bool SkillStore::installSkill(const QString &sourceUrl, QString *error) const
                 .arg(quotePowerShell(zipPath), quotePowerShell(extractPath))
         });
     if (!extractor.waitForFinished(120000) || extractor.exitCode() != 0) {
+        if (extractor.state() != QProcess::NotRunning) {
+            extractor.kill();
+            extractor.waitForFinished(2000);
+        }
         if (error) {
             *error = QStringLiteral("Skill archive extraction failed.");
         }

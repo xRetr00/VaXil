@@ -6,8 +6,8 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
-- Identity model split between display_name and spoken_name for better TTS pronunciation behavior.
-- Setup and Settings support for spoken name and wake tuning controls.
+- Username-only identity model used across UI and voice responses.
+- Setup and Settings support for username editing and wake tuning controls.
 - Per-exchange AI logging to separate files in bin/logs/AI.
 - Enhanced setup requirement checks for endpoint, models, and local voice/wake toolchain.
 

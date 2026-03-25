@@ -15,9 +15,7 @@ Defines assistant persona:
 
 Defines user identity and preferences:
 
-- display_name: used in UI text
-- spoken_name: preferred spoken form for TTS addressing
-- user_name: legacy compatibility field (mirrors display_name)
+- user_name: used for UI text and spoken addressing
 - preferences: free-form object
 
 ## Runtime Settings File

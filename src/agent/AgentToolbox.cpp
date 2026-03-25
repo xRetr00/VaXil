@@ -66,6 +66,17 @@ QString extractString(const nlohmann::json &args, const char *key)
         ? QString::fromStdString(args.at(key).get<std::string>())
         : QString{};
 }
+
+bool waitForProcess(QProcess &process, int timeoutMs)
+{
+    if (process.waitForFinished(timeoutMs)) {
+        return process.exitStatus() == QProcess::NormalExit && process.exitCode() == 0;
+    }
+
+    process.kill();
+    process.waitForFinished(2000);
+    return false;
+}
 }
 
 AgentToolbox::AgentToolbox(AppSettings *settings, MemoryStore *memoryStore, SkillStore *skillStore, LoggingService *loggingService, QObject *parent)
@@ -308,7 +319,9 @@ AgentToolResult AgentToolbox::executeLogTail(const AgentToolCall &call, const nl
     const QString command = QStringLiteral("Get-Content %1 -Tail %2").arg(quotePowerShell(path)).arg(lines);
     QProcess process;
     process.start(QStringLiteral("powershell"), {QStringLiteral("-NoProfile"), QStringLiteral("-ExecutionPolicy"), QStringLiteral("Bypass"), QStringLiteral("-Command"), command});
-    process.waitForFinished(10000);
+    if (!waitForProcess(process, 10000)) {
+        return failedResult(call, QStringLiteral("Failed to read the log tail."));
+    }
     return successResult(call, QString::fromUtf8(process.readAllStandardOutput()));
 }
 
@@ -327,7 +340,9 @@ AgentToolResult AgentToolbox::executeLogSearch(const AgentToolCall &call, const 
             .arg(quotePowerShell(path), quotePowerShell(query));
     QProcess process;
     process.start(QStringLiteral("powershell"), {QStringLiteral("-NoProfile"), QStringLiteral("-ExecutionPolicy"), QStringLiteral("Bypass"), QStringLiteral("-Command"), command});
-    process.waitForFinished(10000);
+    if (!waitForProcess(process, 10000)) {
+        return failedResult(call, QStringLiteral("Failed to search the log."));
+    }
     return successResult(call, QString::fromUtf8(process.readAllStandardOutput()));
 }
 
@@ -363,7 +378,7 @@ AgentToolResult AgentToolbox::executeWebSearch(const AgentToolCall &call, const 
                                .arg(quotePowerShell(apiKey),
                                     quotePowerShell(QStringLiteral("https://api.search.brave.com/res/v1/web/search?q=%1")
                                                         .arg(QString::fromUtf8(QUrl::toPercentEncoding(query)))))});
-            if (process.waitForFinished(20000) && process.exitCode() == 0) {
+            if (waitForProcess(process, 20000)) {
                 return successResult(call, QString::fromUtf8(process.readAllStandardOutput()));
             }
         }
@@ -375,7 +390,7 @@ AgentToolResult AgentToolbox::executeWebSearch(const AgentToolCall &call, const 
                    QStringLiteral("(Invoke-RestMethod -Uri %1) | ConvertTo-Json -Depth 6")
                        .arg(quotePowerShell(QStringLiteral("https://api.duckduckgo.com/?q=%1&format=json&no_html=1&skip_disambig=1")
                                                 .arg(QString::fromUtf8(QUrl::toPercentEncoding(query)))))});
-    if (!process.waitForFinished(20000) || process.exitCode() != 0) {
+    if (!waitForProcess(process, 20000)) {
         return failedResult(call, QStringLiteral("Web search failed."));
     }
     return successResult(call, QString::fromUtf8(process.readAllStandardOutput()));
@@ -388,7 +403,7 @@ AgentToolResult AgentToolbox::executeWebFetch(const AgentToolCall &call, const n
     process.start(QStringLiteral("powershell"),
                   {QStringLiteral("-NoProfile"), QStringLiteral("-ExecutionPolicy"), QStringLiteral("Bypass"), QStringLiteral("-Command"),
                    QStringLiteral("(Invoke-WebRequest -UseBasicParsing -Uri %1).Content").arg(quotePowerShell(url))});
-    if (!process.waitForFinished(30000) || process.exitCode() != 0) {
+    if (!waitForProcess(process, 30000)) {
         return failedResult(call, QStringLiteral("Web fetch failed."));
     }
     QString output = QString::fromUtf8(process.readAllStandardOutput());

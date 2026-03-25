@@ -43,6 +43,9 @@ Window {
     }
 
     function syncFieldsFromBackend() {
+        if (userNameField) {
+            userNameField.text = backend.userName
+        }
         endpointField.text = backend.lmStudioEndpoint
         whisperPathField.text = backend.whisperExecutable
         whisperModelPathField.text = backend.whisperModelPath
@@ -113,6 +116,13 @@ Window {
             }
             settingsWindow.syncFieldsFromBackend()
             settingsWindow.refreshRequirementStatus()
+        }
+
+        function onProfileChanged() {
+            if (!settingsWindow.visible) {
+                return
+            }
+            settingsWindow.syncFieldsFromBackend()
         }
     }
 
@@ -235,6 +245,51 @@ Window {
                                 color: "#d9ecff"
                                 font.pixelSize: 12
                             }
+                        }
+                    }
+                }
+            }
+
+            Rectangle {
+                width: parent.width
+                implicitHeight: identityColumn.implicitHeight + 44
+                radius: 30
+                color: "#9208111d"
+                border.width: 1
+                border.color: "#1d2f4d"
+
+                ColumnLayout {
+                    id: identityColumn
+                    anchors.fill: parent
+                    anchors.margins: 22
+                    spacing: 14
+
+                    Text {
+                        text: "Identity"
+                        color: "#eef7ff"
+                        font.pixelSize: 22
+                        font.weight: Font.Medium
+                    }
+
+                    Text {
+                        text: "Username used everywhere in the app and spoken replies."
+                        color: "#8099b8"
+                        font.pixelSize: 14
+                    }
+
+                    Text { text: "Username"; color: "#c9def3"; font.pixelSize: 13 }
+                    TextField {
+                        id: userNameField
+                        Layout.fillWidth: true
+                        text: backend.userName
+                    }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        Item { Layout.fillWidth: true }
+                        Button {
+                            text: "Save username"
+                            onClicked: backend.setUserName(userNameField.text)
                         }
                     }
                 }

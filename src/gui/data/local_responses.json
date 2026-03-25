@@ -15,12 +15,12 @@
     "How can I help, {user_name}?"
   ],
   "wakeword_ready": [
-    "Yes, {user_name}.",
-    "Standing by, {user_name}.",
-    "How may I assist, {user_name}?"
+    "Yes Sir, What's in Your Mind, {user_name}?",
+    "sigh I Need Some Air This Computer Is So Dusty, What's UP {user_name}.",
+    "Welcome Back Sir How Was Your Day, Would You like To Do Some Brainstorming {user_name}?"
   ],
   "time_status": [
-    "It is {current_time}, {user_name}.",
+    "It is {current_time} based on quantum sand in my dusty brain sir.",
     "The current time is {current_time}.",
     "It is now {current_time}."
   ],
@@ -30,14 +30,18 @@
     "It is {current_date} today."
   ],
   "ai_offline": [
-    "I'm currently unable to reach the AI core.",
-    "My processing unit is offline at the moment.",
-    "I can't reach the AI core right now."
+    "I'm currently unable to reach the AI core sir.",
+    "My processing unit is offline at the moment sir.",
+    "I Think My Mind is offline Sir.",
+    "I Think My Mind Is Rusty Sir.",
+    "Is The Power Plugged I Can't Feel My Brain Sir."
   ],
   "error_timeout": [
-    "The AI core did not answer in time.",
-    "That took too long to complete.",
-    "The request timed out."
+    "The AI core did not answer in time sir.",
+    "That took too long to complete i can't Waste Your Time Sir.",
+    "I Think My Mind is offline Sir.",
+    "I Think My Mind Is Rusty Sir.",
+    "Is The Power Plugged I Can't Feel My Brain Sir."
   ],
   "acknowledgement": [
     "Understood. Working on {target}.",

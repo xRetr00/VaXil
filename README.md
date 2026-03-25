@@ -72,8 +72,7 @@ build.bat
 On first launch, the Setup wizard opens automatically.
 
 1. Profile:
-   - display_name for UI text
-   - spoken_name for natural pronunciation in TTS
+  - user_name used in UI text and voice replies
 2. AI Core:
    - endpoint (for example http://localhost:1234)
    - model selection

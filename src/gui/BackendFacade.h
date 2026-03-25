@@ -69,7 +69,6 @@ class BackendFacade : public QObject
     Q_PROPERTY(bool clickThroughEnabled READ clickThroughEnabled NOTIFY settingsChanged)
     Q_PROPERTY(QString assistantName READ assistantName NOTIFY profileChanged)
     Q_PROPERTY(QString userName READ userName NOTIFY profileChanged)
-    Q_PROPERTY(QString spokenUserName READ spokenUserName NOTIFY profileChanged)
     Q_PROPERTY(bool initialSetupCompleted READ initialSetupCompleted NOTIFY settingsChanged)
     Q_PROPERTY(QString toolInstallStatus READ toolInstallStatus NOTIFY toolInstallStatusChanged)
     Q_PROPERTY(QVariantList toolStatuses READ toolStatuses NOTIFY toolStatusesChanged)
@@ -163,7 +162,6 @@ public:
     bool clickThroughEnabled() const;
     QString assistantName() const;
     QString userName() const;
-    QString spokenUserName() const;
     bool initialSetupCompleted() const;
     QString toolInstallStatus() const;
     QVariantList toolStatuses() const;
@@ -248,8 +246,7 @@ public:
     Q_INVOKABLE bool downloadVoiceModel(const QString &voiceId);
     Q_INVOKABLE bool downloadWhisperModel(const QString &modelId);
     Q_INVOKABLE bool completeInitialSetup(
-        const QString &displayName,
-        const QString &spokenName,
+        const QString &userName,
         const QString &endpoint,
         const QString &modelId,
         const QString &whisperPath,
@@ -265,8 +262,7 @@ public:
         const QString &audioOutputDeviceId,
         bool clickThrough);
     Q_INVOKABLE bool runSetupScenario(
-        const QString &displayName,
-        const QString &spokenName,
+        const QString &userName,
         const QString &endpoint,
         const QString &modelId,
         const QString &whisperPath,
@@ -298,6 +294,7 @@ public:
     Q_INVOKABLE void downloadModel(const QString &name);
     Q_INVOKABLE void installAllTools();
     Q_INVOKABLE bool autoDetectVoiceTools();
+    Q_INVOKABLE bool setUserName(const QString &userName);
     Q_INVOKABLE bool startTrainingSetup();
     Q_INVOKABLE void refreshAudioDevices();
     Q_INVOKABLE bool installSkill(const QString &url);

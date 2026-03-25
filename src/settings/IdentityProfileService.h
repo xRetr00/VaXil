@@ -18,8 +18,6 @@ public:
     UserProfile userProfile() const;
 
     bool setUserName(const QString &userName);
-    bool setSpokenName(const QString &spokenName);
-    bool setUserNames(const QString &displayName, const QString &spokenName);
     bool setPreference(const QString &key, const QString &value);
 
 private:

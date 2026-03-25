@@ -363,6 +363,51 @@ bool intentRequiresTool(IntentType intent)
         || intent == IntentType::MEMORY_WRITE;
 }
 
+bool containsAnyNormalized(const QString &input, const QStringList &phrases)
+{
+    const QString normalized = input.toLower();
+    for (const QString &phrase : phrases) {
+        if (normalized.contains(phrase)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool isExplicitAgentWorldQuery(const QString &input)
+{
+    return containsAnyNormalized(input, {
+        QStringLiteral("search the web"),
+        QStringLiteral("reach the web"),
+        QStringLiteral("browse the web"),
+        QStringLiteral("latest news"),
+        QStringLiteral("today"),
+        QStringLiteral("read your own logs"),
+        QStringLiteral("read logs"),
+        QStringLiteral("startup log"),
+        QStringLiteral("jarvis log"),
+        QStringLiteral("correct tools available"),
+        QStringLiteral("what tools"),
+        QStringLiteral("tools available"),
+        QStringLiteral("what can you access"),
+        QStringLiteral("latest model")
+    });
+}
+
+IntentType expectedAgentIntentForQuery(const QString &input)
+{
+    if (containsAnyNormalized(input, {
+            QStringLiteral("read your own logs"),
+            QStringLiteral("read logs"),
+            QStringLiteral("startup log"),
+            QStringLiteral("jarvis log")
+        })) {
+        return IntentType::READ_FILE;
+    }
+
+    return IntentType::GENERAL_CHAT;
+}
+
 }
 
 AssistantController::AssistantController(
@@ -836,7 +881,7 @@ void AssistantController::submitText(const QString &text)
 
     if (shouldEndConversationSession(effectiveInput)) {
         endConversationSession();
-        deliverLocalResponse(QStringLiteral("All right. Standing by."), QStringLiteral("Conversation ended"), true);
+        deliverLocalResponse(QStringLiteral("All right. See You Soon Sir."), QStringLiteral("Conversation ended"), true);
         return;
     }
 
@@ -858,7 +903,10 @@ void AssistantController::submitText(const QString &text)
 
     const IntentResult mlIntent = m_intentEngine->classify(routedInput);
     const IntentResult detectedIntent = m_backgroundIntentDetector->detect(routedInput, QDir::currentPath());
-    const IntentResult effectiveIntent = m_intentEngine->isReady() ? mlIntent : detectedIntent;
+    IntentResult effectiveIntent = m_intentEngine->isReady() ? mlIntent : detectedIntent;
+    if (detectedIntent.confidence > effectiveIntent.confidence) {
+        effectiveIntent = detectedIntent;
+    }
 
     if (m_loggingService) {
         m_loggingService->info(QStringLiteral("Intent routing. mlType=%1 mlConfidence=%2 extractedType=%3 extractedConfidence=%4 onnxReady=%5")
@@ -869,9 +917,7 @@ void AssistantController::submitText(const QString &text)
             .arg(m_intentEngine->isReady() ? QStringLiteral("true") : QStringLiteral("false")));
     }
 
-    if (effectiveIntent.confidence > 0.8f
-        && effectiveIntent.type == detectedIntent.type
-        && !detectedIntent.tasks.isEmpty()) {
+    if (detectedIntent.confidence > 0.8f && !detectedIntent.tasks.isEmpty()) {
         dispatchBackgroundTasks(detectedIntent.tasks);
         deliverLocalResponse(
             detectedIntent.spokenMessage,
@@ -896,6 +942,11 @@ void AssistantController::submitText(const QString &text)
             m_localResponseEngine->respondToError(QStringLiteral("ai_offline"), buildLocalResponseContext()),
             QStringLiteral("AI unavailable"),
             true);
+        return;
+    }
+
+    if (m_settings->agentEnabled() && isExplicitAgentWorldQuery(routedInput)) {
+        startAgentConversationRequest(routedInput, expectedAgentIntentForQuery(routedInput));
         return;
     }
 
@@ -1778,14 +1829,11 @@ LocalResponseContext AssistantController::buildLocalResponseContext() const
     }
 
     const UserProfile profile = m_identityProfileService->userProfile();
-    const QString displayName = profile.displayName.isEmpty() ? profile.userName : profile.displayName;
-    const QString spokenName = profile.spokenName.isEmpty() ? displayName : profile.spokenName;
+    const QString userName = profile.userName;
 
     return {
         .assistantName = m_identityProfileService->identity().assistantName,
-        .userName = spokenName.isEmpty()
-            ? (displayName.isEmpty() ? m_memoryStore->userName() : displayName)
-            : spokenName,
+        .userName = userName.isEmpty() ? m_memoryStore->userName() : userName,
         .timeOfDay = timeOfDay,
         .systemState = stateName(),
         .tone = m_identityProfileService->identity().tone,

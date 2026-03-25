@@ -72,6 +72,13 @@ bool containsAny(const QString &normalized, const QStringList &phrases)
     }
     return false;
 }
+
+QString latestLogPath(const QString &workspaceRoot, const QString &subdir)
+{
+    const QString fullRoot = QDir(workspaceRoot).absoluteFilePath(subdir);
+    const QFileInfoList files = QDir(fullRoot).entryInfoList({QStringLiteral("*.log")}, QDir::Files | QDir::Readable, QDir::Time);
+    return files.isEmpty() ? QString{} : files.first().absoluteFilePath();
+}
 }
 
 IntentDetector::IntentDetector(QObject *parent)
@@ -93,7 +100,12 @@ IntentResult IntentDetector::detect(const QString &input, const QString &workspa
         QStringLiteral("list the files"),
         QStringLiteral("show files"),
         QStringLiteral("show me the files"),
-        QStringLiteral("directory listing")
+        QStringLiteral("directory listing"),
+        QStringLiteral("current directory"),
+        QStringLiteral("current folder"),
+        QStringLiteral("current dictionary"),
+        QStringLiteral("where are you"),
+        QStringLiteral("what directory are you in")
     });
     const bool ambiguousListRequest = containsAny(normalized, {
         QStringLiteral("workspace files"),
@@ -116,7 +128,13 @@ IntentResult IntentDetector::detect(const QString &input, const QString &workspa
         QStringLiteral("open file"),
         QStringLiteral("show file"),
         QStringLiteral("read the log"),
-        QStringLiteral("read this file")
+        QStringLiteral("read this file"),
+        QStringLiteral("read logs"),
+        QStringLiteral("read your own logs"),
+        QStringLiteral("check logs"),
+        QStringLiteral("look in the logs"),
+        QStringLiteral("startup log"),
+        QStringLiteral("jarvis log")
     });
     const bool weakReadRequest = containsAny(normalized, {
         QStringLiteral("check this file"),
@@ -124,7 +142,16 @@ IntentResult IntentDetector::detect(const QString &input, const QString &workspa
         QStringLiteral("can you read")
     });
     if (explicitReadRequest || weakReadRequest) {
-        const QString candidate = absoluteCandidatePath(extractPathCandidate(input), cleanWorkspace);
+        QString candidate = absoluteCandidatePath(extractPathCandidate(input), cleanWorkspace);
+        if (candidate.isEmpty() && containsAny(normalized, {QStringLiteral("startup log")})) {
+            candidate = QDir(cleanWorkspace).absoluteFilePath(QStringLiteral("bin/logs/startup.log"));
+        }
+        if (candidate.isEmpty() && containsAny(normalized, {QStringLiteral("jarvis log"), QStringLiteral("your own logs"), QStringLiteral("read logs"), QStringLiteral("check logs")})) {
+            candidate = QDir(cleanWorkspace).absoluteFilePath(QStringLiteral("bin/logs/jarvis.log"));
+        }
+        if (candidate.isEmpty() && containsAny(normalized, {QStringLiteral("ai log"), QStringLiteral("latest ai log")})) {
+            candidate = latestLogPath(cleanWorkspace, QStringLiteral("bin/logs/AI"));
+        }
         if (!candidate.isEmpty()) {
             return {
                 .type = IntentType::READ_FILE,

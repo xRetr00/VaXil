@@ -36,8 +36,6 @@ void AiServicesTests::promptAdapterInjectsIdentityAndProfile()
 {
     PromptAdapter adapter;
     UserProfile profile;
-    profile.displayName = QStringLiteral("Alex");
-    profile.spokenName = QStringLiteral("Alexander");
     profile.userName = QStringLiteral("Alex");
     profile.preferences["theme"] = "dark";
 
@@ -55,8 +53,7 @@ void AiServicesTests::promptAdapterInjectsIdentityAndProfile()
         ReasoningMode::Balanced);
 
     QVERIFY(messages.first().content.contains(QStringLiteral("You are JARVIS")));
-    QVERIFY(messages.first().content.contains(QStringLiteral("display name: Alex")));
-    QVERIFY(messages.first().content.contains(QStringLiteral("spoken name: Alexander")));
+    QVERIFY(messages.first().content.contains(QStringLiteral("user name: Alex")));
     QVERIFY(messages.first().content.contains(QStringLiteral("theme = dark")));
 }
 

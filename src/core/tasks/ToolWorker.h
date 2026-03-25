@@ -51,6 +51,10 @@ private:
     QJsonObject processDirList(const AgentTask &task);
     QJsonObject processFileRead(const AgentTask &task);
     QJsonObject processFileWrite(const AgentTask &task);
+    QJsonObject processLogTail(const AgentTask &task);
+    QJsonObject processLogSearch(const AgentTask &task);
+    QJsonObject processAiLogRead(const AgentTask &task);
+    QJsonObject processWebSearch(const AgentTask &task);
     QJsonObject processMemoryWrite(const AgentTask &task);
 
     QStringList m_allowedRoots;

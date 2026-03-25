@@ -380,6 +380,7 @@ bool downloadFileWithPowerShell(const QString &url, const QString &destinationPa
 
     if (!process.waitForFinished(timeoutMs)) {
         process.kill();
+        process.waitForFinished(2000);
         if (error) {
             *error = QStringLiteral("Download timed out.");
         }
@@ -711,6 +712,7 @@ QString probeToolVersion(const QString &executablePath, const QStringList &args)
     process.start(executablePath, args);
     if (!process.waitForFinished(3000)) {
         process.kill();
+        process.waitForFinished(2000);
         return {};
     }
 
@@ -733,6 +735,7 @@ QString fetchLatestReleaseTag(const QString &repo)
 
     if (!process.waitForFinished(3500)) {
         process.kill();
+        process.waitForFinished(2000);
         return {};
     }
 
@@ -951,14 +954,7 @@ bool BackendFacade::clickThroughEnabled() const { return m_settings->clickThroug
 QString BackendFacade::assistantName() const { return m_identityProfileService->identity().assistantName; }
 QString BackendFacade::userName() const
 {
-    const UserProfile profile = m_identityProfileService->userProfile();
-    return profile.displayName.isEmpty() ? profile.userName : profile.displayName;
-}
-QString BackendFacade::spokenUserName() const
-{
-    const UserProfile profile = m_identityProfileService->userProfile();
-    const QString displayName = profile.displayName.isEmpty() ? profile.userName : profile.displayName;
-    return profile.spokenName.isEmpty() ? displayName : profile.spokenName;
+    return m_identityProfileService->userProfile().userName;
 }
 bool BackendFacade::initialSetupCompleted() const { return m_settings->initialSetupCompleted(); }
 QString BackendFacade::toolInstallStatus() const { return m_toolInstallStatus; }
@@ -1232,8 +1228,7 @@ bool BackendFacade::downloadWhisperModel(const QString &modelId)
 }
 
 bool BackendFacade::completeInitialSetup(
-    const QString &displayName,
-    const QString &spokenName,
+    const QString &userName,
     const QString &endpoint,
     const QString &modelId,
     const QString &whisperPath,
@@ -1317,7 +1312,7 @@ bool BackendFacade::completeInitialSetup(
         return false;
     }
 
-    m_identityProfileService->setUserNames(displayName.trimmed(), spokenName.trimmed());
+    m_identityProfileService->setUserName(userName.trimmed());
 
     const QString detectedVoicePresetId = detectVoicePresetIdFromPath(resolvedVoiceModel);
     if (!detectedVoicePresetId.isEmpty()) {
@@ -1363,8 +1358,7 @@ bool BackendFacade::completeInitialSetup(
 }
 
 bool BackendFacade::runSetupScenario(
-    const QString &displayName,
-    const QString &spokenName,
+    const QString &userName,
     const QString &endpoint,
     const QString &modelId,
     const QString &whisperPath,
@@ -1449,11 +1443,20 @@ bool BackendFacade::runSetupScenario(
         return false;
     }
 
-    m_identityProfileService->setUserNames(displayName.trimmed(), spokenName.trimmed());
+    m_identityProfileService->setUserName(userName.trimmed());
 
     const QString detectedVoicePresetId = detectVoicePresetIdFromPath(resolvedVoiceModel);
     if (!detectedVoicePresetId.isEmpty()) {
         m_settings->setSelectedVoicePresetId(detectedVoicePresetId);
+
+bool BackendFacade::setUserName(const QString &userName)
+{
+    const bool updated = m_identityProfileService->setUserName(userName);
+    if (updated) {
+        emit profileChanged();
+    }
+    return updated;
+}
     }
 
     m_assistantController->saveSettings(

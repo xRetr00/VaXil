@@ -146,7 +146,18 @@ IntentResult IntentEngine::classify(const QString &text)
         return cached->result;
     }
 
-    const IntentResult result = m_impl->ready ? classifyWithModel(normalized) : classifyWithHeuristics(normalized);
+    const IntentResult heuristicResult = classifyWithHeuristics(normalized);
+    IntentResult result = heuristicResult;
+    if (m_impl->ready) {
+        const IntentResult modelResult = classifyWithModel(normalized);
+        if (modelResult.type != IntentType::GENERAL_CHAT && modelResult.confidence >= 0.80f) {
+            result = modelResult;
+        } else if (heuristicResult.type != IntentType::GENERAL_CHAT && heuristicResult.confidence >= 0.55f) {
+            result = heuristicResult;
+        } else if (modelResult.confidence > heuristicResult.confidence) {
+            result = modelResult;
+        }
+    }
     m_cache.insert(normalized, {result, nowMs});
     return result;
 }
@@ -163,8 +174,20 @@ QString IntentEngine::modelPath() const
 
 void IntentEngine::reloadModel()
 {
+    const QString resolvedPath = resolveModelPath();
+#if JARVIS_HAS_ONNXRUNTIME
+    const bool hasLoadedSession = m_impl->session != nullptr;
+#else
+    const bool hasLoadedSession = false;
+#endif
+    if (resolvedPath == m_modelPath
+        && ((resolvedPath.isEmpty() && !m_impl->ready)
+            || (!resolvedPath.isEmpty() && m_impl->ready && hasLoadedSession))) {
+        return;
+    }
+
     m_cache.clear();
-    m_modelPath = resolveModelPath();
+    m_modelPath = resolvedPath;
     m_impl->ready = false;
 
 #if JARVIS_HAS_ONNXRUNTIME
@@ -266,17 +289,17 @@ IntentResult IntentEngine::classifyWithHeuristics(const QString &text) const
         return text.contains(needle);
     };
 
-    if (contains(QStringLiteral("list files")) || contains(QStringLiteral("show files")) || contains(QStringLiteral("directory"))) {
+    if (contains(QStringLiteral("list files")) || contains(QStringLiteral("show files")) || contains(QStringLiteral("directory")) || contains(QStringLiteral("current folder")) || contains(QStringLiteral("current directory")) || contains(QStringLiteral("current dictionary"))) {
         listScore += 0.92f;
     }
     if (contains(QStringLiteral("workspace")) && contains(QStringLiteral("files"))) {
         listScore += 0.18f;
     }
 
-    if (contains(QStringLiteral("read file")) || contains(QStringLiteral("open file")) || contains(QStringLiteral("read the log"))) {
+    if (contains(QStringLiteral("read file")) || contains(QStringLiteral("open file")) || contains(QStringLiteral("read the log")) || contains(QStringLiteral("read logs")) || contains(QStringLiteral("read your own logs")) || contains(QStringLiteral("startup log")) || contains(QStringLiteral("jarvis log"))) {
         readScore += 0.94f;
     }
-    if (contains(QStringLiteral("read")) && contains(QStringLiteral("file"))) {
+    if ((contains(QStringLiteral("read")) && contains(QStringLiteral("file"))) || (contains(QStringLiteral("read")) && contains(QStringLiteral("log")))) {
         readScore += 0.28f;
     }
 

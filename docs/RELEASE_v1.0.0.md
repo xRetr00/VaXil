@@ -36,7 +36,7 @@ v1.0.0 establishes a stable local-first desktop assistant baseline with:
 
 ### Identity and Voice
 
-- Separation of display_name and spoken_name for improved natural speech output
+- Username-based identity across UI and spoken responses
 
 ### Logging
 
