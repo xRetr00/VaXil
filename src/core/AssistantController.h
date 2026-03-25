@@ -174,6 +174,7 @@ private:
     QString m_statusText = QStringLiteral("Initializing");
     float m_audioLevel = 0.0f;
     quint64 m_activeRequestId = 0;
+    quint64 m_activeInputCaptureId = 0;
     quint64 m_activeSttRequestId = 0;
     RequestKind m_activeRequestKind = RequestKind::Conversation;
     QString m_lastPromptForAiLog;

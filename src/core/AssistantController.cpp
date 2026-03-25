@@ -278,15 +278,26 @@ void AssistantController::initialize()
         setStatus(m_modelCatalogService->availability().status);
     });
 
-    connect(m_audioInputService, &AudioInputService::audioLevelChanged, this, [this](const AudioLevel &level) {
+    m_voicePipelineRuntime->configureAudioProcessing({
+        .aecEnabled = m_settings->aecEnabled(),
+        .noiseSuppressionEnabled = true,
+        .agcEnabled = true,
+        .rnnoiseEnabled = m_settings->rnnoiseEnabled(),
+        .vadSensitivity = static_cast<float>(m_settings->vadSensitivity())
+    });
+
+    connect(m_voicePipelineRuntime, &VoicePipelineRuntime::inputAudioLevelChanged, this, [this](quint64 generationId, const AudioLevel &level) {
+        if (generationId != m_activeInputCaptureId) {
+            return;
+        }
         m_audioLevel = level.rms;
         emit audioLevelChanged();
     });
-    connect(m_audioInputService, &AudioInputService::speechDetected, this, [this]() {
-        if (isMicrophoneBlocked()) {
-            clearActiveSpeechCapture();
+    connect(m_voicePipelineRuntime, &VoicePipelineRuntime::speechActivityChanged, this, [this](quint64 generationId, bool active) {
+        if (generationId != m_activeInputCaptureId || !active || isMicrophoneBlocked()) {
             return;
         }
+
         if (m_loggingService) {
             const QString mode = m_audioCaptureMode == AudioCaptureMode::Direct
                     ? QStringLiteral("direct")
@@ -294,13 +305,22 @@ void AssistantController::initialize()
             m_loggingService->info(QStringLiteral("Audio speech detected. mode=%1").arg(mode));
         }
     });
-    connect(m_audioInputService, &AudioInputService::captureWindowElapsed, this, [this](bool hadSpeech) {
+    connect(m_voicePipelineRuntime, &VoicePipelineRuntime::inputCaptureFinished, this, [this](quint64 generationId, const QByteArray &pcmData, bool hadSpeech) {
+        if (generationId != m_activeInputCaptureId) {
+            return;
+        }
+
+        const AudioCaptureMode completedMode = m_audioCaptureMode;
+        m_lastCompletedCaptureMode = completedMode;
+        m_audioCaptureMode = AudioCaptureMode::None;
+
         if (m_loggingService) {
-            const QString mode = m_audioCaptureMode == AudioCaptureMode::Direct
+            const QString mode = completedMode == AudioCaptureMode::Direct
                     ? QStringLiteral("direct")
                     : QStringLiteral("none");
-            m_loggingService->info(QStringLiteral("Audio capture window elapsed. mode=%1 hadSpeech=%2")
+            m_loggingService->info(QStringLiteral("Audio capture finished. mode=%1 bytes=%2 hadSpeech=%3")
                 .arg(mode)
+                .arg(pcmData.size())
                 .arg(hadSpeech ? QStringLiteral("true") : QStringLiteral("false")));
         }
 
@@ -309,24 +329,28 @@ void AssistantController::initialize()
             return;
         }
 
-        if (!hadSpeech) {
-            m_audioInputService->stop();
-            m_audioCaptureMode = AudioCaptureMode::None;
-            m_lastCompletedCaptureMode = AudioCaptureMode::None;
+        if (!hadSpeech || pcmData.isEmpty()) {
             setStatus(QStringLiteral("No speech detected"));
             resumeWakeMonitor(shortWakeResumeDelayMs());
             emit idleRequested();
             return;
         }
 
-        stopListening();
+        emit processingRequested();
+        m_activeSttRequestId = m_whisperSttEngine->transcribePcm(pcmData, buildSttPrompt(), true);
     });
-    connect(m_audioInputService, &AudioInputService::speechEnded, this, [this]() {
-        if (isMicrophoneBlocked()) {
-            clearActiveSpeechCapture();
+    connect(m_voicePipelineRuntime, &VoicePipelineRuntime::inputCaptureFailed, this, [this](quint64 generationId, const QString &errorText) {
+        if (generationId != m_activeInputCaptureId) {
             return;
         }
-        stopListening();
+
+        m_audioCaptureMode = AudioCaptureMode::None;
+        if (m_loggingService) {
+            m_loggingService->error(QStringLiteral("Input capture failed: %1").arg(errorText));
+        }
+        setStatus(errorText);
+        resumeWakeMonitor(shortWakeResumeDelayMs());
+        emit idleRequested();
     });
 
     bindWakeWordEngineSignals();

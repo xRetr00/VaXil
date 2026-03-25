@@ -29,9 +29,12 @@ VoicePipelineRuntime::VoicePipelineRuntime(AppSettings *settings, LoggingService
     connect(&m_ioThread, &QThread::finished, m_ioWorker, &QObject::deleteLater);
     connect(&m_backendThread, &QThread::finished, m_backendWorker, &QObject::deleteLater);
 
+    connect(m_inputWorker, &SpeechInputWorker::audioLevelChanged, this, &VoicePipelineRuntime::inputAudioLevelChanged, Qt::QueuedConnection);
     connect(m_inputWorker, &SpeechInputWorker::wakeDetected, this, &VoicePipelineRuntime::wakeDetected, Qt::QueuedConnection);
     connect(m_inputWorker, &SpeechInputWorker::speechFrame, this, &VoicePipelineRuntime::speechFrame, Qt::QueuedConnection);
     connect(m_inputWorker, &SpeechInputWorker::speechActivityChanged, this, &VoicePipelineRuntime::speechActivityChanged, Qt::QueuedConnection);
+    connect(m_inputWorker, &SpeechInputWorker::captureFinished, this, &VoicePipelineRuntime::inputCaptureFinished, Qt::QueuedConnection);
+    connect(m_inputWorker, &SpeechInputWorker::captureFailed, this, &VoicePipelineRuntime::inputCaptureFailed, Qt::QueuedConnection);
 
     connect(m_ioWorker, &SpeechIoWorker::transcriptionReady, this, &VoicePipelineRuntime::transcriptionReady, Qt::QueuedConnection);
     connect(m_ioWorker, &SpeechIoWorker::transcriptionFailed, this, &VoicePipelineRuntime::transcriptionFailed, Qt::QueuedConnection);
@@ -134,14 +137,29 @@ void VoicePipelineRuntime::startInputGeneration(quint64 generationId)
         Qt::QueuedConnection);
 }
 
-void VoicePipelineRuntime::ingestMicFrame(const AudioFrame &frame)
+void VoicePipelineRuntime::startInputCapture(quint64 generationId, double sensitivity, const QString &preferredDeviceId)
 {
     QMetaObject::invokeMethod(
         m_inputWorker,
-        [worker = m_inputWorker, frame]() {
-            worker->ingestMicFrame(frame);
+        [worker = m_inputWorker, generationId, sensitivity, preferredDeviceId]() {
+            worker->startCapture(generationId, sensitivity, preferredDeviceId);
         },
         Qt::QueuedConnection);
+}
+
+void VoicePipelineRuntime::stopInputCapture(bool finalize)
+{
+    QMetaObject::invokeMethod(
+        m_inputWorker,
+        [worker = m_inputWorker, finalize]() {
+            worker->stopCapture(finalize);
+        },
+        Qt::QueuedConnection);
+}
+
+void VoicePipelineRuntime::clearInputCapture()
+{
+    QMetaObject::invokeMethod(m_inputWorker, &SpeechInputWorker::clearCapture, Qt::QueuedConnection);
 }
 
 void VoicePipelineRuntime::transcribe(quint64 generationId, const QByteArray &pcmData, const QString &initialPrompt, bool suppressNonSpeechTokens)
