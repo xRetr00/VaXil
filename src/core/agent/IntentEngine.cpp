@@ -16,6 +16,7 @@
 #endif
 
 #include "logging/LoggingService.h"
+#include "settings/AppSettings.h"
 
 namespace {
 constexpr qint64 kIntentCacheMs = 1500;
@@ -117,38 +118,17 @@ struct IntentEngine::Impl
     bool ready = false;
 };
 
-IntentEngine::IntentEngine(LoggingService *loggingService, QObject *parent)
+IntentEngine::IntentEngine(AppSettings *settings, LoggingService *loggingService, QObject *parent)
     : QObject(parent)
+    , m_settings(settings)
     , m_loggingService(loggingService)
     , m_impl(std::make_unique<Impl>())
 {
-    m_modelPath = resolveModelPath();
-
-#if JARVIS_HAS_ONNXRUNTIME
-    if (!m_modelPath.isEmpty()) {
-        try {
-            m_impl->sessionOptions.SetIntraOpNumThreads(1);
-            m_impl->sessionOptions.SetInterOpNumThreads(1);
-            m_impl->sessionOptions.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_BASIC);
-            m_impl->session = std::make_unique<Ort::Session>(
-                m_impl->env,
-                m_modelPath.toStdWString().c_str(),
-                m_impl->sessionOptions);
-            m_impl->inputBuffer.assign(featureVocabulary().size(), 0.0f);
-            m_impl->inputShape = {1, static_cast<int64_t>(m_impl->inputBuffer.size())};
-            m_impl->ready = true;
-        } catch (...) {
-            m_impl->session.reset();
-            m_impl->ready = false;
-        }
+    if (m_settings != nullptr) {
+        connect(m_settings, &AppSettings::settingsChanged, this, &IntentEngine::reloadModel);
     }
-#endif
 
-    if (m_loggingService) {
-        m_loggingService->info(QStringLiteral("IntentEngine initialized. onnxReady=%1 model=\"%2\"")
-            .arg(m_impl->ready ? QStringLiteral("true") : QStringLiteral("false"))
-            .arg(m_modelPath));
-    }
+    reloadModel();
 }
 
 IntentEngine::~IntentEngine() = default;
@@ -179,6 +159,40 @@ bool IntentEngine::isReady() const
 QString IntentEngine::modelPath() const
 {
     return m_modelPath;
+}
+
+void IntentEngine::reloadModel()
+{
+    m_cache.clear();
+    m_modelPath = resolveModelPath();
+    m_impl->ready = false;
+
+#if JARVIS_HAS_ONNXRUNTIME
+    m_impl->session.reset();
+    if (!m_modelPath.isEmpty()) {
+        try {
+            m_impl->sessionOptions.SetIntraOpNumThreads(1);
+            m_impl->sessionOptions.SetInterOpNumThreads(1);
+            m_impl->sessionOptions.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_BASIC);
+            m_impl->session = std::make_unique<Ort::Session>(
+                m_impl->env,
+                m_modelPath.toStdWString().c_str(),
+                m_impl->sessionOptions);
+            m_impl->inputBuffer.assign(featureVocabulary().size(), 0.0f);
+            m_impl->inputShape = {1, static_cast<int64_t>(m_impl->inputBuffer.size())};
+            m_impl->ready = true;
+        } catch (...) {
+            m_impl->session.reset();
+            m_impl->ready = false;
+        }
+    }
+#endif
+
+    if (m_loggingService) {
+        m_loggingService->info(QStringLiteral("IntentEngine initialized. onnxReady=%1 model=\"%2\"")
+            .arg(m_impl->ready ? QStringLiteral("true") : QStringLiteral("false"))
+            .arg(m_modelPath));
+    }
 }
 
 IntentResult IntentEngine::classifyWithModel(const QString &text)
@@ -325,6 +339,13 @@ void IntentEngine::encodeFeatures(const QString &text, std::vector<float> &buffe
 
 QString IntentEngine::resolveModelPath() const
 {
+    if (m_settings != nullptr && !m_settings->intentModelPath().trimmed().isEmpty()) {
+        const QString configuredPath = QDir::cleanPath(m_settings->intentModelPath());
+        if (QFileInfo::exists(configuredPath)) {
+            return configuredPath;
+        }
+    }
+
     const QStringList candidates = {
         QDir::currentPath() + QStringLiteral("/models/intent/intent_classifier.onnx"),
         QDir::currentPath() + QStringLiteral("/third_party/models/intent/intent_classifier.onnx"),

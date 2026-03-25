@@ -144,6 +144,8 @@ bool AppSettings::load()
     m_tracePanelEnabled = parsed.value("tracePanelEnabled", true);
     m_whisperExecutable = QString::fromStdString(parsed.value("whisperExecutable", std::string{}));
     m_whisperModelPath = QString::fromStdString(parsed.value("whisperModelPath", std::string{}));
+    m_intentModelPath = QString::fromStdString(parsed.value("intentModelPath", std::string{}));
+    m_selectedIntentModelId = QString::fromStdString(parsed.value("selectedIntentModelId", m_selectedIntentModelId.toStdString()));
     m_piperExecutable = QString::fromStdString(parsed.value("piperExecutable", std::string{}));
     m_piperVoiceModel = QString::fromStdString(parsed.value("piperVoiceModel", std::string{}));
     m_selectedVoicePresetId = QString::fromStdString(parsed.value("selectedVoicePresetId", m_selectedVoicePresetId.toStdString()));
@@ -193,6 +195,8 @@ bool AppSettings::save() const
         {"tracePanelEnabled", m_tracePanelEnabled},
         {"whisperExecutable", m_whisperExecutable.toStdString()},
         {"whisperModelPath", m_whisperModelPath.toStdString()},
+        {"intentModelPath", m_intentModelPath.toStdString()},
+        {"selectedIntentModelId", m_selectedIntentModelId.toStdString()},
         {"piperExecutable", m_piperExecutable.toStdString()},
         {"piperVoiceModel", m_piperVoiceModel.toStdString()},
         {"selectedVoicePresetId", m_selectedVoicePresetId.toStdString()},
@@ -319,6 +323,14 @@ QString AppSettings::whisperExecutable() const { return m_whisperExecutable; }
 void AppSettings::setWhisperExecutable(const QString &path) { m_whisperExecutable = path; emit settingsChanged(); }
 QString AppSettings::whisperModelPath() const { return m_whisperModelPath; }
 void AppSettings::setWhisperModelPath(const QString &path) { m_whisperModelPath = path; emit settingsChanged(); }
+QString AppSettings::intentModelPath() const { return m_intentModelPath; }
+void AppSettings::setIntentModelPath(const QString &path) { m_intentModelPath = path; emit settingsChanged(); }
+QString AppSettings::selectedIntentModelId() const { return m_selectedIntentModelId; }
+void AppSettings::setSelectedIntentModelId(const QString &modelId)
+{
+    m_selectedIntentModelId = modelId.trimmed().isEmpty() ? QStringLiteral("intent-minilm-int8") : modelId.trimmed();
+    emit settingsChanged();
+}
 QString AppSettings::piperExecutable() const { return m_piperExecutable; }
 void AppSettings::setPiperExecutable(const QString &path) { m_piperExecutable = path; emit settingsChanged(); }
 QString AppSettings::piperVoiceModel() const { return m_piperVoiceModel; }

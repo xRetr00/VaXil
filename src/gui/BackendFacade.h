@@ -25,6 +25,13 @@ class BackendFacade : public QObject
     Q_PROPERTY(QStringList whisperModelPresetNames READ whisperModelPresetNames CONSTANT)
     Q_PROPERTY(QStringList whisperModelPresetIds READ whisperModelPresetIds CONSTANT)
     Q_PROPERTY(QString selectedWhisperModelPresetId READ selectedWhisperModelPresetId NOTIFY settingsChanged)
+    Q_PROPERTY(QStringList intentModelPresetNames READ intentModelPresetNames CONSTANT)
+    Q_PROPERTY(QStringList intentModelPresetIds READ intentModelPresetIds CONSTANT)
+    Q_PROPERTY(QString selectedIntentModelId READ selectedIntentModelId NOTIFY settingsChanged)
+    Q_PROPERTY(QString intentModelPath READ intentModelPath NOTIFY settingsChanged)
+    Q_PROPERTY(QString recommendedIntentModelId READ recommendedIntentModelId CONSTANT)
+    Q_PROPERTY(QString recommendedIntentModelLabel READ recommendedIntentModelLabel CONSTANT)
+    Q_PROPERTY(QString intentHardwareSummary READ intentHardwareSummary CONSTANT)
     Q_PROPERTY(bool overlayVisible READ overlayVisible NOTIFY overlayVisibleChanged)
     Q_PROPERTY(double presenceOffsetX READ presenceOffsetX NOTIFY presenceOffsetChanged)
     Q_PROPERTY(double presenceOffsetY READ presenceOffsetY NOTIFY presenceOffsetChanged)
@@ -112,6 +119,13 @@ public:
     QStringList whisperModelPresetNames() const;
     QStringList whisperModelPresetIds() const;
     QString selectedWhisperModelPresetId() const;
+    QStringList intentModelPresetNames() const;
+    QStringList intentModelPresetIds() const;
+    QString selectedIntentModelId() const;
+    QString intentModelPath() const;
+    QString recommendedIntentModelId() const;
+    QString recommendedIntentModelLabel() const;
+    QString intentHardwareSummary() const;
     bool overlayVisible() const;
     double presenceOffsetX() const;
     double presenceOffsetY() const;
@@ -184,6 +198,7 @@ public:
     Q_INVOKABLE void startListening();
     Q_INVOKABLE void cancelRequest();
     Q_INVOKABLE void setSelectedModel(const QString &modelId);
+    Q_INVOKABLE void setSelectedIntentModelId(const QString &modelId);
     Q_INVOKABLE void setAgentEnabled(bool enabled);
     Q_INVOKABLE void setBackgroundPanelVisible(bool visible);
     Q_INVOKABLE void notifyTaskToastShown(int taskId);

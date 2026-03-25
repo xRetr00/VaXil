@@ -78,6 +78,12 @@ public:
     QString whisperModelPath() const;
     void setWhisperModelPath(const QString &path);
 
+    QString intentModelPath() const;
+    void setIntentModelPath(const QString &path);
+
+    QString selectedIntentModelId() const;
+    void setSelectedIntentModelId(const QString &modelId);
+
     QString piperExecutable() const;
     void setPiperExecutable(const QString &path);
 
@@ -168,6 +174,8 @@ private:
     bool m_tracePanelEnabled = true;
     QString m_whisperExecutable;
     QString m_whisperModelPath;
+    QString m_intentModelPath;
+    QString m_selectedIntentModelId = QStringLiteral("intent-minilm-int8");
     QString m_piperExecutable;
     QString m_piperVoiceModel;
     QString m_selectedVoicePresetId = QStringLiteral("en_GB-alba-medium");

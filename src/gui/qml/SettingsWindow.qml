@@ -46,6 +46,7 @@ Window {
         endpointField.text = backend.lmStudioEndpoint
         whisperPathField.text = backend.whisperExecutable
         whisperModelPathField.text = backend.whisperModelPath
+        intentModelPathField.text = backend.intentModelPath
         piperPathField.text = backend.piperExecutable
         voicePathField.text = backend.piperVoiceModel
         ffmpegPathField.text = backend.ffmpegExecutable
@@ -84,6 +85,9 @@ Window {
 
         const whisperModelIndex = backend.whisperModelPresetIds.indexOf(backend.selectedWhisperModelPresetId)
         whisperModelPresetCombo.currentIndex = whisperModelIndex >= 0 ? whisperModelIndex : 1
+
+        const intentModelIndex = backend.intentModelPresetIds.indexOf(backend.selectedIntentModelId)
+        intentModelCombo.currentIndex = intentModelIndex >= 0 ? intentModelIndex : 0
     }
 
     onVisibleChanged: {
@@ -98,6 +102,18 @@ Window {
         const outputIndex = backend.audioOutputDeviceIds.indexOf(backend.selectedAudioOutputDeviceId)
         outputDeviceCombo.currentIndex = outputIndex >= 0 ? outputIndex : 0
         refreshRequirementStatus()
+    }
+
+    Connections {
+        target: backend
+
+        function onSettingsChanged() {
+            if (!settingsWindow.visible) {
+                return
+            }
+            settingsWindow.syncFieldsFromBackend()
+            settingsWindow.refreshRequirementStatus()
+        }
     }
 
     JarvisUi.AnimationController {
@@ -276,6 +292,55 @@ Window {
                         Layout.fillWidth: true
                         Rectangle { width: 10; height: 10; radius: 5; color: settingsWindow.statusColor(requirementStatus.modelOk === true) }
                         Text { text: "Model: " + settingsWindow.statusText(requirementStatus.modelOk === true); color: "#9ab0ca"; font.pixelSize: 12 }
+                    }
+
+                    Text { text: "Intent model"; color: "#c9def3"; font.pixelSize: 13 }
+                    RowLayout {
+                        Layout.fillWidth: true
+
+                        ComboBox {
+                            id: intentModelCombo
+                            Layout.fillWidth: true
+                            model: backend.intentModelPresetNames
+                            onActivated: {
+                                backend.setSelectedIntentModelId(backend.intentModelPresetIds[currentIndex])
+                                intentModelPathField.text = backend.intentModelPath
+                            }
+                        }
+
+                        Button {
+                            text: "Download"
+                            onClicked: backend.downloadModel(backend.intentModelPresetIds[intentModelCombo.currentIndex])
+                        }
+                    }
+
+                    Text {
+                        Layout.fillWidth: true
+                        text: "Recommended: " + backend.recommendedIntentModelLabel + "\n" + backend.intentHardwareSummary
+                        color: "#9ab0ca"
+                        font.pixelSize: 12
+                        wrapMode: Text.Wrap
+                    }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        Rectangle { width: 10; height: 10; radius: 5; color: settingsWindow.statusColor(requirementStatus.intentModelOk === true) }
+                        Text {
+                            text: "Intent model: " + settingsWindow.statusText(requirementStatus.intentModelOk === true)
+                            color: "#9ab0ca"
+                            font.pixelSize: 12
+                        }
+                    }
+
+                    Text { text: "Intent model path"; color: "#c9def3"; font.pixelSize: 13 }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        TextField { id: intentModelPathField; Layout.fillWidth: true; text: backend.intentModelPath; readOnly: true }
+                        Button {
+                            text: "Open Dir"
+                            enabled: intentModelPathField.text.length > 0
+                            onClicked: backend.openContainingDirectory(intentModelPathField.text)
+                        }
                     }
 
                     RowLayout {

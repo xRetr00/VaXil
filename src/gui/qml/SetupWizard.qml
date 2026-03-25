@@ -18,6 +18,7 @@ Window {
     function syncVoiceFieldsFromBackend() {
         whisperPathField.text = backend.whisperExecutable
         whisperModelPathField.text = backend.whisperModelPath
+        intentModelPathField.text = backend.intentModelPath
         piperPathField.text = backend.piperExecutable
         voicePathField.text = backend.piperVoiceModel
         ffmpegPathField.text = backend.ffmpegExecutable
@@ -30,6 +31,9 @@ Window {
 
         const whisperModelIndex = backend.whisperModelPresetIds.indexOf(backend.selectedWhisperModelPresetId)
         whisperModelPresetCombo.currentIndex = whisperModelIndex >= 0 ? whisperModelIndex : 1
+
+        const intentModelIndex = backend.intentModelPresetIds.indexOf(backend.selectedIntentModelId)
+        intentModelCombo.currentIndex = intentModelIndex >= 0 ? intentModelIndex : 0
 
         const inputIndex = backend.audioInputDeviceIds.indexOf(backend.selectedAudioInputDeviceId)
         inputDeviceCombo.currentIndex = inputIndex >= 0 ? inputIndex : 0
@@ -56,6 +60,11 @@ Window {
         target: backend
         function onModelsChanged() {
             wizard.syncVoiceFieldsFromBackend()
+        }
+        function onSettingsChanged() {
+            if (wizard.visible) {
+                wizard.syncVoiceFieldsFromBackend()
+            }
         }
     }
 
@@ -280,6 +289,45 @@ Window {
                             color: "#9ab0ca"
                             font.pixelSize: 12
                             wrapMode: Text.Wrap
+                        }
+
+                        Text { text: "Intent model"; color: "#d0e3f5"; font.pixelSize: 13 }
+                        RowLayout {
+                            Layout.fillWidth: true
+
+                            ComboBox {
+                                id: intentModelCombo
+                                Layout.fillWidth: true
+                                model: backend.intentModelPresetNames
+                                onActivated: {
+                                    backend.setSelectedIntentModelId(backend.intentModelPresetIds[currentIndex])
+                                    intentModelPathField.text = backend.intentModelPath
+                                }
+                            }
+
+                            Button {
+                                text: "Download"
+                                onClicked: backend.downloadModel(backend.intentModelPresetIds[intentModelCombo.currentIndex])
+                            }
+                        }
+
+                        Text {
+                            Layout.fillWidth: true
+                            text: "Recommended: " + backend.recommendedIntentModelLabel + "\n" + backend.intentHardwareSummary
+                            color: "#9ab0ca"
+                            font.pixelSize: 12
+                            wrapMode: Text.Wrap
+                        }
+
+                        Text { text: "Intent model path"; color: "#d0e3f5"; font.pixelSize: 13 }
+                        RowLayout {
+                            Layout.fillWidth: true
+                            TextField { id: intentModelPathField; Layout.fillWidth: true; text: backend.intentModelPath; readOnly: true }
+                            Button {
+                                text: "Open Dir"
+                                enabled: intentModelPathField.text.length > 0
+                                onClicked: backend.openContainingDirectory(intentModelPathField.text)
+                            }
                         }
                         }
 

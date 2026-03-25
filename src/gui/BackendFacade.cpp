@@ -10,9 +10,14 @@
 #include <QMediaDevices>
 #include <QProcess>
 #include <QRegularExpression>
+#include <QThread>
 #include <QVariantMap>
 #include <QStandardPaths>
 #include <QUrl>
+
+#ifdef Q_OS_WIN
+#include <windows.h>
+#endif
 
 #include "core/AssistantController.h"
 #include "overlay/OverlayController.h"
@@ -32,6 +37,14 @@ struct WhisperModelPreset {
     QString id;
     QString label;
     QString modelUrl;
+};
+
+struct IntentModelPreset {
+    QString id;
+    QString label;
+    QString toolName;
+    QString relativePath;
+    QString recommendation;
 };
 
 QString firstValidPath(const QStringList &candidates)
@@ -178,6 +191,120 @@ const QList<WhisperModelPreset> &whisperModelPresets()
     };
 
     return presets;
+}
+
+const QList<IntentModelPreset> &intentModelPresets()
+{
+    static const QList<IntentModelPreset> presets{
+        {
+            QStringLiteral("intent-minilm-int8"),
+            QStringLiteral("MiniLM Intent INT8  |  Fastest  |  Best for 8 GB and below"),
+            QStringLiteral("intent-minilm-int8"),
+            QStringLiteral("models/intent/intent-minilm-int8/model.onnx"),
+            QStringLiteral("Recommended for low-memory CPUs and always-on background use.")
+        },
+        {
+            QStringLiteral("intent-minilm-q4f16"),
+            QStringLiteral("MiniLM Intent Q4F16  |  Balanced  |  Best for mid-range CPUs"),
+            QStringLiteral("intent-minilm-q4f16"),
+            QStringLiteral("models/intent/intent-minilm-q4f16/model.onnx"),
+            QStringLiteral("Recommended for typical desktop hardware with 8-16 GB RAM.")
+        },
+        {
+            QStringLiteral("intent-minilm-fp32"),
+            QStringLiteral("MiniLM Intent FP32  |  Highest quality  |  Best for strong desktops"),
+            QStringLiteral("intent-minilm-fp32"),
+            QStringLiteral("models/intent/intent-minilm-fp32/model.onnx"),
+            QStringLiteral("Recommended when RAM and CPU headroom are available and latency is less critical.")
+        }
+    };
+
+    return presets;
+}
+
+const IntentModelPreset *findIntentModelPreset(const QString &modelId)
+{
+    for (const IntentModelPreset &preset : intentModelPresets()) {
+        if (preset.id == modelId || preset.toolName == modelId) {
+            return &preset;
+        }
+    }
+
+    return nullptr;
+}
+
+quint64 totalMemoryBytes()
+{
+#ifdef Q_OS_WIN
+    MEMORYSTATUSEX status;
+    status.dwLength = sizeof(status);
+    if (GlobalMemoryStatusEx(&status)) {
+        return static_cast<quint64>(status.ullTotalPhys);
+    }
+#endif
+    return 0;
+}
+
+QString detectHardwareTier()
+{
+    const int logicalCores = std::max(1, QThread::idealThreadCount());
+    const double memoryGb = static_cast<double>(totalMemoryBytes()) / (1024.0 * 1024.0 * 1024.0);
+    if (memoryGb > 0.0 && (memoryGb <= 8.5 || logicalCores <= 4)) {
+        return QStringLiteral("entry");
+    }
+    if (memoryGb > 0.0 && (memoryGb <= 16.5 || logicalCores <= 8)) {
+        return QStringLiteral("balanced");
+    }
+    return QStringLiteral("performance");
+}
+
+QString recommendedIntentModelId()
+{
+    const QString tier = detectHardwareTier();
+    if (tier == QStringLiteral("entry")) {
+        return QStringLiteral("intent-minilm-int8");
+    }
+    if (tier == QStringLiteral("balanced")) {
+        return QStringLiteral("intent-minilm-q4f16");
+    }
+    return QStringLiteral("intent-minilm-fp32");
+}
+
+QString intentHardwareSummary()
+{
+    const int logicalCores = std::max(1, QThread::idealThreadCount());
+    const double memoryGb = static_cast<double>(totalMemoryBytes()) / (1024.0 * 1024.0 * 1024.0);
+    const QString tier = detectHardwareTier();
+    const QString ramLabel = memoryGb > 0.0
+        ? QString::number(memoryGb, 'f', 1) + QStringLiteral(" GB RAM")
+        : QStringLiteral("RAM unknown");
+    return QStringLiteral("%1 logical cores  |  %2  |  %3 tier")
+        .arg(logicalCores)
+        .arg(ramLabel)
+        .arg(tier.left(1).toUpper() + tier.mid(1));
+}
+
+QString resolveIntentModelPath(const QString &modelId)
+{
+    const IntentModelPreset *preset = findIntentModelPreset(modelId);
+    if (preset == nullptr) {
+        return {};
+    }
+
+    const QStringList candidates = {
+        QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + QStringLiteral("/third_party/") + preset->relativePath,
+        QDir::currentPath() + QStringLiteral("/third_party/") + preset->relativePath,
+        QStringLiteral(JARVIS_SOURCE_DIR) + QStringLiteral("/third_party/") + preset->relativePath,
+        QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + QStringLiteral("/") + preset->relativePath
+    };
+
+    for (const QString &candidate : candidates) {
+        if (!candidate.isEmpty() && QFileInfo::exists(candidate)) {
+            return QDir::cleanPath(candidate);
+        }
+    }
+
+    return {};
 }
 
 const WhisperModelPreset *findWhisperModelPreset(const QString &modelId)
@@ -664,7 +791,16 @@ BackendFacade::BackendFacade(
     });
     connect(m_toolManager, &ToolManager::downloadFinished, this, [this](const QString &name, bool success, const QString &message) {
         if (success) {
-            autoDetectVoiceTools();
+            if (const IntentModelPreset *preset = findIntentModelPreset(name); preset != nullptr) {
+                const QString resolvedPath = resolveIntentModelPath(preset->id);
+                if (!resolvedPath.isEmpty()) {
+                    m_settings->setIntentModelPath(resolvedPath);
+                    m_settings->setSelectedIntentModelId(preset->id);
+                    m_settings->save();
+                }
+            } else {
+                autoDetectVoiceTools();
+            }
         }
         setToolInstallStatus(QStringLiteral("%1: %2").arg(name, success ? message : QStringLiteral("failed - %1").arg(message)));
         emit toolStatusesChanged();
@@ -716,6 +852,35 @@ QString BackendFacade::selectedWhisperModelPresetId() const
 {
     return detectWhisperModelPresetIdFromPath(m_settings->whisperModelPath());
 }
+QStringList BackendFacade::intentModelPresetNames() const
+{
+    QStringList values;
+    for (const IntentModelPreset &preset : intentModelPresets()) {
+        values.push_back(preset.label);
+    }
+    return values;
+}
+QStringList BackendFacade::intentModelPresetIds() const
+{
+    QStringList values;
+    for (const IntentModelPreset &preset : intentModelPresets()) {
+        values.push_back(preset.id);
+    }
+    return values;
+}
+QString BackendFacade::selectedIntentModelId() const { return m_settings->selectedIntentModelId(); }
+QString BackendFacade::intentModelPath() const
+{
+    const QString configured = m_settings->intentModelPath().trimmed();
+    return configured.isEmpty() ? resolveIntentModelPath(m_settings->selectedIntentModelId()) : configured;
+}
+QString BackendFacade::recommendedIntentModelId() const { return ::recommendedIntentModelId(); }
+QString BackendFacade::recommendedIntentModelLabel() const
+{
+    const IntentModelPreset *preset = findIntentModelPreset(::recommendedIntentModelId());
+    return preset != nullptr ? preset->label : QStringLiteral("No recommendation available");
+}
+QString BackendFacade::intentHardwareSummary() const { return ::intentHardwareSummary(); }
 bool BackendFacade::overlayVisible() const { return m_overlayController->isVisible(); }
 double BackendFacade::presenceOffsetX() const { return m_overlayController->presenceOffsetX(); }
 double BackendFacade::presenceOffsetY() const { return m_overlayController->presenceOffsetY(); }
@@ -858,6 +1023,14 @@ void BackendFacade::submitText(const QString &text) { m_assistantController->sub
 void BackendFacade::startListening() { m_assistantController->startListening(); }
 void BackendFacade::cancelRequest() { m_assistantController->cancelActiveRequest(); }
 void BackendFacade::setSelectedModel(const QString &modelId) { m_assistantController->setSelectedModel(modelId); }
+void BackendFacade::setSelectedIntentModelId(const QString &modelId)
+{
+    const IntentModelPreset *preset = findIntentModelPreset(modelId);
+    m_settings->setSelectedIntentModelId(preset != nullptr ? preset->id : modelId);
+    m_settings->setIntentModelPath(resolveIntentModelPath(m_settings->selectedIntentModelId()));
+    m_settings->save();
+    emit settingsChanged();
+}
 void BackendFacade::setAgentEnabled(bool enabled) { m_assistantController->setAgentEnabled(enabled); }
 void BackendFacade::setBackgroundPanelVisible(bool visible) { m_assistantController->setBackgroundPanelVisible(visible); }
 void BackendFacade::notifyTaskToastShown(int taskId) { m_assistantController->noteTaskToastShown(taskId); }
@@ -1377,6 +1550,8 @@ QVariantMap BackendFacade::evaluateSetupRequirements(
     const bool piperOk = !resolvedPiper.isEmpty();
     const bool ffmpegOk = !resolvedFfmpeg.isEmpty();
     const bool voiceOk = !resolvedVoice.isEmpty();
+    const QString resolvedIntentModel = resolveIntentModelPath(m_settings->selectedIntentModelId());
+    const bool intentModelOk = !resolvedIntentModel.isEmpty();
 
     const QString whisperVersion = whisperOk ? probeToolVersion(resolvedWhisper, {QStringLiteral("--version")}) : QString{};
     const QString piperVersion = piperOk ? probeToolVersion(resolvedPiper, {QStringLiteral("--version")}) : QString{};
@@ -1396,6 +1571,10 @@ QVariantMap BackendFacade::evaluateSetupRequirements(
     result.insert(QStringLiteral("piperOk"), piperOk);
     result.insert(QStringLiteral("voiceOk"), voiceOk);
     result.insert(QStringLiteral("ffmpegOk"), ffmpegOk);
+    result.insert(QStringLiteral("intentModelOk"), intentModelOk);
+    result.insert(QStringLiteral("intentModelPathResolved"), resolvedIntentModel);
+    result.insert(QStringLiteral("recommendedIntentModelId"), ::recommendedIntentModelId());
+    result.insert(QStringLiteral("intentHardwareSummary"), ::intentHardwareSummary());
 
     result.insert(QStringLiteral("whisperPathResolved"), resolvedWhisper);
     result.insert(QStringLiteral("whisperModelPathResolved"), resolvedWhisperModel);

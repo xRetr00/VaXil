@@ -112,6 +112,18 @@ QList<ToolInfo> ToolManager::scan()
                       root + QStringLiteral("/models/silero/silero_vad.onnx"),
                       sourceRoot + QStringLiteral("/models/silero_vad.onnx")
                   }, true, true),
+        probeTool(QStringLiteral("intent-minilm-int8"), QStringLiteral("intent"), {
+                      root + QStringLiteral("/models/intent/intent-minilm-int8/model.onnx"),
+                      QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + QStringLiteral("/models/intent/intent-minilm-int8/model.onnx")
+                  }, false, true),
+        probeTool(QStringLiteral("intent-minilm-q4f16"), QStringLiteral("intent"), {
+                      root + QStringLiteral("/models/intent/intent-minilm-q4f16/model.onnx"),
+                      QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + QStringLiteral("/models/intent/intent-minilm-q4f16/model.onnx")
+                  }, false, true),
+        probeTool(QStringLiteral("intent-minilm-fp32"), QStringLiteral("intent"), {
+                      root + QStringLiteral("/models/intent/intent-minilm-fp32/model.onnx"),
+                      QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + QStringLiteral("/models/intent/intent-minilm-fp32/model.onnx")
+                  }, false, true),
         probeTool(QStringLiteral("rnnoise"), QStringLiteral("audio"), {
                       findFirstRecursive(root + QStringLiteral("/rnnoise"), {QStringLiteral("rnnoise.h")}),
                       findFirstRecursive(sourceRoot + QStringLiteral("/rnnoise"), {QStringLiteral("rnnoise.h")})
@@ -188,7 +200,7 @@ void ToolManager::downloadModel(const QString &name)
 void ToolManager::installAll()
 {
     for (const ToolInfo &tool : scan()) {
-        if (!tool.installed && tool.downloadable) {
+        if (!tool.installed && tool.downloadable && tool.category != QStringLiteral("intent")) {
             beginDownload(descriptorForName(tool.name));
         }
     }
@@ -247,6 +259,30 @@ ToolManager::DownloadDescriptor ToolManager::descriptorForName(const QString &na
             .relativeTargetPath = QStringLiteral("archives/onnxruntime-win-x64-1.23.2.zip"),
             .extractArchive = true,
             .extractDestinationDir = QStringLiteral("onnxruntime")
+        };
+    }
+    if (name == QStringLiteral("intent-minilm-int8")) {
+        return {
+            .name = name,
+            .category = QStringLiteral("intent"),
+            .url = QStringLiteral("https://huggingface.co/kousik-2310/intent-classifier-minilm/resolve/main/onnx/model_int8.onnx?download=true"),
+            .relativeTargetPath = QStringLiteral("models/intent/intent-minilm-int8/model.onnx")
+        };
+    }
+    if (name == QStringLiteral("intent-minilm-q4f16")) {
+        return {
+            .name = name,
+            .category = QStringLiteral("intent"),
+            .url = QStringLiteral("https://huggingface.co/kousik-2310/intent-classifier-minilm/resolve/main/onnx/model_q4f16.onnx?download=true"),
+            .relativeTargetPath = QStringLiteral("models/intent/intent-minilm-q4f16/model.onnx")
+        };
+    }
+    if (name == QStringLiteral("intent-minilm-fp32")) {
+        return {
+            .name = name,
+            .category = QStringLiteral("intent"),
+            .url = QStringLiteral("https://huggingface.co/kousik-2310/intent-classifier-minilm/resolve/main/onnx/model.onnx?download=true"),
+            .relativeTargetPath = QStringLiteral("models/intent/intent-minilm-fp32/model.onnx")
         };
     }
     if (name == QStringLiteral("rnnoise-source") || name == QStringLiteral("rnnoise")) {

@@ -359,7 +359,7 @@ AssistantController::AssistantController(
     m_skillStore = new SkillStore(this);
     m_agentToolbox = new AgentToolbox(m_settings, m_memoryStore, m_skillStore, m_loggingService, this);
     m_deviceManager = new DeviceManager(this);
-    m_intentEngine = new IntentEngine(m_loggingService, this);
+    m_intentEngine = new IntentEngine(m_settings, m_loggingService, this);
     m_backgroundIntentDetector = new IntentDetector(this);
     m_intentRouter = new IntentRouter(this);
     m_localResponseEngine = new LocalResponseEngine(this);
