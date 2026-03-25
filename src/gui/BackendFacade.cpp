@@ -836,6 +836,7 @@ QVariantList BackendFacade::backgroundTaskResults() const
         row.insert(QStringLiteral("taskId"), entry.taskId);
         row.insert(QStringLiteral("type"), entry.type);
         row.insert(QStringLiteral("success"), entry.success);
+        row.insert(QStringLiteral("state"), static_cast<int>(entry.state));
         row.insert(QStringLiteral("title"), entry.title);
         row.insert(QStringLiteral("summary"), entry.summary);
         row.insert(QStringLiteral("detail"), entry.detail);
@@ -849,6 +850,7 @@ bool BackendFacade::backgroundPanelVisible() const { return m_assistantControlle
 QString BackendFacade::latestTaskToast() const { return m_assistantController->latestTaskToast(); }
 QString BackendFacade::latestTaskToastTone() const { return m_assistantController->latestTaskToastTone(); }
 int BackendFacade::latestTaskToastTaskId() const { return m_assistantController->latestTaskToastTaskId(); }
+QString BackendFacade::latestTaskToastType() const { return m_assistantController->latestTaskToastType(); }
 QString BackendFacade::skillsRoot() const { return QDir::currentPath() + QStringLiteral("/skills"); }
 void BackendFacade::toggleOverlay() { m_overlayController->toggleOverlay(); }
 void BackendFacade::refreshModels() { m_assistantController->refreshModels(); }

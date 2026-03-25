@@ -304,21 +304,29 @@ Window {
             if (backend.statusText.length === 0) {
                 return
             }
-            toastManager.pushToast(backend.statusText, backend.statusText.toLowerCase().indexOf("error") >= 0 ? "error" : "status", -1)
+            toastManager.pushToast(
+                backend.statusText,
+                backend.statusText.toLowerCase().indexOf("error") >= 0 ? "error" : "status",
+                -1,
+                "status")
         }
 
         function onResponseTextChanged() {
             if (backend.responseText.length === 0) {
                 return
             }
-            toastManager.pushToast(backend.responseText, "response", -1)
+            toastManager.pushToast(backend.responseText, "response", -1, "response")
         }
 
         function onLatestTaskToastChanged() {
             if (backend.latestTaskToast.length === 0) {
                 return
             }
-            toastManager.pushToast(backend.latestTaskToast, backend.latestTaskToastTone, backend.latestTaskToastTaskId)
+            toastManager.pushToast(
+                backend.latestTaskToast,
+                backend.latestTaskToastTone,
+                backend.latestTaskToastTaskId,
+                backend.latestTaskToastType)
         }
 
         function onBackgroundPanelVisibleChanged() {

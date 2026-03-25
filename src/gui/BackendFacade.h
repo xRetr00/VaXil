@@ -88,6 +88,7 @@ class BackendFacade : public QObject
     Q_PROPERTY(QString latestTaskToast READ latestTaskToast NOTIFY latestTaskToastChanged)
     Q_PROPERTY(QString latestTaskToastTone READ latestTaskToastTone NOTIFY latestTaskToastChanged)
     Q_PROPERTY(int latestTaskToastTaskId READ latestTaskToastTaskId NOTIFY latestTaskToastChanged)
+    Q_PROPERTY(QString latestTaskToastType READ latestTaskToastType NOTIFY latestTaskToastChanged)
     Q_PROPERTY(QString skillsRoot READ skillsRoot CONSTANT)
 
 public:
@@ -174,6 +175,7 @@ public:
     QString latestTaskToast() const;
     QString latestTaskToastTone() const;
     int latestTaskToastTaskId() const;
+    QString latestTaskToastType() const;
     QString skillsRoot() const;
 
     Q_INVOKABLE void toggleOverlay();

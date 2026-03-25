@@ -4,7 +4,6 @@ import QtQuick.Controls
 Item {
     id: root
 
-    property string lastMessage: ""
     signal toastClicked(int taskId)
 
     width: 300
@@ -26,22 +25,71 @@ Item {
         return cleaned
     }
 
-    function pushToast(message, tone, taskId) {
+    function indexOfTaskType(taskType) {
+        for (let i = 0; i < toastModel.count; ++i) {
+            const toast = toastModel.get(i)
+            if (toast.taskType === taskType) {
+                return i
+            }
+        }
+        return -1
+    }
+
+    function trimQueue() {
+        while (toastModel.count > 3) {
+            toastModel.remove(toastModel.count - 1, 1)
+        }
+    }
+
+    function removeExpiredToasts() {
+        const now = Date.now()
+        for (let i = toastModel.count - 1; i >= 0; --i) {
+            if (toastModel.get(i).expiresAt <= now) {
+                toastModel.remove(i, 1)
+            }
+        }
+    }
+
+    function pushToast(message, tone, taskId, taskType) {
         const cleaned = normalizeMessage(message)
-        if (cleaned.length === 0 || cleaned === lastMessage) {
+        if (cleaned.length === 0) {
             return
         }
 
-        lastMessage = cleaned
-        toastModel.insert(0, {
-            "message": cleaned,
-            "tone": tone || "info",
-            "taskId": taskId === undefined ? -1 : taskId
-        })
+        const typeKey = (taskType || "general").toString()
+        const expiresAt = Date.now() + 5200
+        const existingIndex = indexOfTaskType(typeKey)
 
-        while (toastModel.count > 4) {
-            toastModel.remove(toastModel.count - 1, 1)
+        if (existingIndex >= 0) {
+            toastModel.set(existingIndex, {
+                "message": cleaned,
+                "tone": tone || "info",
+                "taskId": taskId === undefined ? -1 : taskId,
+                "taskType": typeKey,
+                "expiresAt": expiresAt
+            })
+
+            if (existingIndex > 0) {
+                toastModel.move(existingIndex, 0, 1)
+            }
+        } else {
+            toastModel.insert(0, {
+                "message": cleaned,
+                "tone": tone || "info",
+                "taskId": taskId === undefined ? -1 : taskId,
+                "taskType": typeKey,
+                "expiresAt": expiresAt
+            })
         }
+
+        trimQueue()
+    }
+
+    Timer {
+        interval: 250
+        repeat: true
+        running: toastModel.count > 0
+        onTriggered: root.removeExpiredToasts()
     }
 
     Column {
@@ -56,6 +104,7 @@ Item {
                 required property int index
                 required property string message
                 required property string tone
+                required property string taskType
                 property int modelTaskId: taskId
 
                 width: 300
@@ -64,18 +113,6 @@ Item {
                 taskId: modelTaskId
                 onClicked: function(clickedTaskId) {
                     root.toastClicked(clickedTaskId)
-                }
-
-                SequentialAnimation on opacity {
-                    running: true
-                    loops: 1
-                    PauseAnimation { duration: 3800 }
-                    NumberAnimation { to: 0.0; duration: 260; easing.type: Easing.InCubic }
-                    onFinished: {
-                        if (index < toastModel.count) {
-                            toastModel.remove(index, 1)
-                        }
-                    }
                 }
 
                 Behavior on y { NumberAnimation { duration: 240; easing.type: Easing.OutCubic } }
