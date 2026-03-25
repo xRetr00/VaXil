@@ -1448,15 +1448,6 @@ bool BackendFacade::runSetupScenario(
     const QString detectedVoicePresetId = detectVoicePresetIdFromPath(resolvedVoiceModel);
     if (!detectedVoicePresetId.isEmpty()) {
         m_settings->setSelectedVoicePresetId(detectedVoicePresetId);
-
-bool BackendFacade::setUserName(const QString &userName)
-{
-    const bool updated = m_identityProfileService->setUserName(userName);
-    if (updated) {
-        emit profileChanged();
-    }
-    return updated;
-}
     }
 
     m_assistantController->saveSettings(
@@ -1775,6 +1766,15 @@ bool BackendFacade::autoDetectVoiceTools()
     m_settings->save();
     emit settingsChanged();
     return complete;
+}
+
+bool BackendFacade::setUserName(const QString &userName)
+{
+    const bool updated = m_identityProfileService->setUserName(userName);
+    if (updated) {
+        emit profileChanged();
+    }
+    return updated;
 }
 
 bool BackendFacade::startTrainingSetup()
