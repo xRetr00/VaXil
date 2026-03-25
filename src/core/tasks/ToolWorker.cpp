@@ -129,7 +129,21 @@ void ToolWorker::cancelTask(int taskId)
     m_canceledTaskIds.insert(taskId);
 }
 
-bool ToolWorker::isAllowedPath(const QString &path) const
+bool ToolWorker::isReadablePath(const QString &path) const
+{
+    QFileInfo info(path);
+    if (!info.exists()) {
+        return false;
+    }
+
+    if (info.isDir()) {
+        return QDir(info.absoluteFilePath()).exists();
+    }
+
+    return info.isFile() && info.isReadable();
+}
+
+bool ToolWorker::isWritablePath(const QString &path) const
 {
     const QString resolved = normalizePath(path);
     for (const QString &root : m_allowedRoots) {
@@ -217,12 +231,12 @@ QJsonObject ToolWorker::buildResult(const AgentTask &task,
 QJsonObject ToolWorker::processDirList(const AgentTask &task)
 {
     const QString path = task.args.value(QStringLiteral("path")).toString();
-    if (!isAllowedPath(path)) {
+    if (!isReadablePath(path)) {
         return buildResult(task,
                            false,
                            TaskState::Finished,
-                           QStringLiteral("Directory blocked"),
-                           QStringLiteral("That folder is outside the allowed roots."),
+                           QStringLiteral("Directory unavailable"),
+                           QStringLiteral("That folder is not readable."),
                            QStringLiteral("Rejected path: %1").arg(path));
     }
 
@@ -256,12 +270,12 @@ QJsonObject ToolWorker::processDirList(const AgentTask &task)
 QJsonObject ToolWorker::processFileRead(const AgentTask &task)
 {
     const QString path = task.args.value(QStringLiteral("path")).toString();
-    if (!isAllowedPath(path)) {
+    if (!isReadablePath(path)) {
         return buildResult(task,
                            false,
                            TaskState::Finished,
-                           QStringLiteral("File blocked"),
-                           QStringLiteral("That file is outside the allowed roots."),
+                           QStringLiteral("File unavailable"),
+                           QStringLiteral("That file is not readable."),
                            QStringLiteral("Rejected path: %1").arg(path));
     }
 
@@ -292,7 +306,7 @@ QJsonObject ToolWorker::processFileWrite(const AgentTask &task)
 {
     const QString path = task.args.value(QStringLiteral("path")).toString();
     const QString content = task.args.value(QStringLiteral("content")).toString();
-    if (!isAllowedPath(path)) {
+    if (!isWritablePath(path)) {
         return buildResult(task,
                            false,
                            TaskState::Finished,

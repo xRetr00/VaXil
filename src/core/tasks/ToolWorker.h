@@ -35,7 +35,8 @@ private:
         qint64 cachedAtMs = 0;
     };
 
-    bool isAllowedPath(const QString &path) const;
+    bool isReadablePath(const QString &path) const;
+    bool isWritablePath(const QString &path) const;
     QString normalizePath(const QString &path) const;
     QString cacheKeyFor(const AgentTask &task) const;
     bool isCooldownActive(const AgentTask &task) const;

@@ -193,7 +193,7 @@ private:
     bool canStartWakeMonitor() const;
     bool startAudioCapture(AudioCaptureMode mode, bool announceListening);
     void startConversationRequest(const QString &input);
-    void startAgentConversationRequest(const QString &input);
+    void startAgentConversationRequest(const QString &input, IntentType expectedIntent);
     void continueAgentConversation(const QList<AgentToolResult> &results);
     void startCommandRequest(const QString &input);
     void handleConversationFinished(const QString &text);
@@ -246,6 +246,7 @@ private:
     RequestKind m_activeRequestKind = RequestKind::Conversation;
     QString m_lastPromptForAiLog;
     QString m_lastAgentInput;
+    IntentType m_lastAgentIntent = IntentType::GENERAL_CHAT;
     QString m_previousAgentResponseId;
     int m_activeAgentIteration = 0;
     AgentCapabilitySet m_agentCapabilities;

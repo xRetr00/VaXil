@@ -21,7 +21,8 @@ public:
 
 private:
     QStringList allowedRoots() const;
-    bool isAllowedPath(const QString &path, bool forWrite) const;
+    bool isReadablePath(const QString &path) const;
+    bool isWritablePath(const QString &path) const;
     AgentToolResult executeFileRead(const AgentToolCall &call, const nlohmann::json &args);
     AgentToolResult executeFileSearch(const AgentToolCall &call, const nlohmann::json &args);
     AgentToolResult executeFileWrite(const AgentToolCall &call, const nlohmann::json &args);

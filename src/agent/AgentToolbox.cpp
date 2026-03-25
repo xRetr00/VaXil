@@ -80,15 +80,15 @@ AgentToolbox::AgentToolbox(AppSettings *settings, MemoryStore *memoryStore, Skil
 QList<AgentToolSpec> AgentToolbox::builtInTools() const
 {
     return {
-        {QStringLiteral("file_read"), QStringLiteral("Read a UTF-8 text file from an allowed path."),
+        {QStringLiteral("file_read"), QStringLiteral("Read a UTF-8 text file from a readable path."),
          schemaObject({{"path", {{"type", "string"}}}}, {"path"})},
-        {QStringLiteral("file_search"), QStringLiteral("Search for text under an allowed directory."),
+        {QStringLiteral("file_search"), QStringLiteral("Search for text under a readable directory."),
          schemaObject({{"root", {{"type", "string"}}}, {"query", {{"type", "string"}}}}, {"root", "query"})},
-        {QStringLiteral("file_write"), QStringLiteral("Write a UTF-8 text file to an allowed path."),
+        {QStringLiteral("file_write"), QStringLiteral("Write a UTF-8 text file to a writable sandbox path."),
          schemaObject({{"path", {{"type", "string"}}}, {"content", {{"type", "string"}}}}, {"path", "content"})},
-        {QStringLiteral("file_patch"), QStringLiteral("Patch a file by replacing one text fragment with another."),
+        {QStringLiteral("file_patch"), QStringLiteral("Patch a writable sandbox file by replacing one text fragment with another."),
          schemaObject({{"path", {{"type", "string"}}}, {"find", {{"type", "string"}}}, {"replace", {{"type", "string"}}}}, {"path", "find", "replace"})},
-        {QStringLiteral("dir_list"), QStringLiteral("List files under an allowed directory."),
+        {QStringLiteral("dir_list"), QStringLiteral("List files under a readable directory."),
          schemaObject({{"path", {{"type", "string"}}}}, {"path"})},
         {QStringLiteral("memory_search"), QStringLiteral("Search structured memory entries."),
          schemaObject({{"query", {{"type", "string"}}}}, {"query"})},
@@ -96,11 +96,11 @@ QList<AgentToolSpec> AgentToolbox::builtInTools() const
          schemaObject({{"kind", {{"type", "string"}}}, {"title", {{"type", "string"}}}, {"content", {{"type", "string"}}}}, {"kind", "title", "content"})},
         {QStringLiteral("memory_delete"), QStringLiteral("Delete a memory entry by id or title."),
          schemaObject({{"id", {{"type", "string"}}}}, {"id"})},
-        {QStringLiteral("log_tail"), QStringLiteral("Read the tail of a log file."),
+        {QStringLiteral("log_tail"), QStringLiteral("Read the tail of a readable log file."),
          schemaObject({{"path", {{"type", "string"}}}, {"lines", {{"type", "integer"}}}}, {"path"})},
-        {QStringLiteral("log_search"), QStringLiteral("Search a log directory or log file for a pattern."),
+        {QStringLiteral("log_search"), QStringLiteral("Search a readable log directory or log file for a pattern."),
          schemaObject({{"path", {{"type", "string"}}}, {"query", {{"type", "string"}}}}, {"path", "query"})},
-        {QStringLiteral("ai_log_read"), QStringLiteral("Read the latest AI exchange log or a specific AI log file."),
+        {QStringLiteral("ai_log_read"), QStringLiteral("Read the latest AI exchange log or a specific readable AI log file."),
          schemaObject({{"path", {{"type", "string"}}}}, {})},
         {QStringLiteral("web_search"), QStringLiteral("Search the web using the configured provider."),
          schemaObject({{"query", {{"type", "string"}}}}, {"query"})},
@@ -154,7 +154,21 @@ QStringList AgentToolbox::allowedRoots() const
     };
 }
 
-bool AgentToolbox::isAllowedPath(const QString &path, bool forWrite) const
+bool AgentToolbox::isReadablePath(const QString &path) const
+{
+    const QFileInfo info(path);
+    if (!info.exists()) {
+        return false;
+    }
+
+    if (info.isDir()) {
+        return QDir(info.absoluteFilePath()).exists();
+    }
+
+    return info.isFile() && info.isReadable();
+}
+
+bool AgentToolbox::isWritablePath(const QString &path) const
 {
     const QString resolved = canonicalPath(path);
     for (const QString &root : allowedRoots()) {
@@ -162,15 +176,14 @@ bool AgentToolbox::isAllowedPath(const QString &path, bool forWrite) const
             return true;
         }
     }
-    Q_UNUSED(forWrite);
     return false;
 }
 
 AgentToolResult AgentToolbox::executeFileRead(const AgentToolCall &call, const nlohmann::json &args)
 {
     const QString path = extractString(args, "path");
-    if (!isAllowedPath(path, false)) {
-        return failedResult(call, QStringLiteral("Read path is outside allowed roots."));
+    if (!isReadablePath(path)) {
+        return failedResult(call, QStringLiteral("Read path is not readable."));
     }
     const QString text = readTextFile(path);
     return text.isEmpty() ? failedResult(call, QStringLiteral("Failed to read file.")) : successResult(call, text);
@@ -180,8 +193,8 @@ AgentToolResult AgentToolbox::executeFileSearch(const AgentToolCall &call, const
 {
     const QString root = extractString(args, "root");
     const QString query = extractString(args, "query");
-    if (!isAllowedPath(root, false)) {
-        return failedResult(call, QStringLiteral("Search root is outside allowed roots."));
+    if (!isReadablePath(root)) {
+        return failedResult(call, QStringLiteral("Search root is not readable."));
     }
 
     QStringList matches;
@@ -200,7 +213,7 @@ AgentToolResult AgentToolbox::executeFileWrite(const AgentToolCall &call, const 
 {
     const QString path = extractString(args, "path");
     const QString content = extractString(args, "content");
-    if (!isAllowedPath(path, true)) {
+    if (!isWritablePath(path)) {
         return failedResult(call, QStringLiteral("Write path is outside allowed roots."));
     }
 
@@ -219,7 +232,7 @@ AgentToolResult AgentToolbox::executeFilePatch(const AgentToolCall &call, const 
     const QString path = extractString(args, "path");
     const QString find = extractString(args, "find");
     const QString replace = extractString(args, "replace");
-    if (!isAllowedPath(path, true)) {
+    if (!isWritablePath(path)) {
         return failedResult(call, QStringLiteral("Patch path is outside allowed roots."));
     }
 
@@ -242,8 +255,8 @@ AgentToolResult AgentToolbox::executeFilePatch(const AgentToolCall &call, const 
 AgentToolResult AgentToolbox::executeDirList(const AgentToolCall &call, const nlohmann::json &args)
 {
     const QString path = extractString(args, "path");
-    if (!isAllowedPath(path, false)) {
-        return failedResult(call, QStringLiteral("Directory is outside allowed roots."));
+    if (!isReadablePath(path)) {
+        return failedResult(call, QStringLiteral("Directory is not readable."));
     }
 
     const QFileInfoList entries = QDir(path).entryInfoList(QDir::Dirs | QDir::Files | QDir::NoDotAndDotDot, QDir::Name);
@@ -288,8 +301,8 @@ AgentToolResult AgentToolbox::executeLogTail(const AgentToolCall &call, const nl
 {
     const QString path = extractString(args, "path");
     const int lines = args.contains("lines") && args.at("lines").is_number_integer() ? args.at("lines").get<int>() : 120;
-    if (!isAllowedPath(path, false)) {
-        return failedResult(call, QStringLiteral("Log path is outside allowed roots."));
+    if (!isReadablePath(path)) {
+        return failedResult(call, QStringLiteral("Log path is not readable."));
     }
 
     const QString command = QStringLiteral("Get-Content %1 -Tail %2").arg(quotePowerShell(path)).arg(lines);
@@ -303,8 +316,8 @@ AgentToolResult AgentToolbox::executeLogSearch(const AgentToolCall &call, const 
 {
     const QString path = extractString(args, "path");
     const QString query = extractString(args, "query");
-    if (!isAllowedPath(path, false)) {
-        return failedResult(call, QStringLiteral("Log search path is outside allowed roots."));
+    if (!isReadablePath(path)) {
+        return failedResult(call, QStringLiteral("Log search path is not readable."));
     }
 
     const QString command = QFileInfo(path).isDir()
@@ -329,8 +342,8 @@ AgentToolResult AgentToolbox::executeAiLogRead(const AgentToolCall &call, const 
         }
         path = files.first().absoluteFilePath();
     }
-    if (!isAllowedPath(path, false)) {
-        return failedResult(call, QStringLiteral("AI log path is outside allowed roots."));
+    if (!isReadablePath(path)) {
+        return failedResult(call, QStringLiteral("AI log path is not readable."));
     }
     return successResult(call, readTextFile(path, 18000));
 }

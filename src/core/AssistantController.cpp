@@ -337,6 +337,32 @@ QList<AgentTask> parseBackgroundTasks(const nlohmann::json &jsonObject)
     return tasks;
 }
 
+IntentType intentTypeFromString(const QString &value)
+{
+    const QString normalized = value.trimmed().toUpper();
+    if (normalized == QStringLiteral("LIST_FILES")) {
+        return IntentType::LIST_FILES;
+    }
+    if (normalized == QStringLiteral("READ_FILE")) {
+        return IntentType::READ_FILE;
+    }
+    if (normalized == QStringLiteral("WRITE_FILE")) {
+        return IntentType::WRITE_FILE;
+    }
+    if (normalized == QStringLiteral("MEMORY_WRITE")) {
+        return IntentType::MEMORY_WRITE;
+    }
+    return IntentType::GENERAL_CHAT;
+}
+
+bool intentRequiresTool(IntentType intent)
+{
+    return intent == IntentType::LIST_FILES
+        || intent == IntentType::READ_FILE
+        || intent == IntentType::WRITE_FILE
+        || intent == IntentType::MEMORY_WRITE;
+}
+
 }
 
 AssistantController::AssistantController(
