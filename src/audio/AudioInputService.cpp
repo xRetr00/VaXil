@@ -17,7 +17,7 @@ constexpr int kVadFrameBytes = kVadFrameSamples * static_cast<int>(sizeof(qint16
 constexpr int kMinSpeechMs = 300;
 constexpr int kSilenceHoldMs = 800;
 constexpr int kIdleCaptureWindowMs = 2500;
-constexpr int kMaxSpeechCaptureWindowMs = 5000;
+constexpr int kMaxSpeechCaptureWindowMs = 9000;
 constexpr int kVadMode = 2;
 }
 

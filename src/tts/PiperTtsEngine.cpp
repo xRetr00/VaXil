@@ -11,6 +11,7 @@
 #include <QProcess>
 #include <QRegularExpression>
 #include <QStandardPaths>
+#include <QUuid>
 #include <QUrl>
 
 #include "settings/AppSettings.h"
@@ -105,18 +106,9 @@ QString styleFormatJarvisResponse(const QString &text)
     conciseSentences.reserve(3);
 
     for (const QString &rawSentence : sentences) {
-        if (conciseSentences.size() >= 3) {
-            break;
-        }
-
         QString sentence = rawSentence.trimmed();
         if (sentence.isEmpty()) {
             continue;
-        }
-
-        const QStringList words = sentence.split(QRegularExpression(QStringLiteral("\\s+")), Qt::SkipEmptyParts);
-        if (words.size() > 16) {
-            sentence = words.mid(0, 16).join(QStringLiteral(" ")) + QStringLiteral(".");
         }
 
         if (!sentence.endsWith(QChar::fromLatin1('.'))
@@ -177,18 +169,26 @@ PiperTtsEngine::PiperTtsEngine(AppSettings *settings, QObject *parent)
     m_player->setAudioOutput(m_audioOutput);
     applySelectedOutputDevice();
 
-    connect(&m_synthesisWatcher, &QFutureWatcher<QString>::finished, this, [this]() {
-        const QString outputFile = m_synthesisWatcher.result();
-        if (outputFile.isEmpty()) {
+    connect(&m_synthesisWatcher, &QFutureWatcher<TtsSynthesisResult>::finished, this, [this]() {
+        const TtsSynthesisResult result = m_synthesisWatcher.result();
+        if (result.generation != m_activeGeneration || !m_processing) {
+            return;
+        }
+
+        if (result.outputFile.isEmpty()) {
             m_processing = false;
+            m_activeGeneration = 0;
             emit playbackFailed(QStringLiteral("Failed to synthesize audio"));
             return;
         }
 
-        playFile(outputFile);
+        playFile(result.outputFile);
     });
 
     connect(m_player, &QMediaPlayer::mediaStatusChanged, this, [this](QMediaPlayer::MediaStatus status) {
+        if (!m_processing) {
+            return;
+        }
         if (status == QMediaPlayer::EndOfMedia || status == QMediaPlayer::InvalidMedia) {
             processNext();
         }
@@ -210,11 +210,13 @@ void PiperTtsEngine::enqueueSentence(const QString &sentence)
 
 void PiperTtsEngine::clear()
 {
+    ++m_generationCounter;
+    m_activeGeneration = 0;
     m_sentences.clear();
+    m_processing = false;
     if (m_player) {
         m_player->stop();
     }
-    m_processing = false;
 }
 
 bool PiperTtsEngine::isSpeaking() const
@@ -226,6 +228,7 @@ void PiperTtsEngine::processNext()
 {
     if (m_sentences.isEmpty()) {
         m_processing = false;
+        m_activeGeneration = 0;
         emit playbackFinished();
         return;
     }
@@ -241,17 +244,25 @@ void PiperTtsEngine::processNext()
     applySelectedOutputDevice();
     emit playbackStarted();
     const QString sentence = m_sentences.dequeue();
-    m_synthesisWatcher.setFuture(QtConcurrent::run([this, sentence]() {
-        return synthesizeAndProcess(sentence);
+    const quint64 generation = ++m_generationCounter;
+    m_activeGeneration = generation;
+    m_synthesisWatcher.setFuture(QtConcurrent::run([this, sentence, generation]() {
+        return synthesizeAndProcess(sentence, generation);
     }));
 }
 
-QString PiperTtsEngine::synthesizeAndProcess(const QString &sentence)
+TtsSynthesisResult PiperTtsEngine::synthesizeAndProcess(const QString &sentence, quint64 generation) const
 {
+    TtsSynthesisResult result;
+    result.generation = generation;
+
     const auto tempRoot = QStandardPaths::writableLocation(QStandardPaths::TempLocation);
     QDir().mkpath(tempRoot);
-    const QString rawPath = tempRoot + QStringLiteral("/jarvis_tts_raw.wav");
-    const QString processedPath = tempRoot + QStringLiteral("/jarvis_tts_processed.wav");
+    const QString token = QStringLiteral("%1_%2")
+        .arg(generation)
+        .arg(QUuid::createUuid().toString(QUuid::WithoutBraces));
+    const QString rawPath = tempRoot + QStringLiteral("/jarvis_tts_%1_raw.wav").arg(token);
+    const QString processedPath = tempRoot + QStringLiteral("/jarvis_tts_%1_processed.wav").arg(token);
 
     {
         QProcess process;
@@ -262,14 +273,19 @@ QString PiperTtsEngine::synthesizeAndProcess(const QString &sentence)
         });
         process.write(sentence.toUtf8());
         process.closeWriteChannel();
-        process.waitForFinished(10000);
+        if (!process.waitForFinished(10000)) {
+            process.kill();
+            process.waitForFinished(1000);
+            return result;
+        }
         if (process.exitStatus() != QProcess::NormalExit || process.exitCode() != 0) {
-            return {};
+            return result;
         }
     }
 
     if (m_settings->ffmpegExecutable().isEmpty()) {
-        return rawPath;
+        result.outputFile = rawPath;
+        return result;
     }
 
     const QString filter = QStringLiteral(
@@ -294,12 +310,19 @@ QString PiperTtsEngine::synthesizeAndProcess(const QString &sentence)
         filter,
         processedPath
     });
-    process.waitForFinished(10000);
+    if (!process.waitForFinished(10000)) {
+        process.kill();
+        process.waitForFinished(1000);
+        result.outputFile = rawPath;
+        return result;
+    }
     if (process.exitStatus() != QProcess::NormalExit || process.exitCode() != 0) {
-        return rawPath;
+        result.outputFile = rawPath;
+        return result;
     }
 
-    return processedPath;
+    result.outputFile = processedPath;
+    return result;
 }
 
 void PiperTtsEngine::playFile(const QString &path)

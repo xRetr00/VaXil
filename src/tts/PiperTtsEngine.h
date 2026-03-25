@@ -3,6 +3,13 @@
 #include <QObject>
 #include <QFutureWatcher>
 #include <QQueue>
+#include <QString>
+
+struct TtsSynthesisResult
+{
+    QString outputFile;
+    quint64 generation = 0;
+};
 
 class AppSettings;
 class QAudioOutput;
@@ -27,13 +34,15 @@ signals:
 private:
     void applySelectedOutputDevice();
     void processNext();
-    QString synthesizeAndProcess(const QString &sentence);
+    TtsSynthesisResult synthesizeAndProcess(const QString &sentence, quint64 generation) const;
     void playFile(const QString &path);
 
     AppSettings *m_settings = nullptr;
     QQueue<QString> m_sentences;
     bool m_processing = false;
-    QFutureWatcher<QString> m_synthesisWatcher;
+    QFutureWatcher<TtsSynthesisResult> m_synthesisWatcher;
     QMediaPlayer *m_player = nullptr;
     QAudioOutput *m_audioOutput = nullptr;
+    quint64 m_generationCounter = 0;
+    quint64 m_activeGeneration = 0;
 };

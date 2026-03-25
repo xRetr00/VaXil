@@ -102,8 +102,12 @@ private:
     void setupStateMachine();
     void transitionToState(AssistantState state);
     void setStatus(const QString &status);
+    void invalidateWakeMonitorResume();
     void pauseWakeMonitor();
     void resumeWakeMonitor(int delayMs = 0);
+    void ignoreWakeTriggersFor(int delayMs);
+    int shortWakeResumeDelayMs() const;
+    int postSpeechWakeResumeDelayMs() const;
     void updateUserProfileFromInput(const QString &input);
     LocalResponseContext buildLocalResponseContext() const;
     void deliverLocalResponse(const QString &text, const QString &status, bool speak = true);
@@ -145,4 +149,6 @@ private:
     AudioCaptureMode m_lastCompletedCaptureMode = AudioCaptureMode::None;
     bool m_wakeMonitorEnabled = false;
     bool m_followUpListeningAfterWakeAck = false;
+    quint64 m_wakeResumeSequence = 0;
+    qint64 m_ignoreWakeUntilMs = 0;
 };

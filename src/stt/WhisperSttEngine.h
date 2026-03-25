@@ -17,7 +17,7 @@ public:
     void transcribePcm(
         const QByteArray &pcmData,
         const QString &initialPrompt = {},
-        bool suppressNonSpeechTokens = false);
+        bool suppressNonSpeechTokens = true);
 
 signals:
     void transcriptionReady(const TranscriptionResult &result);

@@ -114,21 +114,31 @@ quint64 LmStudioClient::sendChatRequest(const QList<AiMessage> &messages, const 
 
     QNetworkRequest request = buildJsonRequest(QStringLiteral("/v1/chat/completions"));
     m_activeReply = m_networkAccessManager.post(request, QJsonDocument(body).toJson(QJsonDocument::Compact));
-    emit requestStarted(m_activeRequestId);
+    const quint64 requestId = m_activeRequestId;
+    QPointer<QNetworkReply> reply = m_activeReply;
+    emit requestStarted(requestId);
     m_timeoutTimer.start(static_cast<int>(options.timeout.count()));
 
     if (options.stream) {
-        connect(m_activeReply, &QIODevice::readyRead, this, [this]() {
-            handleStreamingReply(m_activeRequestId, m_activeReply);
+        connect(reply, &QIODevice::readyRead, this, [this, requestId, reply]() {
+            if (!reply || reply != m_activeReply || requestId != m_activeRequestId) {
+                return;
+            }
+            handleStreamingReply(requestId, reply);
         });
     }
 
-    connect(m_activeReply, &QNetworkReply::finished, this, [this, options]() {
-        if (!m_activeReply) {
+    connect(reply, &QNetworkReply::finished, this, [this, options, requestId, reply]() {
+        if (!reply) {
             return;
         }
 
-        const auto reply = m_activeReply;
+        const bool staleReply = reply != m_activeReply || requestId != m_activeRequestId;
+        if (staleReply) {
+            reply->deleteLater();
+            return;
+        }
+
         m_timeoutTimer.stop();
         const auto cleanup = qScopeGuard([this, reply]() {
             reply->deleteLater();
@@ -141,8 +151,8 @@ quint64 LmStudioClient::sendChatRequest(const QList<AiMessage> &messages, const 
         }
 
         if (options.stream) {
-            handleStreamingReply(m_activeRequestId, reply);
-            emit requestFinished(m_activeRequestId, m_streamedContent);
+            handleStreamingReply(requestId, reply);
+            emit requestFinished(requestId, m_streamedContent);
             return;
         }
 
@@ -151,7 +161,7 @@ quint64 LmStudioClient::sendChatRequest(const QList<AiMessage> &messages, const 
         const auto content = choices.isEmpty()
             ? QString{}
             : choices.first().toObject().value(QStringLiteral("message")).toObject().value(QStringLiteral("content")).toString();
-        emit requestFinished(m_activeRequestId, content);
+        emit requestFinished(requestId, content);
     });
 
     return m_activeRequestId;
