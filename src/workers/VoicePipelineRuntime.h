@@ -41,6 +41,7 @@ public slots:
     void setBackendEndpoint(const QString &endpoint);
     void refreshModels();
     void sendAiRequest(quint64 generationId, const QList<AiMessage> &messages, const QString &model, const AiRequestOptions &options);
+    void sendAgentRequest(quint64 generationId, const AgentRequest &request);
     void cancelAiRequest();
 
 signals:
@@ -57,9 +58,11 @@ signals:
     void farEndFrameReady(quint64 generationId, const AudioFrame &frame);
     void modelsReady(const QList<ModelInfo> &models);
     void availabilityChanged(const AiAvailability &availability);
+    void capabilitiesChanged(const AgentCapabilitySet &capabilities);
     void requestStarted(quint64 generationId);
     void requestDelta(quint64 generationId, const QString &delta);
     void requestFinished(quint64 generationId, const QString &text);
+    void agentResponseReady(quint64 generationId, const AgentResponse &response);
     void requestFailed(quint64 generationId, const QString &errorText);
 
 private:

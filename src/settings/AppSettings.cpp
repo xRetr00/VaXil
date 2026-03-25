@@ -65,6 +65,16 @@ double clampPreciseTriggerThreshold(double value)
     return std::clamp(value, 0.30, 0.85);
 }
 
+double clampTemperature(double value)
+{
+    return std::clamp(value, 0.0, 2.0);
+}
+
+int clampMaxOutputTokens(int value)
+{
+    return std::clamp(value, 64, 8192);
+}
+
 double clampVadSensitivity(double value)
 {
     return std::clamp(value, 0.05, 0.95);
@@ -114,6 +124,24 @@ bool AppSettings::load()
     m_autoRoutingEnabled = parsed.value("autoRoutingEnabled", true);
     m_streamingEnabled = parsed.value("streamingEnabled", true);
     m_requestTimeoutMs = parsed.value("requestTimeoutMs", 12000);
+    m_agentEnabled = parsed.value("agentEnabled", true);
+    m_agentProviderMode = QString::fromStdString(parsed.value("agentProviderMode", m_agentProviderMode.toStdString()));
+    m_conversationTemperature = clampTemperature(parsed.value("conversationTemperature", 0.7));
+    if (parsed.contains("conversationTopP") && !parsed.at("conversationTopP").is_null()) {
+        m_conversationTopP = parsed.at("conversationTopP").get<double>();
+    } else {
+        m_conversationTopP = 0.9;
+    }
+    m_toolUseTemperature = clampTemperature(parsed.value("toolUseTemperature", 0.2));
+    if (parsed.contains("providerTopK") && !parsed.at("providerTopK").is_null()) {
+        m_providerTopK = parsed.at("providerTopK").get<int>();
+    } else {
+        m_providerTopK.reset();
+    }
+    m_maxOutputTokens = clampMaxOutputTokens(parsed.value("maxOutputTokens", 1024));
+    m_memoryAutoWrite = parsed.value("memoryAutoWrite", true);
+    m_webSearchProvider = QString::fromStdString(parsed.value("webSearchProvider", m_webSearchProvider.toStdString()));
+    m_tracePanelEnabled = parsed.value("tracePanelEnabled", true);
     m_whisperExecutable = QString::fromStdString(parsed.value("whisperExecutable", std::string{}));
     m_whisperModelPath = QString::fromStdString(parsed.value("whisperModelPath", std::string{}));
     m_piperExecutable = QString::fromStdString(parsed.value("piperExecutable", std::string{}));
@@ -153,6 +181,16 @@ bool AppSettings::save() const
         {"autoRoutingEnabled", m_autoRoutingEnabled},
         {"streamingEnabled", m_streamingEnabled},
         {"requestTimeoutMs", m_requestTimeoutMs},
+        {"agentEnabled", m_agentEnabled},
+        {"agentProviderMode", m_agentProviderMode.toStdString()},
+        {"conversationTemperature", m_conversationTemperature},
+        {"conversationTopP", m_conversationTopP.has_value() ? nlohmann::json(*m_conversationTopP) : nlohmann::json(nullptr)},
+        {"toolUseTemperature", m_toolUseTemperature},
+        {"providerTopK", m_providerTopK.has_value() ? nlohmann::json(*m_providerTopK) : nlohmann::json(nullptr)},
+        {"maxOutputTokens", m_maxOutputTokens},
+        {"memoryAutoWrite", m_memoryAutoWrite},
+        {"webSearchProvider", m_webSearchProvider.toStdString()},
+        {"tracePanelEnabled", m_tracePanelEnabled},
         {"whisperExecutable", m_whisperExecutable.toStdString()},
         {"whisperModelPath", m_whisperModelPath.toStdString()},
         {"piperExecutable", m_piperExecutable.toStdString()},
@@ -229,6 +267,54 @@ bool AppSettings::streamingEnabled() const { return m_streamingEnabled; }
 void AppSettings::setStreamingEnabled(bool enabled) { m_streamingEnabled = enabled; emit settingsChanged(); }
 int AppSettings::requestTimeoutMs() const { return m_requestTimeoutMs; }
 void AppSettings::setRequestTimeoutMs(int timeoutMs) { m_requestTimeoutMs = timeoutMs; emit settingsChanged(); }
+bool AppSettings::agentEnabled() const { return m_agentEnabled; }
+void AppSettings::setAgentEnabled(bool enabled) { m_agentEnabled = enabled; emit settingsChanged(); }
+QString AppSettings::agentProviderMode() const { return m_agentProviderMode; }
+void AppSettings::setAgentProviderMode(const QString &mode)
+{
+    m_agentProviderMode = mode.trimmed().isEmpty() ? QStringLiteral("auto") : mode.trimmed();
+    emit settingsChanged();
+}
+double AppSettings::conversationTemperature() const { return m_conversationTemperature; }
+void AppSettings::setConversationTemperature(double temperature)
+{
+    m_conversationTemperature = clampTemperature(temperature);
+    emit settingsChanged();
+}
+std::optional<double> AppSettings::conversationTopP() const { return m_conversationTopP; }
+void AppSettings::setConversationTopP(const std::optional<double> &topP)
+{
+    m_conversationTopP = topP;
+    emit settingsChanged();
+}
+double AppSettings::toolUseTemperature() const { return m_toolUseTemperature; }
+void AppSettings::setToolUseTemperature(double temperature)
+{
+    m_toolUseTemperature = clampTemperature(temperature);
+    emit settingsChanged();
+}
+std::optional<int> AppSettings::providerTopK() const { return m_providerTopK; }
+void AppSettings::setProviderTopK(const std::optional<int> &topK)
+{
+    m_providerTopK = topK;
+    emit settingsChanged();
+}
+int AppSettings::maxOutputTokens() const { return m_maxOutputTokens; }
+void AppSettings::setMaxOutputTokens(int maxTokens)
+{
+    m_maxOutputTokens = clampMaxOutputTokens(maxTokens);
+    emit settingsChanged();
+}
+bool AppSettings::memoryAutoWrite() const { return m_memoryAutoWrite; }
+void AppSettings::setMemoryAutoWrite(bool enabled) { m_memoryAutoWrite = enabled; emit settingsChanged(); }
+QString AppSettings::webSearchProvider() const { return m_webSearchProvider; }
+void AppSettings::setWebSearchProvider(const QString &provider)
+{
+    m_webSearchProvider = provider.trimmed().isEmpty() ? QStringLiteral("brave") : provider.trimmed();
+    emit settingsChanged();
+}
+bool AppSettings::tracePanelEnabled() const { return m_tracePanelEnabled; }
+void AppSettings::setTracePanelEnabled(bool enabled) { m_tracePanelEnabled = enabled; emit settingsChanged(); }
 QString AppSettings::whisperExecutable() const { return m_whisperExecutable; }
 void AppSettings::setWhisperExecutable(const QString &path) { m_whisperExecutable = path; emit settingsChanged(); }
 QString AppSettings::whisperModelPath() const { return m_whisperModelPath; }

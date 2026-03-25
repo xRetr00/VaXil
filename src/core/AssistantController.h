@@ -5,6 +5,7 @@
 #include "core/AssistantTypes.h"
 
 class AppSettings;
+class AgentToolbox;
 class DeviceManager;
 class IntentRouter;
 class AiBackendClient;
@@ -15,6 +16,7 @@ class ModelCatalogService;
 class PromptAdapter;
 class ReasoningRouter;
 class IdentityProfileService;
+class SkillStore;
 class StreamAssembler;
 class SpeechRecognizer;
 class TtsEngine;
@@ -50,6 +52,11 @@ public:
     QList<ModelInfo> availableModels() const;
     QStringList availableModelIds() const;
     QString selectedModel() const;
+    AgentCapabilitySet agentCapabilities() const;
+    QList<AgentTraceEntry> agentTrace() const;
+    SamplingProfile samplingProfile() const;
+    bool installSkill(const QString &url, QString *error = nullptr);
+    bool createSkill(const QString &id, const QString &name, const QString &description, QString *error = nullptr);
 
 public slots:
     void refreshModels();
@@ -60,6 +67,17 @@ public slots:
     void stopListening();
     void cancelActiveRequest();
     void setSelectedModel(const QString &modelId);
+    void setAgentEnabled(bool enabled);
+    void saveAgentSettings(bool enabled,
+                           const QString &providerMode,
+                           double conversationTemperature,
+                           double conversationTopP,
+                           double toolUseTemperature,
+                           int providerTopK,
+                           int maxOutputTokens,
+                           bool memoryAutoWrite,
+                           const QString &webSearchProvider,
+                           bool tracePanelEnabled);
     void saveSettings(
         const QString &endpoint,
         const QString &modelId,
@@ -95,6 +113,8 @@ signals:
     void statusTextChanged();
     void audioLevelChanged();
     void modelsChanged();
+    void agentStateChanged();
+    void agentTraceChanged();
     void startupStateChanged();
     void listeningRequested();
     void processingRequested();
@@ -154,10 +174,14 @@ private:
     bool canStartWakeMonitor() const;
     bool startAudioCapture(AudioCaptureMode mode, bool announceListening);
     void startConversationRequest(const QString &input);
+    void startAgentConversationRequest(const QString &input);
+    void continueAgentConversation(const QList<AgentToolResult> &results);
     void startCommandRequest(const QString &input);
     void handleConversationFinished(const QString &text);
+    void handleAgentResponse(const AgentResponse &response);
     void handleCommandFinished(const QString &text);
     void logPromptResponsePair(const QString &response, const QString &source, const QString &status = QString());
+    void appendAgentTrace(const QString &kind, const QString &title, const QString &detail, bool success = true);
     CommandEnvelope parseCommand(const QString &payload) const;
     void updateStartupState();
     QString resolveStartupBlockingIssue(bool *blocked = nullptr) const;
@@ -174,6 +198,8 @@ private:
     PromptAdapter *m_promptAdapter = nullptr;
     StreamAssembler *m_streamAssembler = nullptr;
     MemoryStore *m_memoryStore = nullptr;
+    SkillStore *m_skillStore = nullptr;
+    AgentToolbox *m_agentToolbox = nullptr;
     DeviceManager *m_deviceManager = nullptr;
     IntentRouter *m_intentRouter = nullptr;
     LocalResponseEngine *m_localResponseEngine = nullptr;
@@ -192,6 +218,11 @@ private:
     quint64 m_activeSttRequestId = 0;
     RequestKind m_activeRequestKind = RequestKind::Conversation;
     QString m_lastPromptForAiLog;
+    QString m_lastAgentInput;
+    QString m_previousAgentResponseId;
+    int m_activeAgentIteration = 0;
+    AgentCapabilitySet m_agentCapabilities;
+    QList<AgentTraceEntry> m_agentTrace;
     AudioCaptureMode m_audioCaptureMode = AudioCaptureMode::None;
     AudioCaptureMode m_lastCompletedCaptureMode = AudioCaptureMode::None;
     bool m_wakeMonitorEnabled = false;

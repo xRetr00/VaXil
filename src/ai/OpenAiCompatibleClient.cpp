@@ -5,6 +5,7 @@
 #include <QJsonObject>
 #include <QNetworkRequest>
 #include <QScopeGuard>
+#include <QVariantMap>
 #include <QUrl>
 
 namespace {
@@ -27,6 +28,16 @@ QString normalizeEndpoint(QString endpoint)
     }
 
     return endpoint;
+}
+
+QJsonObject functionToolSchema(const AgentToolSpec &tool)
+{
+    return QJsonObject{
+        {QStringLiteral("type"), QStringLiteral("function")},
+        {QStringLiteral("name"), tool.name},
+        {QStringLiteral("description"), tool.description},
+        {QStringLiteral("parameters"), QJsonDocument::fromJson(QByteArray::fromStdString(tool.parameters.dump())).object()}
+    };
 }
 }
 
@@ -78,7 +89,13 @@ void OpenAiCompatibleClient::fetchModels()
 
         emit availabilityChanged({true, !models.isEmpty(), QStringLiteral("Local AI backend connected")});
         emit modelsReady(models);
+        probeCapabilities();
     });
+}
+
+AgentCapabilitySet OpenAiCompatibleClient::capabilities() const
+{
+    return m_capabilities;
 }
 
 quint64 OpenAiCompatibleClient::sendChatRequest(const QList<AiMessage> &messages, const QString &model, const AiRequestOptions &options)
@@ -102,6 +119,9 @@ quint64 OpenAiCompatibleClient::sendChatRequest(const QList<AiMessage> &messages
 
     if (options.topP.has_value()) {
         body.insert(QStringLiteral("top_p"), options.topP.value());
+    }
+    if (options.providerTopK.has_value()) {
+        body.insert(QStringLiteral("top_k"), options.providerTopK.value());
     }
     if (options.maxTokens.has_value()) {
         body.insert(QStringLiteral("max_tokens"), options.maxTokens.value());
@@ -169,6 +189,96 @@ quint64 OpenAiCompatibleClient::sendChatRequest(const QList<AiMessage> &messages
     return m_activeRequestId;
 }
 
+quint64 OpenAiCompatibleClient::sendAgentRequest(const AgentRequest &request)
+{
+    cancelActiveRequest();
+    m_capabilities.selectedModelToolCapable = modelLooksToolCapable(request.model);
+    m_capabilities.agentEnabled = m_capabilities.responsesApi && m_capabilities.selectedModelToolCapable;
+    emit capabilitiesChanged(m_capabilities);
+
+    QJsonObject body{
+        {QStringLiteral("model"), request.model},
+        {QStringLiteral("stream"), false}
+    };
+    if (!request.instructions.trimmed().isEmpty()) {
+        body.insert(QStringLiteral("instructions"), request.instructions);
+    }
+    if (!request.previousResponseId.trimmed().isEmpty()) {
+        body.insert(QStringLiteral("previous_response_id"), request.previousResponseId);
+    }
+
+    if (!request.toolResults.isEmpty()) {
+        QJsonArray inputItems;
+        for (const auto &result : request.toolResults) {
+            inputItems.push_back(QJsonObject{
+                {QStringLiteral("type"), QStringLiteral("function_call_output")},
+                {QStringLiteral("call_id"), result.callId},
+                {QStringLiteral("output"), result.output}
+            });
+        }
+        body.insert(QStringLiteral("input"), inputItems);
+    } else {
+        body.insert(QStringLiteral("input"), request.inputText);
+    }
+
+    if (!request.tools.isEmpty()) {
+        QJsonArray tools;
+        for (const auto &tool : request.tools) {
+            tools.push_back(functionToolSchema(tool));
+        }
+        body.insert(QStringLiteral("tools"), tools);
+    }
+
+    body.insert(QStringLiteral("temperature"), request.toolResults.isEmpty()
+        ? request.sampling.conversationTemperature
+        : request.sampling.toolUseTemperature);
+    if (request.sampling.conversationTopP.has_value()) {
+        body.insert(QStringLiteral("top_p"), *request.sampling.conversationTopP);
+    }
+    if (request.sampling.providerTopK.has_value()) {
+        body.insert(QStringLiteral("top_k"), *request.sampling.providerTopK);
+    }
+    body.insert(QStringLiteral("max_output_tokens"), request.sampling.maxOutputTokens);
+    body.insert(QStringLiteral("reasoning"), QJsonObject{{QStringLiteral("effort"), reasoningEffortForMode(request.mode)}});
+
+    m_activeRequestId = ++m_requestCounter;
+    QNetworkRequest httpRequest = buildJsonRequest(QStringLiteral("/v1/responses"));
+    m_activeReply = m_networkAccessManager->post(httpRequest, QJsonDocument(body).toJson(QJsonDocument::Compact));
+    const quint64 requestId = m_activeRequestId;
+    QPointer<QNetworkReply> reply = m_activeReply;
+    emit requestStarted(requestId);
+    m_timeoutTimer->start(static_cast<int>(request.timeout.count()));
+
+    connect(reply, &QNetworkReply::finished, this, [this, requestId, reply]() {
+        if (!reply) {
+            return;
+        }
+
+        const bool staleReply = reply != m_activeReply || requestId != m_activeRequestId;
+        if (staleReply) {
+            reply->deleteLater();
+            return;
+        }
+
+        m_timeoutTimer->stop();
+        const auto cleanup = qScopeGuard([this, reply]() {
+            reply->deleteLater();
+            m_activeReply = nullptr;
+        });
+
+        if (reply->error() != QNetworkReply::NoError) {
+            finishWithFailure(m_activeRequestId, parseErrorMessage(reply));
+            return;
+        }
+
+        const QByteArray payload = reply->readAll();
+        const AgentResponse response = parseAgentResponse(payload);
+        emit agentResponseReady(requestId, response);
+    });
+
+    return m_activeRequestId;
+}
+
 void OpenAiCompatibleClient::cancelActiveRequest()
 {
     m_timeoutTimer->stop();
@@ -190,6 +300,92 @@ QNetworkRequest OpenAiCompatibleClient::buildJsonRequest(const QString &path) co
     QNetworkRequest request(QUrl(m_endpoint + path));
     request.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/json"));
     return request;
+}
+
+void OpenAiCompatibleClient::probeCapabilities()
+{
+    auto *reply = m_networkAccessManager->sendCustomRequest(buildJsonRequest(QStringLiteral("/v1/responses")), "OPTIONS");
+    connect(reply, &QNetworkReply::finished, this, [this, reply]() {
+        const auto cleanup = qScopeGuard([reply]() { reply->deleteLater(); });
+        const int httpStatus = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+        const bool responsesApi = httpStatus != 404 && reply->error() != QNetworkReply::HostNotFoundError;
+        m_capabilities.responsesApi = responsesApi;
+        m_capabilities.previousResponseId = responsesApi;
+        m_capabilities.toolCalling = responsesApi;
+        m_capabilities.remoteMcp = responsesApi;
+        m_capabilities.selectedModelToolCapable = true;
+        m_capabilities.agentEnabled = responsesApi;
+        m_capabilities.providerMode = responsesApi ? QStringLiteral("responses") : QStringLiteral("chat_completions");
+        m_capabilities.status = responsesApi
+            ? QStringLiteral("Agent tools available")
+            : QStringLiteral("Agent tools unavailable; using chat completions fallback");
+        emit capabilitiesChanged(m_capabilities);
+    });
+}
+
+AgentResponse OpenAiCompatibleClient::parseAgentResponse(const QByteArray &payload) const
+{
+    AgentResponse response;
+    response.rawJson = QString::fromUtf8(payload);
+    const QJsonDocument document = QJsonDocument::fromJson(payload);
+    if (!document.isObject()) {
+        return response;
+    }
+
+    const QJsonObject object = document.object();
+    response.responseId = object.value(QStringLiteral("id")).toString();
+    const QJsonArray output = object.value(QStringLiteral("output")).toArray();
+    QStringList textParts;
+
+    for (const QJsonValue &itemValue : output) {
+        const QJsonObject item = itemValue.toObject();
+        const QString type = item.value(QStringLiteral("type")).toString();
+        if (type == QStringLiteral("message")) {
+            const QJsonArray content = item.value(QStringLiteral("content")).toArray();
+            for (const QJsonValue &contentValue : content) {
+                const QJsonObject contentObject = contentValue.toObject();
+                if (contentObject.value(QStringLiteral("type")).toString() == QStringLiteral("output_text")) {
+                    textParts.push_back(contentObject.value(QStringLiteral("text")).toString());
+                }
+            }
+        } else if (type == QStringLiteral("function_call")) {
+            response.toolCalls.push_back({
+                .id = item.value(QStringLiteral("call_id")).toString(),
+                .name = item.value(QStringLiteral("name")).toString(),
+                .argumentsJson = item.value(QStringLiteral("arguments")).toString()
+            });
+        }
+    }
+
+    if (textParts.isEmpty()) {
+        response.outputText = object.value(QStringLiteral("output_text")).toString();
+    } else {
+        response.outputText = textParts.join(QString());
+    }
+    return response;
+}
+
+QString OpenAiCompatibleClient::reasoningEffortForMode(ReasoningMode mode)
+{
+    switch (mode) {
+    case ReasoningMode::Fast:
+        return QStringLiteral("low");
+    case ReasoningMode::Deep:
+        return QStringLiteral("high");
+    case ReasoningMode::Balanced:
+    default:
+        return QStringLiteral("medium");
+    }
+}
+
+bool OpenAiCompatibleClient::modelLooksToolCapable(const QString &modelId)
+{
+    const QString lowered = modelId.toLower();
+    return lowered.contains(QStringLiteral("qwen"))
+        || lowered.contains(QStringLiteral("granite"))
+        || lowered.contains(QStringLiteral("llama"))
+        || lowered.contains(QStringLiteral("gpt-oss"))
+        || lowered.contains(QStringLiteral("tool"));
 }
 
 QString OpenAiCompatibleClient::parseErrorMessage(QNetworkReply *reply) const

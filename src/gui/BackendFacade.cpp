@@ -643,6 +643,8 @@ BackendFacade::BackendFacade(
         emit modelsChanged();
         emit selectedModelChanged();
     });
+    connect(m_assistantController, &AssistantController::agentStateChanged, this, &BackendFacade::agentStateChanged);
+    connect(m_assistantController, &AssistantController::agentTraceChanged, this, &BackendFacade::agentTraceChanged);
     connect(m_overlayController, &OverlayController::visibilityChanged, this, &BackendFacade::overlayVisibleChanged);
     connect(m_overlayController, &OverlayController::presenceOffsetChanged, this, &BackendFacade::presenceOffsetChanged);
     connect(m_settings, &AppSettings::settingsChanged, this, &BackendFacade::settingsChanged);
@@ -796,12 +798,62 @@ int BackendFacade::toolDownloadPercent() const { return m_toolManager != nullptr
 QString BackendFacade::activeToolDownloadName() const { return m_toolManager != nullptr ? m_toolManager->activeDownloadName() : QString{}; }
 QString BackendFacade::toolsRoot() const { return m_toolManager != nullptr ? m_toolManager->toolsRoot() : QString{}; }
 QString BackendFacade::wakeWordPhrase() const { return m_settings->wakeWordPhrase(); }
+bool BackendFacade::agentEnabled() const { return m_settings->agentEnabled(); }
+QString BackendFacade::agentProviderMode() const { return m_settings->agentProviderMode(); }
+double BackendFacade::conversationTemperature() const { return m_settings->conversationTemperature(); }
+double BackendFacade::conversationTopP() const { return m_settings->conversationTopP().value_or(0.0); }
+double BackendFacade::toolUseTemperature() const { return m_settings->toolUseTemperature(); }
+int BackendFacade::providerTopK() const { return m_settings->providerTopK().value_or(0); }
+int BackendFacade::maxOutputTokens() const { return m_settings->maxOutputTokens(); }
+bool BackendFacade::memoryAutoWrite() const { return m_settings->memoryAutoWrite(); }
+QString BackendFacade::webSearchProvider() const { return m_settings->webSearchProvider(); }
+bool BackendFacade::tracePanelEnabled() const { return m_settings->tracePanelEnabled(); }
+QString BackendFacade::agentStatus() const { return m_assistantController->agentCapabilities().status; }
+bool BackendFacade::agentAvailable() const { return m_assistantController->agentCapabilities().agentEnabled; }
+QVariantList BackendFacade::agentTraceEntries() const
+{
+    QVariantList list;
+    for (const auto &entry : m_assistantController->agentTrace()) {
+        QVariantMap row;
+        row.insert(QStringLiteral("timestamp"), entry.timestamp);
+        row.insert(QStringLiteral("kind"), entry.kind);
+        row.insert(QStringLiteral("title"), entry.title);
+        row.insert(QStringLiteral("detail"), entry.detail);
+        row.insert(QStringLiteral("success"), entry.success);
+        list.push_back(row);
+    }
+    return list;
+}
+QString BackendFacade::skillsRoot() const { return QDir::currentPath() + QStringLiteral("/skills"); }
 void BackendFacade::toggleOverlay() { m_overlayController->toggleOverlay(); }
 void BackendFacade::refreshModels() { m_assistantController->refreshModels(); }
 void BackendFacade::submitText(const QString &text) { m_assistantController->submitText(text); }
 void BackendFacade::startListening() { m_assistantController->startListening(); }
 void BackendFacade::cancelRequest() { m_assistantController->cancelActiveRequest(); }
 void BackendFacade::setSelectedModel(const QString &modelId) { m_assistantController->setSelectedModel(modelId); }
+void BackendFacade::setAgentEnabled(bool enabled) { m_assistantController->setAgentEnabled(enabled); }
+void BackendFacade::saveAgentSettings(bool enabled,
+                                      const QString &providerMode,
+                                      double conversationTemperature,
+                                      double conversationTopP,
+                                      double toolUseTemperature,
+                                      int providerTopK,
+                                      int maxOutputTokens,
+                                      bool memoryAutoWrite,
+                                      const QString &webSearchProvider,
+                                      bool tracePanelEnabled)
+{
+    m_assistantController->saveAgentSettings(enabled,
+                                             providerMode,
+                                             conversationTemperature,
+                                             conversationTopP,
+                                             toolUseTemperature,
+                                             providerTopK,
+                                             maxOutputTokens,
+                                             memoryAutoWrite,
+                                             webSearchProvider,
+                                             tracePanelEnabled);
+}
 void BackendFacade::setWakeEngineKind(const QString &kind)
 {
     Q_UNUSED(kind);
@@ -1604,4 +1656,26 @@ pause
 
     setToolInstallStatus(QStringLiteral("Training setup created in C:/JarvisRuntime/precise/training. Record samples next, then run train_wake_word.bat."));
     return true;
+}
+
+bool BackendFacade::installSkill(const QString &url)
+{
+    QString error;
+    const bool ok = m_assistantController->installSkill(url, &error);
+    setToolInstallStatus(ok ? QStringLiteral("Skill installed.") : error);
+    if (ok) {
+        emit agentTraceChanged();
+    }
+    return ok;
+}
+
+bool BackendFacade::createSkill(const QString &id, const QString &name, const QString &description)
+{
+    QString error;
+    const bool ok = m_assistantController->createSkill(id, name, description, &error);
+    setToolInstallStatus(ok ? QStringLiteral("Skill created.") : error);
+    if (ok) {
+        emit agentTraceChanged();
+    }
+    return ok;
 }

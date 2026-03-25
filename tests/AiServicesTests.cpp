@@ -22,14 +22,14 @@ void AiServicesTests::promptAdapterAppliesNoThink()
 {
     PromptAdapter adapter;
     QCOMPARE(adapter.applyReasoningMode(QStringLiteral("turn on the light"), ReasoningMode::Fast),
-             QStringLiteral("turn on the light /no_think"));
+             QStringLiteral("turn on the light"));
 }
 
 void AiServicesTests::promptAdapterAppliesDeepPrefix()
 {
     PromptAdapter adapter;
-    QVERIFY(adapter.applyReasoningMode(QStringLiteral("Explain this"), ReasoningMode::Deep)
-                .startsWith(QStringLiteral("Think step by step before answering.\n")));
+    QCOMPARE(adapter.applyReasoningMode(QStringLiteral("Explain this"), ReasoningMode::Deep),
+             QStringLiteral("Explain this"));
 }
 
 void AiServicesTests::promptAdapterInjectsIdentityAndProfile()

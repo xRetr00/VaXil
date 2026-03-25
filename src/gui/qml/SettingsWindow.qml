@@ -59,6 +59,16 @@ Window {
         streamCheck.checked = backend.streamingEnabled
         timeoutSpin.value = backend.requestTimeoutMs
         clickThroughCheck.checked = backend.clickThroughEnabled
+        agentEnabledCheck.checked = backend.agentEnabled
+        agentProviderField.text = backend.agentProviderMode
+        conversationTempSlider.value = backend.conversationTemperature
+        conversationTopPField.text = backend.conversationTopP > 0 ? backend.conversationTopP.toFixed(2) : ""
+        toolTempSlider.value = backend.toolUseTemperature
+        providerTopKField.text = backend.providerTopK > 0 ? String(backend.providerTopK) : ""
+        maxOutputSpin.value = backend.maxOutputTokens
+        memoryAutoWriteCheck.checked = backend.memoryAutoWrite
+        webProviderField.text = backend.webSearchProvider
+        tracePanelCheck.checked = backend.tracePanelEnabled
 
         const modelIndex = backend.models.indexOf(backend.selectedModel)
         modelCombo.currentIndex = modelIndex >= 0 ? modelIndex : 0
@@ -297,6 +307,104 @@ Window {
                         Layout.fillWidth: true
                         CheckBox { id: autoRoutingCheck; text: "Enable auto routing"; checked: backend.autoRoutingEnabled }
                         CheckBox { id: streamCheck; text: "Enable streaming"; checked: backend.streamingEnabled }
+                    }
+                }
+            }
+
+            Rectangle {
+                width: parent.width
+                radius: 30
+                color: "#9208111d"
+                border.width: 1
+                border.color: "#1d2f4d"
+
+                ColumnLayout {
+                    anchors.fill: parent
+                    anchors.margins: 22
+                    spacing: 14
+
+                    Text {
+                        text: "Agent Runtime"
+                        color: "#eef7ff"
+                        font.pixelSize: 22
+                        font.weight: Font.Medium
+                    }
+
+                    Text {
+                        text: backend.agentStatus
+                        color: backend.agentAvailable ? "#87d7a2" : "#d8a17a"
+                        font.pixelSize: 13
+                        wrapMode: Text.Wrap
+                    }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        CheckBox { id: agentEnabledCheck; text: "Enable agent mode"; checked: backend.agentEnabled }
+                        CheckBox { id: memoryAutoWriteCheck; text: "Auto-write memory"; checked: backend.memoryAutoWrite }
+                        CheckBox { id: tracePanelCheck; text: "Trace panel"; checked: backend.tracePanelEnabled }
+                    }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            Text { text: "Provider mode"; color: "#c9def3"; font.pixelSize: 13 }
+                            TextField { id: agentProviderField; Layout.fillWidth: true; text: backend.agentProviderMode }
+                        }
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            Text { text: "Web provider"; color: "#c9def3"; font.pixelSize: 13 }
+                            TextField { id: webProviderField; Layout.fillWidth: true; text: backend.webSearchProvider }
+                        }
+                    }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            Text { text: "Conversation temperature"; color: "#c9def3"; font.pixelSize: 13 }
+                            Slider { id: conversationTempSlider; Layout.fillWidth: true; from: 0.0; to: 1.5; value: backend.conversationTemperature }
+                        }
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            Text { text: "Tool temperature"; color: "#c9def3"; font.pixelSize: 13 }
+                            Slider { id: toolTempSlider; Layout.fillWidth: true; from: 0.0; to: 1.0; value: backend.toolUseTemperature }
+                        }
+                    }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            Text { text: "Top P"; color: "#c9def3"; font.pixelSize: 13 }
+                            TextField { id: conversationTopPField; Layout.fillWidth: true; text: backend.conversationTopP > 0 ? backend.conversationTopP.toFixed(2) : "" }
+                        }
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            Text { text: "Provider Top K"; color: "#c9def3"; font.pixelSize: 13 }
+                            TextField { id: providerTopKField; Layout.fillWidth: true; text: backend.providerTopK > 0 ? String(backend.providerTopK) : "" }
+                        }
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            Text { text: "Max output tokens"; color: "#c9def3"; font.pixelSize: 13 }
+                            SpinBox { id: maxOutputSpin; Layout.fillWidth: true; from: 64; to: 8192; value: backend.maxOutputTokens }
+                        }
+                    }
+
+                    Button {
+                        text: "Save agent settings"
+                        onClicked: backend.saveAgentSettings(
+                            agentEnabledCheck.checked,
+                            agentProviderField.text,
+                            conversationTempSlider.value,
+                            parseFloat(conversationTopPField.text || "0"),
+                            toolTempSlider.value,
+                            parseInt(providerTopKField.text || "0"),
+                            maxOutputSpin.value,
+                            memoryAutoWriteCheck.checked,
+                            webProviderField.text,
+                            tracePanelCheck.checked
+                        )
                     }
                 }
             }
@@ -763,6 +871,70 @@ Window {
                                     visible: modelData.downloadable === true && modelData.installed !== true
                                     text: "Download"
                                     onClicked: backend.downloadTool(modelData.name)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            Rectangle {
+                width: parent.width
+                radius: 30
+                color: "#9208111d"
+                border.width: 1
+                border.color: "#1d2f4d"
+                visible: backend.tracePanelEnabled
+
+                ColumnLayout {
+                    anchors.fill: parent
+                    anchors.margins: 22
+                    spacing: 14
+
+                    Text {
+                        text: "Agent Trace"
+                        color: "#eef7ff"
+                        font.pixelSize: 22
+                        font.weight: Font.Medium
+                    }
+
+                    Text {
+                        text: "Tool calls, memory writes, skill installs, and model loop events."
+                        color: "#8099b8"
+                        font.pixelSize: 14
+                    }
+
+                    Repeater {
+                        model: backend.agentTraceEntries
+
+                        delegate: Rectangle {
+                            required property var modelData
+                            Layout.fillWidth: true
+                            width: parent.width
+                            radius: 16
+                            color: "#102034"
+                            border.width: 1
+                            border.color: modelData.success ? "#2e7e4b" : "#7e3b3b"
+                            height: traceColumn.implicitHeight + 20
+
+                            Column {
+                                id: traceColumn
+                                anchors.fill: parent
+                                anchors.margins: 12
+                                spacing: 4
+
+                                Text {
+                                    text: modelData.timestamp + "  " + modelData.kind + "  " + modelData.title
+                                    color: "#eaf4ff"
+                                    font.pixelSize: 12
+                                    wrapMode: Text.Wrap
+                                }
+
+                                Text {
+                                    text: modelData.detail
+                                    color: "#9ab0ca"
+                                    font.pixelSize: 12
+                                    wrapMode: Text.Wrap
                                 }
                             }
                         }

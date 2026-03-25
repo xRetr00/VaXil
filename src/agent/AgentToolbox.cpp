@@ -1,0 +1,433 @@
+#include "agent/AgentToolbox.h"
+
+#include <QCoreApplication>
+#include <QDir>
+#include <QDirIterator>
+#include <QFile>
+#include <QFileInfo>
+#include <QProcess>
+#include <QRegularExpression>
+#include <QStandardPaths>
+#include <QUrl>
+
+#include "logging/LoggingService.h"
+#include "memory/MemoryStore.h"
+#include "settings/AppSettings.h"
+#include "skills/SkillStore.h"
+
+namespace {
+QString quotePowerShell(QString value)
+{
+    value.replace(QStringLiteral("'"), QStringLiteral("''"));
+    return QStringLiteral("'%1'").arg(value);
+}
+
+QString canonicalPath(const QString &path)
+{
+    QFileInfo info(path);
+    if (info.exists()) {
+        return info.canonicalFilePath();
+    }
+    return QDir::cleanPath(info.absoluteFilePath());
+}
+
+QString readTextFile(const QString &path, int maxChars = 12000)
+{
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        return {};
+    }
+    QString text = QString::fromUtf8(file.readAll());
+    if (text.size() > maxChars) {
+        text = text.left(maxChars) + QStringLiteral("\n...[truncated]");
+    }
+    return text;
+}
+
+nlohmann::json schemaObject(const std::initializer_list<std::pair<const char *, nlohmann::json>> &properties,
+                            const std::vector<std::string> &required = {})
+{
+    nlohmann::json schema = {
+        {"type", "object"},
+        {"properties", nlohmann::json::object()}
+    };
+    for (const auto &property : properties) {
+        schema["properties"][property.first] = property.second;
+    }
+    if (!required.empty()) {
+        schema["required"] = required;
+    }
+    return schema;
+}
+
+QString extractString(const nlohmann::json &args, const char *key)
+{
+    return args.contains(key) && args.at(key).is_string()
+        ? QString::fromStdString(args.at(key).get<std::string>())
+        : QString{};
+}
+}
+
+AgentToolbox::AgentToolbox(AppSettings *settings, MemoryStore *memoryStore, SkillStore *skillStore, LoggingService *loggingService, QObject *parent)
+    : QObject(parent)
+    , m_settings(settings)
+    , m_memoryStore(memoryStore)
+    , m_skillStore(skillStore)
+    , m_loggingService(loggingService)
+{
+}
+
+QList<AgentToolSpec> AgentToolbox::builtInTools() const
+{
+    return {
+        {QStringLiteral("file_read"), QStringLiteral("Read a UTF-8 text file from an allowed path."),
+         schemaObject({{"path", {{"type", "string"}}}}, {"path"})},
+        {QStringLiteral("file_search"), QStringLiteral("Search for text under an allowed directory."),
+         schemaObject({{"root", {{"type", "string"}}}, {"query", {{"type", "string"}}}}, {"root", "query"})},
+        {QStringLiteral("file_write"), QStringLiteral("Write a UTF-8 text file to an allowed path."),
+         schemaObject({{"path", {{"type", "string"}}}, {"content", {{"type", "string"}}}}, {"path", "content"})},
+        {QStringLiteral("file_patch"), QStringLiteral("Patch a file by replacing one text fragment with another."),
+         schemaObject({{"path", {{"type", "string"}}}, {"find", {{"type", "string"}}}, {"replace", {{"type", "string"}}}}, {"path", "find", "replace"})},
+        {QStringLiteral("dir_list"), QStringLiteral("List files under an allowed directory."),
+         schemaObject({{"path", {{"type", "string"}}}}, {"path"})},
+        {QStringLiteral("memory_search"), QStringLiteral("Search structured memory entries."),
+         schemaObject({{"query", {{"type", "string"}}}}, {"query"})},
+        {QStringLiteral("memory_write"), QStringLiteral("Write or update a structured memory entry."),
+         schemaObject({{"kind", {{"type", "string"}}}, {"title", {{"type", "string"}}}, {"content", {{"type", "string"}}}}, {"kind", "title", "content"})},
+        {QStringLiteral("memory_delete"), QStringLiteral("Delete a memory entry by id or title."),
+         schemaObject({{"id", {{"type", "string"}}}}, {"id"})},
+        {QStringLiteral("log_tail"), QStringLiteral("Read the tail of a log file."),
+         schemaObject({{"path", {{"type", "string"}}}, {"lines", {{"type", "integer"}}}}, {"path"})},
+        {QStringLiteral("log_search"), QStringLiteral("Search a log directory or log file for a pattern."),
+         schemaObject({{"path", {{"type", "string"}}}, {"query", {{"type", "string"}}}}, {"path", "query"})},
+        {QStringLiteral("ai_log_read"), QStringLiteral("Read the latest AI exchange log or a specific AI log file."),
+         schemaObject({{"path", {{"type", "string"}}}}, {})},
+        {QStringLiteral("web_search"), QStringLiteral("Search the web using the configured provider."),
+         schemaObject({{"query", {{"type", "string"}}}}, {"query"})},
+        {QStringLiteral("web_fetch"), QStringLiteral("Fetch the contents of a public URL."),
+         schemaObject({{"url", {{"type", "string"}}}}, {"url"})},
+        {QStringLiteral("skill_list"), QStringLiteral("List installed declarative skills."),
+         schemaObject({})},
+        {QStringLiteral("skill_install"), QStringLiteral("Install a skill from a GitHub repo URL or zip URL."),
+         schemaObject({{"url", {{"type", "string"}}}}, {"url"})},
+        {QStringLiteral("skill_create"), QStringLiteral("Create a new local skill scaffold."),
+         schemaObject({{"id", {{"type", "string"}}}, {"name", {{"type", "string"}}}, {"description", {{"type", "string"}}}}, {"id", "name", "description"})}
+    };
+}
+
+AgentToolResult AgentToolbox::execute(const AgentToolCall &call)
+{
+    const auto args = nlohmann::json::parse(call.argumentsJson.toStdString(), nullptr, false);
+    if (call.name != QStringLiteral("skill_list") && args.is_discarded()) {
+        return failedResult(call, QStringLiteral("Tool arguments were not valid JSON."));
+    }
+
+    if (call.name == QStringLiteral("file_read")) return executeFileRead(call, args);
+    if (call.name == QStringLiteral("file_search")) return executeFileSearch(call, args);
+    if (call.name == QStringLiteral("file_write")) return executeFileWrite(call, args);
+    if (call.name == QStringLiteral("file_patch")) return executeFilePatch(call, args);
+    if (call.name == QStringLiteral("dir_list")) return executeDirList(call, args);
+    if (call.name == QStringLiteral("memory_search")) return executeMemorySearch(call, args);
+    if (call.name == QStringLiteral("memory_write")) return executeMemoryWrite(call, args);
+    if (call.name == QStringLiteral("memory_delete")) return executeMemoryDelete(call, args);
+    if (call.name == QStringLiteral("log_tail")) return executeLogTail(call, args);
+    if (call.name == QStringLiteral("log_search")) return executeLogSearch(call, args);
+    if (call.name == QStringLiteral("ai_log_read")) return executeAiLogRead(call, args);
+    if (call.name == QStringLiteral("web_search")) return executeWebSearch(call, args);
+    if (call.name == QStringLiteral("web_fetch")) return executeWebFetch(call, args);
+    if (call.name == QStringLiteral("skill_list")) return executeSkillList(call);
+    if (call.name == QStringLiteral("skill_install")) return executeSkillInstall(call, args);
+    if (call.name == QStringLiteral("skill_create")) return executeSkillCreate(call, args);
+
+    return failedResult(call, QStringLiteral("Unknown tool."));
+}
+
+QStringList AgentToolbox::allowedRoots() const
+{
+    return {
+        canonicalPath(QDir::currentPath()),
+        canonicalPath(QDir::currentPath() + QStringLiteral("/config")),
+        canonicalPath(QDir::currentPath() + QStringLiteral("/bin/logs")),
+        canonicalPath(QDir::currentPath() + QStringLiteral("/skills")),
+        canonicalPath(QStandardPaths::writableLocation(QStandardPaths::AppDataLocation)),
+        canonicalPath(m_skillStore->skillsRoot())
+    };
+}
+
+bool AgentToolbox::isAllowedPath(const QString &path, bool forWrite) const
+{
+    const QString resolved = canonicalPath(path);
+    for (const QString &root : allowedRoots()) {
+        if (!root.isEmpty() && resolved.startsWith(root, Qt::CaseInsensitive)) {
+            return true;
+        }
+    }
+    Q_UNUSED(forWrite);
+    return false;
+}
+
+AgentToolResult AgentToolbox::executeFileRead(const AgentToolCall &call, const nlohmann::json &args)
+{
+    const QString path = extractString(args, "path");
+    if (!isAllowedPath(path, false)) {
+        return failedResult(call, QStringLiteral("Read path is outside allowed roots."));
+    }
+    const QString text = readTextFile(path);
+    return text.isEmpty() ? failedResult(call, QStringLiteral("Failed to read file.")) : successResult(call, text);
+}
+
+AgentToolResult AgentToolbox::executeFileSearch(const AgentToolCall &call, const nlohmann::json &args)
+{
+    const QString root = extractString(args, "root");
+    const QString query = extractString(args, "query");
+    if (!isAllowedPath(root, false)) {
+        return failedResult(call, QStringLiteral("Search root is outside allowed roots."));
+    }
+
+    QStringList matches;
+    QDirIterator it(root, QDir::Files | QDir::Readable, QDirIterator::Subdirectories);
+    while (it.hasNext() && matches.size() < 25) {
+        const QString filePath = it.next();
+        const QString text = readTextFile(filePath, 20000);
+        if (text.contains(query, Qt::CaseInsensitive)) {
+            matches.push_back(QDir::cleanPath(filePath));
+        }
+    }
+    return successResult(call, matches.join(QStringLiteral("\n")));
+}
+
+AgentToolResult AgentToolbox::executeFileWrite(const AgentToolCall &call, const nlohmann::json &args)
+{
+    const QString path = extractString(args, "path");
+    const QString content = extractString(args, "content");
+    if (!isAllowedPath(path, true)) {
+        return failedResult(call, QStringLiteral("Write path is outside allowed roots."));
+    }
+
+    QFileInfo info(path);
+    QDir().mkpath(info.absolutePath());
+    QFile file(path);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate)) {
+        return failedResult(call, QStringLiteral("Failed to open file for writing."));
+    }
+    file.write(content.toUtf8());
+    return successResult(call, QStringLiteral("Wrote %1 bytes to %2").arg(content.toUtf8().size()).arg(QDir::cleanPath(path)));
+}
+
+AgentToolResult AgentToolbox::executeFilePatch(const AgentToolCall &call, const nlohmann::json &args)
+{
+    const QString path = extractString(args, "path");
+    const QString find = extractString(args, "find");
+    const QString replace = extractString(args, "replace");
+    if (!isAllowedPath(path, true)) {
+        return failedResult(call, QStringLiteral("Patch path is outside allowed roots."));
+    }
+
+    QString text = readTextFile(path, 500000);
+    if (text.isEmpty()) {
+        return failedResult(call, QStringLiteral("Failed to read file for patching."));
+    }
+    if (!text.contains(find)) {
+        return failedResult(call, QStringLiteral("Patch target text was not found."));
+    }
+    text.replace(find, replace);
+    QFile file(path);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate)) {
+        return failedResult(call, QStringLiteral("Failed to write patched file."));
+    }
+    file.write(text.toUtf8());
+    return successResult(call, QStringLiteral("Patched %1").arg(QDir::cleanPath(path)));
+}
+
+AgentToolResult AgentToolbox::executeDirList(const AgentToolCall &call, const nlohmann::json &args)
+{
+    const QString path = extractString(args, "path");
+    if (!isAllowedPath(path, false)) {
+        return failedResult(call, QStringLiteral("Directory is outside allowed roots."));
+    }
+
+    const QFileInfoList entries = QDir(path).entryInfoList(QDir::Dirs | QDir::Files | QDir::NoDotAndDotDot, QDir::Name);
+    QStringList lines;
+    for (const QFileInfo &entry : entries.mid(0, 100)) {
+        lines.push_back(QStringLiteral("%1\t%2").arg(entry.isDir() ? QStringLiteral("dir") : QStringLiteral("file"), entry.fileName()));
+    }
+    return successResult(call, lines.join(QStringLiteral("\n")));
+}
+
+AgentToolResult AgentToolbox::executeMemorySearch(const AgentToolCall &call, const nlohmann::json &args)
+{
+    const QString query = extractString(args, "query");
+    QStringList lines;
+    for (const auto &entry : m_memoryStore->searchEntries(query, 12)) {
+        lines.push_back(QStringLiteral("%1 | %2 | %3").arg(entry.kind, entry.title, entry.content));
+    }
+    return successResult(call, lines.join(QStringLiteral("\n")));
+}
+
+AgentToolResult AgentToolbox::executeMemoryWrite(const AgentToolCall &call, const nlohmann::json &args)
+{
+    MemoryEntry entry;
+    entry.kind = extractString(args, "kind");
+    entry.title = extractString(args, "title");
+    entry.content = extractString(args, "content");
+    entry.secret = args.value("secret", false);
+    entry.source = QStringLiteral("agent_tool");
+    const bool ok = m_memoryStore->upsertEntry(entry);
+    return ok ? successResult(call, QStringLiteral("Memory saved.")) : failedResult(call, QStringLiteral("Memory write failed."));
+}
+
+AgentToolResult AgentToolbox::executeMemoryDelete(const AgentToolCall &call, const nlohmann::json &args)
+{
+    const bool ok = m_memoryStore->deleteEntry(extractString(args, "id"));
+    return ok ? successResult(call, QStringLiteral("Memory deleted.")) : failedResult(call, QStringLiteral("Memory entry not found."));
+}
+
+AgentToolResult AgentToolbox::executeLogTail(const AgentToolCall &call, const nlohmann::json &args)
+{
+    const QString path = extractString(args, "path");
+    const int lines = args.contains("lines") && args.at("lines").is_number_integer() ? args.at("lines").get<int>() : 120;
+    if (!isAllowedPath(path, false)) {
+        return failedResult(call, QStringLiteral("Log path is outside allowed roots."));
+    }
+
+    const QString command = QStringLiteral("Get-Content %1 -Tail %2").arg(quotePowerShell(path)).arg(lines);
+    QProcess process;
+    process.start(QStringLiteral("powershell"), {QStringLiteral("-NoProfile"), QStringLiteral("-ExecutionPolicy"), QStringLiteral("Bypass"), QStringLiteral("-Command"), command});
+    process.waitForFinished(10000);
+    return successResult(call, QString::fromUtf8(process.readAllStandardOutput()));
+}
+
+AgentToolResult AgentToolbox::executeLogSearch(const AgentToolCall &call, const nlohmann::json &args)
+{
+    const QString path = extractString(args, "path");
+    const QString query = extractString(args, "query");
+    if (!isAllowedPath(path, false)) {
+        return failedResult(call, QStringLiteral("Log search path is outside allowed roots."));
+    }
+
+    const QString command = QFileInfo(path).isDir()
+        ? QStringLiteral("Get-ChildItem -Path %1 -Recurse | Select-String -Pattern %2")
+            .arg(quotePowerShell(path), quotePowerShell(query))
+        : QStringLiteral("Select-String -Path %1 -Pattern %2")
+            .arg(quotePowerShell(path), quotePowerShell(query));
+    QProcess process;
+    process.start(QStringLiteral("powershell"), {QStringLiteral("-NoProfile"), QStringLiteral("-ExecutionPolicy"), QStringLiteral("Bypass"), QStringLiteral("-Command"), command});
+    process.waitForFinished(10000);
+    return successResult(call, QString::fromUtf8(process.readAllStandardOutput()));
+}
+
+AgentToolResult AgentToolbox::executeAiLogRead(const AgentToolCall &call, const nlohmann::json &args)
+{
+    QString path = extractString(args, "path");
+    if (path.isEmpty()) {
+        const QDir logDir(QDir::currentPath() + QStringLiteral("/bin/logs/AI"));
+        const QFileInfoList files = logDir.entryInfoList({QStringLiteral("*.log")}, QDir::Files | QDir::Readable, QDir::Time);
+        if (files.isEmpty()) {
+            return failedResult(call, QStringLiteral("No AI logs found."));
+        }
+        path = files.first().absoluteFilePath();
+    }
+    if (!isAllowedPath(path, false)) {
+        return failedResult(call, QStringLiteral("AI log path is outside allowed roots."));
+    }
+    return successResult(call, readTextFile(path, 18000));
+}
+
+AgentToolResult AgentToolbox::executeWebSearch(const AgentToolCall &call, const nlohmann::json &args)
+{
+    const QString query = extractString(args, "query");
+    const QString provider = m_settings->webSearchProvider().toLower();
+    if (provider == QStringLiteral("brave")) {
+        const QString apiKey = qEnvironmentVariable("BRAVE_SEARCH_API_KEY");
+        if (!apiKey.isEmpty()) {
+            QProcess process;
+            process.start(QStringLiteral("powershell"),
+                          {QStringLiteral("-NoProfile"), QStringLiteral("-ExecutionPolicy"), QStringLiteral("Bypass"), QStringLiteral("-Command"),
+                           QStringLiteral("$headers=@{'Accept'='application/json';'X-Subscription-Token'=%1}; "
+                                          "(Invoke-RestMethod -Headers $headers -Uri %2) | ConvertTo-Json -Depth 6")
+                               .arg(quotePowerShell(apiKey),
+                                    quotePowerShell(QStringLiteral("https://api.search.brave.com/res/v1/web/search?q=%1")
+                                                        .arg(QString::fromUtf8(QUrl::toPercentEncoding(query)))))});
+            if (process.waitForFinished(20000) && process.exitCode() == 0) {
+                return successResult(call, QString::fromUtf8(process.readAllStandardOutput()));
+            }
+        }
+    }
+
+    QProcess process;
+    process.start(QStringLiteral("powershell"),
+                  {QStringLiteral("-NoProfile"), QStringLiteral("-ExecutionPolicy"), QStringLiteral("Bypass"), QStringLiteral("-Command"),
+                   QStringLiteral("(Invoke-RestMethod -Uri %1) | ConvertTo-Json -Depth 6")
+                       .arg(quotePowerShell(QStringLiteral("https://api.duckduckgo.com/?q=%1&format=json&no_html=1&skip_disambig=1")
+                                                .arg(QString::fromUtf8(QUrl::toPercentEncoding(query)))))});
+    if (!process.waitForFinished(20000) || process.exitCode() != 0) {
+        return failedResult(call, QStringLiteral("Web search failed."));
+    }
+    return successResult(call, QString::fromUtf8(process.readAllStandardOutput()));
+}
+
+AgentToolResult AgentToolbox::executeWebFetch(const AgentToolCall &call, const nlohmann::json &args)
+{
+    const QString url = extractString(args, "url");
+    QProcess process;
+    process.start(QStringLiteral("powershell"),
+                  {QStringLiteral("-NoProfile"), QStringLiteral("-ExecutionPolicy"), QStringLiteral("Bypass"), QStringLiteral("-Command"),
+                   QStringLiteral("(Invoke-WebRequest -UseBasicParsing -Uri %1).Content").arg(quotePowerShell(url))});
+    if (!process.waitForFinished(30000) || process.exitCode() != 0) {
+        return failedResult(call, QStringLiteral("Web fetch failed."));
+    }
+    QString output = QString::fromUtf8(process.readAllStandardOutput());
+    if (output.size() > 12000) {
+        output = output.left(12000) + QStringLiteral("\n...[truncated]");
+    }
+    return successResult(call, output);
+}
+
+AgentToolResult AgentToolbox::executeSkillList(const AgentToolCall &call)
+{
+    QStringList lines;
+    for (const auto &skill : m_skillStore->listSkills()) {
+        lines.push_back(QStringLiteral("%1 | %2 | %3").arg(skill.id, skill.name, skill.description));
+    }
+    return successResult(call, lines.join(QStringLiteral("\n")));
+}
+
+AgentToolResult AgentToolbox::executeSkillInstall(const AgentToolCall &call, const nlohmann::json &args)
+{
+    QString error;
+    const bool ok = m_skillStore->installSkill(extractString(args, "url"), &error);
+    return ok ? successResult(call, QStringLiteral("Skill installed.")) : failedResult(call, error);
+}
+
+AgentToolResult AgentToolbox::executeSkillCreate(const AgentToolCall &call, const nlohmann::json &args)
+{
+    QString error;
+    const bool ok = m_skillStore->createSkill(extractString(args, "id"), extractString(args, "name"), extractString(args, "description"), &error);
+    return ok ? successResult(call, QStringLiteral("Skill created.")) : failedResult(call, error);
+}
+
+AgentToolResult AgentToolbox::failedResult(const AgentToolCall &call, const QString &message) const
+{
+    if (m_loggingService) {
+        m_loggingService->warn(QStringLiteral("Agent tool failed. tool=\"%1\" message=\"%2\"").arg(call.name, message.left(240)));
+    }
+    return {
+        .callId = call.id,
+        .toolName = call.name,
+        .output = message,
+        .success = false
+    };
+}
+
+AgentToolResult AgentToolbox::successResult(const AgentToolCall &call, const QString &message) const
+{
+    if (m_loggingService) {
+        m_loggingService->info(QStringLiteral("Agent tool completed. tool=\"%1\"").arg(call.name));
+    }
+    return {
+        .callId = call.id,
+        .toolName = call.name,
+        .output = message,
+        .success = true
+    };
+}

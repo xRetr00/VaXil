@@ -42,6 +42,36 @@ public:
     int requestTimeoutMs() const;
     void setRequestTimeoutMs(int timeoutMs);
 
+    bool agentEnabled() const;
+    void setAgentEnabled(bool enabled);
+
+    QString agentProviderMode() const;
+    void setAgentProviderMode(const QString &mode);
+
+    double conversationTemperature() const;
+    void setConversationTemperature(double temperature);
+
+    std::optional<double> conversationTopP() const;
+    void setConversationTopP(const std::optional<double> &topP);
+
+    double toolUseTemperature() const;
+    void setToolUseTemperature(double temperature);
+
+    std::optional<int> providerTopK() const;
+    void setProviderTopK(const std::optional<int> &topK);
+
+    int maxOutputTokens() const;
+    void setMaxOutputTokens(int maxTokens);
+
+    bool memoryAutoWrite() const;
+    void setMemoryAutoWrite(bool enabled);
+
+    QString webSearchProvider() const;
+    void setWebSearchProvider(const QString &provider);
+
+    bool tracePanelEnabled() const;
+    void setTracePanelEnabled(bool enabled);
+
     QString whisperExecutable() const;
     void setWhisperExecutable(const QString &path);
 
@@ -126,6 +156,16 @@ private:
     bool m_autoRoutingEnabled = true;
     bool m_streamingEnabled = true;
     int m_requestTimeoutMs = 12000;
+    bool m_agentEnabled = true;
+    QString m_agentProviderMode = QStringLiteral("auto");
+    double m_conversationTemperature = 0.7;
+    std::optional<double> m_conversationTopP = 0.9;
+    double m_toolUseTemperature = 0.2;
+    std::optional<int> m_providerTopK;
+    int m_maxOutputTokens = 1024;
+    bool m_memoryAutoWrite = true;
+    QString m_webSearchProvider = QStringLiteral("brave");
+    bool m_tracePanelEnabled = true;
     QString m_whisperExecutable;
     QString m_whisperModelPath;
     QString m_piperExecutable;

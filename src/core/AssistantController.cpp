@@ -20,6 +20,7 @@
 #include "ai/SpokenReply.h"
 #include "ai/ReasoningRouter.h"
 #include "ai/StreamAssembler.h"
+#include "agent/AgentToolbox.h"
 #include "core/IntentRouter.h"
 #include "core/LocalResponseEngine.h"
 #include "devices/DeviceManager.h"
@@ -27,6 +28,7 @@
 #include "memory/MemoryStore.h"
 #include "settings/AppSettings.h"
 #include "settings/IdentityProfileService.h"
+#include "skills/SkillStore.h"
 #include "stt/RuntimeSpeechRecognizer.h"
 #include "tts/TtsEngine.h"
 #include "tts/WorkerTtsEngine.h"
@@ -309,6 +311,8 @@ AssistantController::AssistantController(
     m_promptAdapter = new PromptAdapter(this);
     m_streamAssembler = new StreamAssembler(this);
     m_memoryStore = new MemoryStore(this);
+    m_skillStore = new SkillStore(this);
+    m_agentToolbox = new AgentToolbox(m_settings, m_memoryStore, m_skillStore, m_loggingService, this);
     m_deviceManager = new DeviceManager(this);
     m_intentRouter = new IntentRouter(this);
     m_localResponseEngine = new LocalResponseEngine(this);
@@ -330,6 +334,14 @@ void AssistantController::initialize()
     connect(m_modelCatalogService, &ModelCatalogService::modelsChanged, this, &AssistantController::modelsChanged);
     connect(m_modelCatalogService, &ModelCatalogService::modelsChanged, this, [this]() {
         m_modelCatalogResolved = true;
+        const QString modelId = selectedModel().isEmpty() && !availableModelIds().isEmpty() ? availableModelIds().first() : selectedModel();
+        const QString lowered = modelId.toLower();
+        m_agentCapabilities.selectedModelToolCapable = lowered.contains(QStringLiteral("qwen"))
+            || lowered.contains(QStringLiteral("granite"))
+            || lowered.contains(QStringLiteral("llama"))
+            || lowered.contains(QStringLiteral("gpt-oss"))
+            || lowered.contains(QStringLiteral("tool"));
+        emit agentStateChanged();
         updateStartupState();
     });
     connect(m_modelCatalogService, &ModelCatalogService::availabilityChanged, this, [this]() {
@@ -535,7 +547,11 @@ void AssistantController::initialize()
         if (m_loggingService) {
             m_loggingService->info(QStringLiteral("Local AI backend request started. requestId=%1 kind=%2")
                 .arg(requestId)
-                .arg(m_activeRequestKind == RequestKind::CommandExtraction ? QStringLiteral("command") : QStringLiteral("conversation")));
+                .arg(m_activeRequestKind == RequestKind::CommandExtraction
+                         ? QStringLiteral("command")
+                         : (m_activeRequestKind == RequestKind::AgentConversation
+                                ? QStringLiteral("agent")
+                                : QStringLiteral("conversation"))));
         }
         setDuplexState(DuplexState::Processing);
         emit processingRequested();
@@ -544,6 +560,10 @@ void AssistantController::initialize()
         if (requestId == m_activeRequestId && m_activeRequestKind == RequestKind::Conversation) {
             m_streamAssembler->appendChunk(delta);
         }
+    });
+    connect(m_aiBackendClient, &AiBackendClient::capabilitiesChanged, this, [this](const AgentCapabilitySet &capabilities) {
+        m_agentCapabilities = capabilities;
+        emit agentStateChanged();
     });
     connect(m_aiBackendClient, &AiBackendClient::requestFinished, this, [this](quint64 requestId, const QString &fullText) {
         if (requestId != m_activeRequestId) {
@@ -561,6 +581,12 @@ void AssistantController::initialize()
         } else {
             handleConversationFinished(fullText);
         }
+    });
+    connect(m_aiBackendClient, &AiBackendClient::agentResponseReady, this, [this](quint64 requestId, const AgentResponse &response) {
+        if (requestId != m_activeRequestId) {
+            return;
+        }
+        handleAgentResponse(response);
     });
     connect(m_aiBackendClient, &AiBackendClient::requestFailed, this, [this](quint64 requestId, const QString &errorText) {
         if (requestId == m_activeRequestId) {
@@ -603,6 +629,31 @@ QStringList AssistantController::availableModelIds() const
     return ids;
 }
 QString AssistantController::selectedModel() const { return m_settings->chatBackendModel(); }
+AgentCapabilitySet AssistantController::agentCapabilities() const { return m_agentCapabilities; }
+QList<AgentTraceEntry> AssistantController::agentTrace() const { return m_agentTrace; }
+SamplingProfile AssistantController::samplingProfile() const
+{
+    return {
+        .conversationTemperature = m_settings->conversationTemperature(),
+        .conversationTopP = m_settings->conversationTopP(),
+        .toolUseTemperature = m_settings->toolUseTemperature(),
+        .providerTopK = m_settings->providerTopK(),
+        .maxOutputTokens = m_settings->maxOutputTokens()
+    };
+}
+bool AssistantController::installSkill(const QString &url, QString *error)
+{
+    const bool ok = m_skillStore->installSkill(url, error);
+    appendAgentTrace(QStringLiteral("skill"), QStringLiteral("Install skill"), url, ok);
+    return ok;
+}
+
+bool AssistantController::createSkill(const QString &id, const QString &name, const QString &description, QString *error)
+{
+    const bool ok = m_skillStore->createSkill(id, name, description, error);
+    appendAgentTrace(QStringLiteral("skill"), QStringLiteral("Create skill"), id, ok);
+    return ok;
+}
 
 void AssistantController::refreshModels()
 {
@@ -705,6 +756,10 @@ void AssistantController::submitText(const QString &text)
 
     if (intent == LocalIntent::Command || m_reasoningRouter->isLikelyCommand(routedInput)) {
         startCommandRequest(routedInput);
+    } else if (m_settings->agentEnabled()
+               && m_agentCapabilities.agentEnabled
+               && m_agentCapabilities.selectedModelToolCapable) {
+        startAgentConversationRequest(routedInput);
     } else {
         startConversationRequest(routedInput);
     }
@@ -817,8 +872,46 @@ void AssistantController::setSelectedModel(const QString &modelId)
 {
     m_settings->setChatBackendModel(modelId);
     m_settings->save();
+    m_agentCapabilities.selectedModelToolCapable = modelId.toLower().contains(QStringLiteral("qwen"))
+        || modelId.toLower().contains(QStringLiteral("granite"))
+        || modelId.toLower().contains(QStringLiteral("llama"))
+        || modelId.toLower().contains(QStringLiteral("gpt-oss"))
+        || modelId.toLower().contains(QStringLiteral("tool"));
     emit modelsChanged();
+    emit agentStateChanged();
     refreshModels();
+}
+
+void AssistantController::setAgentEnabled(bool enabled)
+{
+    m_settings->setAgentEnabled(enabled);
+    m_settings->save();
+    emit agentStateChanged();
+}
+
+void AssistantController::saveAgentSettings(bool enabled,
+                                            const QString &providerMode,
+                                            double conversationTemperature,
+                                            double conversationTopP,
+                                            double toolUseTemperature,
+                                            int providerTopK,
+                                            int maxOutputTokens,
+                                            bool memoryAutoWrite,
+                                            const QString &webSearchProvider,
+                                            bool tracePanelEnabled)
+{
+    m_settings->setAgentEnabled(enabled);
+    m_settings->setAgentProviderMode(providerMode);
+    m_settings->setConversationTemperature(conversationTemperature);
+    m_settings->setConversationTopP(conversationTopP <= 0.0 ? std::optional<double>{} : std::optional<double>{conversationTopP});
+    m_settings->setToolUseTemperature(toolUseTemperature);
+    m_settings->setProviderTopK(providerTopK <= 0 ? std::optional<int>{} : std::optional<int>{providerTopK});
+    m_settings->setMaxOutputTokens(maxOutputTokens);
+    m_settings->setMemoryAutoWrite(memoryAutoWrite);
+    m_settings->setWebSearchProvider(webSearchProvider);
+    m_settings->setTracePanelEnabled(tracePanelEnabled);
+    m_settings->save();
+    emit agentStateChanged();
 }
 
 void AssistantController::saveSettings(
@@ -1586,8 +1679,80 @@ void AssistantController::startConversationRequest(const QString &input)
         .mode = mode,
         .kind = RequestKind::Conversation,
         .stream = m_settings->streamingEnabled(),
+        .temperature = m_settings->conversationTemperature(),
+        .topP = m_settings->conversationTopP(),
+        .providerTopK = m_settings->providerTopK(),
+        .maxTokens = m_settings->maxOutputTokens(),
         .timeout = std::chrono::milliseconds(m_settings->requestTimeoutMs())
     });
+}
+
+void AssistantController::startAgentConversationRequest(const QString &input)
+{
+    const ReasoningMode mode = m_reasoningRouter->chooseMode(input, m_settings->autoRoutingEnabled(), m_settings->defaultReasoningMode());
+    const QString modelId = m_settings->chatBackendModel().isEmpty() && !availableModelIds().isEmpty() ? availableModelIds().first() : m_settings->chatBackendModel();
+    if (modelId.isEmpty()) {
+        setStatus(QStringLiteral("No local AI backend model selected"));
+        emit idleRequested();
+        return;
+    }
+
+    m_activeRequestKind = RequestKind::AgentConversation;
+    m_lastAgentInput = input;
+    m_activeAgentIteration = 0;
+    m_agentTrace.clear();
+    emit agentTraceChanged();
+    appendAgentTrace(QStringLiteral("session"), QStringLiteral("Agent request"), QStringLiteral("Starting agent conversation"), true);
+
+    const AgentRequest request{
+        .model = modelId,
+        .instructions = m_promptAdapter->buildAgentInstructions(
+            m_memoryStore->relevantMemory(input),
+            m_skillStore->listSkills(),
+            m_identityProfileService->identity(),
+            m_identityProfileService->userProfile(),
+            m_settings->memoryAutoWrite()),
+        .inputText = input,
+        .previousResponseId = m_previousAgentResponseId,
+        .tools = m_agentToolbox->builtInTools(),
+        .toolResults = {},
+        .sampling = samplingProfile(),
+        .mode = mode,
+        .timeout = std::chrono::milliseconds(m_settings->requestTimeoutMs())
+    };
+
+    if (m_loggingService) {
+        m_loggingService->info(QStringLiteral("Starting agent request. model=\"%1\" input=\"%2\"")
+            .arg(modelId, input.left(240)));
+    }
+    m_activeRequestId = m_aiBackendClient->sendAgentRequest(request);
+}
+
+void AssistantController::continueAgentConversation(const QList<AgentToolResult> &results)
+{
+    if (m_activeAgentIteration >= 6) {
+        handleConversationFinished(QStringLiteral("I’ve hit the tool-call limit for this request. Please narrow it down and try again."));
+        return;
+    }
+
+    ++m_activeAgentIteration;
+    const AgentRequest request{
+        .model = selectedModel(),
+        .instructions = m_promptAdapter->buildAgentInstructions(
+            m_memoryStore->relevantMemory(m_lastAgentInput),
+            m_skillStore->listSkills(),
+            m_identityProfileService->identity(),
+            m_identityProfileService->userProfile(),
+            m_settings->memoryAutoWrite()),
+        .inputText = {},
+        .previousResponseId = m_previousAgentResponseId,
+        .tools = m_agentToolbox->builtInTools(),
+        .toolResults = results,
+        .sampling = samplingProfile(),
+        .mode = m_settings->defaultReasoningMode(),
+        .timeout = std::chrono::milliseconds(m_settings->requestTimeoutMs())
+    };
+    m_activeRequestId = m_aiBackendClient->sendAgentRequest(request);
 }
 
 void AssistantController::startCommandRequest(const QString &input)
@@ -1611,7 +1776,14 @@ void AssistantController::startCommandRequest(const QString &input)
             m_identityProfileService->userProfile(),
             ReasoningMode::Fast),
         modelId,
-        {.mode = ReasoningMode::Fast, .kind = RequestKind::CommandExtraction, .stream = false, .timeout = std::chrono::milliseconds(m_settings->requestTimeoutMs())});
+        {.mode = ReasoningMode::Fast,
+         .kind = RequestKind::CommandExtraction,
+         .stream = false,
+         .temperature = m_settings->toolUseTemperature(),
+         .topP = m_settings->conversationTopP(),
+         .providerTopK = m_settings->providerTopK(),
+         .maxTokens = m_settings->maxOutputTokens(),
+         .timeout = std::chrono::milliseconds(m_settings->requestTimeoutMs())});
 }
 
 void AssistantController::handleConversationFinished(const QString &text)
@@ -1638,6 +1810,65 @@ void AssistantController::handleConversationFinished(const QString &text)
         emit idleRequested();
     }
     logPromptResponsePair(reply.displayText, QStringLiteral("conversation"), QStringLiteral("Response ready"));
+    setStatus(QStringLiteral("Response ready"));
+}
+
+void AssistantController::handleAgentResponse(const AgentResponse &response)
+{
+    m_previousAgentResponseId = response.responseId;
+    appendAgentTrace(QStringLiteral("model"), QStringLiteral("Agent response"),
+                     response.toolCalls.isEmpty()
+                        ? QStringLiteral("Received final answer")
+                        : QStringLiteral("Received %1 tool calls").arg(response.toolCalls.size()),
+                     true);
+
+    if (!response.toolCalls.isEmpty()) {
+        QList<AgentToolResult> results;
+        for (const auto &toolCall : response.toolCalls) {
+            appendAgentTrace(QStringLiteral("tool_call"), toolCall.name, toolCall.argumentsJson.left(500), true);
+            const AgentToolResult result = m_agentToolbox->execute(toolCall);
+            appendAgentTrace(QStringLiteral("tool_result"), result.toolName, result.output.left(800), result.success);
+            results.push_back(result);
+        }
+        continueAgentConversation(results);
+        return;
+    }
+
+    if (m_settings->memoryAutoWrite()) {
+        m_memoryStore->extractUserFacts(m_lastAgentInput);
+    }
+
+    const SpokenReply reply = parseSpokenReply(response.outputText);
+    m_responseText = reply.displayText;
+    emit responseTextChanged();
+    m_memoryStore->appendConversation(QStringLiteral("assistant"), reply.displayText);
+    if (reply.shouldSpeak && !reply.spokenText.isEmpty()) {
+        refreshConversationSession();
+        m_ttsEngine->speakText(reply.spokenText);
+    } else if (!m_ttsEngine->isSpeaking()) {
+        setDuplexState(DuplexState::Open);
+        if (conversationSessionShouldContinue()) {
+            if (!scheduleConversationSessionListening(conversationSessionRestartDelayMs())) {
+                endConversationSession();
+                scheduleWakeMonitorRestart();
+            }
+        } else {
+            endConversationSession();
+            scheduleWakeMonitorRestart();
+        }
+        emit idleRequested();
+    }
+
+    if (m_loggingService) {
+        m_loggingService->logAgentExchange(m_lastPromptForAiLog,
+                                           reply.displayText,
+                                           QStringLiteral("agent"),
+                                           m_agentCapabilities,
+                                           samplingProfile(),
+                                           m_agentTrace,
+                                           QStringLiteral("Response ready"));
+    }
+    m_lastPromptForAiLog.clear();
     setStatus(QStringLiteral("Response ready"));
 }
 
@@ -1683,6 +1914,21 @@ void AssistantController::logPromptResponsePair(const QString &response, const Q
     }
 
     m_lastPromptForAiLog.clear();
+}
+
+void AssistantController::appendAgentTrace(const QString &kind, const QString &title, const QString &detail, bool success)
+{
+    m_agentTrace.push_back({
+        .timestamp = QDateTime::currentDateTime().toString(Qt::ISODateWithMs),
+        .kind = kind,
+        .title = title,
+        .detail = detail,
+        .success = success
+    });
+    while (m_agentTrace.size() > 200) {
+        m_agentTrace.pop_front();
+    }
+    emit agentTraceChanged();
 }
 
 CommandEnvelope AssistantController::parseCommand(const QString &payload) const

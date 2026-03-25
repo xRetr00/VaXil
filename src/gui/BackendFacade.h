@@ -70,6 +70,20 @@ class BackendFacade : public QObject
     Q_PROPERTY(QString activeToolDownloadName READ activeToolDownloadName NOTIFY toolInstallStatusChanged)
     Q_PROPERTY(QString toolsRoot READ toolsRoot CONSTANT)
     Q_PROPERTY(QString wakeWordPhrase READ wakeWordPhrase NOTIFY settingsChanged)
+    Q_PROPERTY(bool agentEnabled READ agentEnabled NOTIFY agentStateChanged)
+    Q_PROPERTY(QString agentProviderMode READ agentProviderMode NOTIFY agentStateChanged)
+    Q_PROPERTY(double conversationTemperature READ conversationTemperature NOTIFY agentStateChanged)
+    Q_PROPERTY(double conversationTopP READ conversationTopP NOTIFY agentStateChanged)
+    Q_PROPERTY(double toolUseTemperature READ toolUseTemperature NOTIFY agentStateChanged)
+    Q_PROPERTY(int providerTopK READ providerTopK NOTIFY agentStateChanged)
+    Q_PROPERTY(int maxOutputTokens READ maxOutputTokens NOTIFY agentStateChanged)
+    Q_PROPERTY(bool memoryAutoWrite READ memoryAutoWrite NOTIFY agentStateChanged)
+    Q_PROPERTY(QString webSearchProvider READ webSearchProvider NOTIFY agentStateChanged)
+    Q_PROPERTY(bool tracePanelEnabled READ tracePanelEnabled NOTIFY agentStateChanged)
+    Q_PROPERTY(QString agentStatus READ agentStatus NOTIFY agentStateChanged)
+    Q_PROPERTY(bool agentAvailable READ agentAvailable NOTIFY agentStateChanged)
+    Q_PROPERTY(QVariantList agentTraceEntries READ agentTraceEntries NOTIFY agentTraceChanged)
+    Q_PROPERTY(QString skillsRoot READ skillsRoot CONSTANT)
 
 public:
     BackendFacade(
@@ -137,6 +151,20 @@ public:
     QString activeToolDownloadName() const;
     QString toolsRoot() const;
     QString wakeWordPhrase() const;
+    bool agentEnabled() const;
+    QString agentProviderMode() const;
+    double conversationTemperature() const;
+    double conversationTopP() const;
+    double toolUseTemperature() const;
+    int providerTopK() const;
+    int maxOutputTokens() const;
+    bool memoryAutoWrite() const;
+    QString webSearchProvider() const;
+    bool tracePanelEnabled() const;
+    QString agentStatus() const;
+    bool agentAvailable() const;
+    QVariantList agentTraceEntries() const;
+    QString skillsRoot() const;
 
     Q_INVOKABLE void toggleOverlay();
     Q_INVOKABLE void refreshModels();
@@ -144,6 +172,17 @@ public:
     Q_INVOKABLE void startListening();
     Q_INVOKABLE void cancelRequest();
     Q_INVOKABLE void setSelectedModel(const QString &modelId);
+    Q_INVOKABLE void setAgentEnabled(bool enabled);
+    Q_INVOKABLE void saveAgentSettings(bool enabled,
+                                       const QString &providerMode,
+                                       double conversationTemperature,
+                                       double conversationTopP,
+                                       double toolUseTemperature,
+                                       int providerTopK,
+                                       int maxOutputTokens,
+                                       bool memoryAutoWrite,
+                                       const QString &webSearchProvider,
+                                       bool tracePanelEnabled);
     Q_INVOKABLE void setSelectedVoicePresetId(const QString &voiceId);
     Q_INVOKABLE void setWakeEngineKind(const QString &kind);
     Q_INVOKABLE void setTtsEngineKind(const QString &kind);
@@ -231,6 +270,8 @@ public:
     Q_INVOKABLE bool autoDetectVoiceTools();
     Q_INVOKABLE bool startTrainingSetup();
     Q_INVOKABLE void refreshAudioDevices();
+    Q_INVOKABLE bool installSkill(const QString &url);
+    Q_INVOKABLE bool createSkill(const QString &id, const QString &name, const QString &description);
 
 signals:
     void stateNameChanged();
@@ -248,6 +289,8 @@ signals:
     void initialSetupFinished();
     void toolInstallStatusChanged();
     void toolStatusesChanged();
+    void agentStateChanged();
+    void agentTraceChanged();
 
 private:
     void setToolInstallStatus(const QString &status);

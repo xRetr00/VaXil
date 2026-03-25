@@ -126,6 +126,7 @@ qt_standard_project_setup(REQUIRES 6.6)
 
 set(JARVIS_SOURCES
     src/app/JarvisApplication.cpp
+    src/agent/AgentToolbox.cpp
     src/ai/OpenAiCompatibleClient.cpp
     src/ai/RuntimeAiBackendClient.cpp
     src/ai/SpokenReply.cpp
@@ -147,6 +148,7 @@ set(JARVIS_SOURCES
     src/overlay/OverlayController.cpp
     src/settings/AppSettings.cpp
     src/settings/IdentityProfileService.cpp
+    src/skills/SkillStore.cpp
     src/stt/WhisperSttEngine.cpp
     src/stt/RuntimeSpeechRecognizer.cpp
     src/tools/ToolManager.cpp
@@ -162,6 +164,7 @@ set(JARVIS_SOURCES
 
 set(JARVIS_HEADERS
     src/app/JarvisApplication.h
+    src/agent/AgentToolbox.h
     src/ai/AiBackendClient.h
     src/ai/OpenAiCompatibleClient.h
     src/ai/RuntimeAiBackendClient.h
@@ -187,6 +190,7 @@ set(JARVIS_HEADERS
     src/overlay/OverlayController.h
     src/settings/AppSettings.h
     src/settings/IdentityProfileService.h
+    src/skills/SkillStore.h
     src/stt/WhisperSttEngine.h
     src/stt/SpeechRecognizer.h
     src/stt/RuntimeSpeechRecognizer.h

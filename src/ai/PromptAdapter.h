@@ -25,5 +25,12 @@ public:
         const UserProfile &userProfile,
         ReasoningMode mode) const;
 
+    QString buildAgentInstructions(
+        const QList<MemoryRecord> &memory,
+        const QList<SkillManifest> &skills,
+        const AssistantIdentity &identity,
+        const UserProfile &userProfile,
+        bool memoryAutoWrite) const;
+
     QString applyReasoningMode(const QString &input, ReasoningMode mode) const;
 };

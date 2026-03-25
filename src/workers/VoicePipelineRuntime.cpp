@@ -52,9 +52,11 @@ VoicePipelineRuntime::VoicePipelineRuntime(AppSettings *settings, LoggingService
 
     connect(m_backendWorker, &AiBackendWorker::modelsReady, this, &VoicePipelineRuntime::modelsReady, Qt::QueuedConnection);
     connect(m_backendWorker, &AiBackendWorker::availabilityChanged, this, &VoicePipelineRuntime::availabilityChanged, Qt::QueuedConnection);
+    connect(m_backendWorker, &AiBackendWorker::capabilitiesChanged, this, &VoicePipelineRuntime::capabilitiesChanged, Qt::QueuedConnection);
     connect(m_backendWorker, &AiBackendWorker::requestStarted, this, &VoicePipelineRuntime::requestStarted, Qt::QueuedConnection);
     connect(m_backendWorker, &AiBackendWorker::requestDelta, this, &VoicePipelineRuntime::requestDelta, Qt::QueuedConnection);
     connect(m_backendWorker, &AiBackendWorker::requestFinished, this, &VoicePipelineRuntime::requestFinished, Qt::QueuedConnection);
+    connect(m_backendWorker, &AiBackendWorker::agentResponseReady, this, &VoicePipelineRuntime::agentResponseReady, Qt::QueuedConnection);
     connect(m_backendWorker, &AiBackendWorker::requestFailed, this, &VoicePipelineRuntime::requestFailed, Qt::QueuedConnection);
 }
 
@@ -212,6 +214,16 @@ void VoicePipelineRuntime::sendAiRequest(quint64 generationId, const QList<AiMes
         m_backendWorker,
         [worker = m_backendWorker, generationId, messages, model, options]() {
             worker->sendRequest(generationId, messages, model, options);
+        },
+        Qt::QueuedConnection);
+}
+
+void VoicePipelineRuntime::sendAgentRequest(quint64 generationId, const AgentRequest &request)
+{
+    QMetaObject::invokeMethod(
+        m_backendWorker,
+        [worker = m_backendWorker, generationId, request]() {
+            worker->sendAgentRequest(generationId, request);
         },
         Qt::QueuedConnection);
 }
