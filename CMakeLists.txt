@@ -137,9 +137,12 @@ set(JARVIS_SOURCES
     src/audio/AudioInputService.cpp
     src/audio/AudioProcessingChain.cpp
     src/audio/SileroVadSession.cpp
+    src/core/agent/IntentDetector.cpp
     src/core/AssistantController.cpp
     src/core/IntentRouter.cpp
     src/core/LocalResponseEngine.cpp
+    src/core/tasks/TaskDispatcher.cpp
+    src/core/tasks/ToolWorker.cpp
     src/devices/DeviceManager.cpp
     src/devices/MockDevices.cpp
     src/gui/BackendFacade.cpp
@@ -177,10 +180,13 @@ set(JARVIS_HEADERS
     src/audio/AudioProcessingChain.h
     src/audio/AudioProcessingTypes.h
     src/audio/SileroVadSession.h
+    src/core/agent/IntentDetector.h
     src/core/AssistantController.h
     src/core/AssistantTypes.h
     src/core/IntentRouter.h
     src/core/LocalResponseEngine.h
+    src/core/tasks/TaskDispatcher.h
+    src/core/tasks/ToolWorker.h
     src/devices/Device.h
     src/devices/DeviceManager.h
     src/devices/MockDevices.h

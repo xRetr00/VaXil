@@ -6,6 +6,7 @@
 #include <vector>
 
 #include <QMetaType>
+#include <QJsonObject>
 #include <QStringList>
 #include <QString>
 
@@ -28,6 +29,22 @@ enum class RequestKind {
     CommandExtraction,
     Conversation,
     AgentConversation
+};
+
+enum class IntentType {
+    LIST_FILES,
+    READ_FILE,
+    WRITE_FILE,
+    MEMORY_WRITE,
+    GENERAL_CHAT
+};
+
+enum class TaskState {
+    Pending,
+    Running,
+    Finished,
+    Canceled,
+    Expired
 };
 
 enum class LocalIntent {
@@ -94,6 +111,30 @@ struct AgentToolSpec {
     QString name;
     QString description;
     nlohmann::json parameters = nlohmann::json::object();
+};
+
+struct AgentTask {
+    int id = 0;
+    QString type;
+    QJsonObject args;
+    TaskState state = TaskState::Pending;
+    qint64 createdAtMs = 0;
+    int priority = 0;
+    QString taskKey;
+    int retryCount = 0;
+};
+
+struct BackgroundTaskResult {
+    int taskId = 0;
+    QString type;
+    bool success = false;
+    TaskState state = TaskState::Finished;
+    QString title;
+    QString summary;
+    QString detail;
+    QJsonObject payload;
+    QString finishedAt;
+    QString taskKey;
 };
 
 struct AgentToolCall {
@@ -220,6 +261,12 @@ Q_DECLARE_METATYPE(AgentCapabilitySet)
 Q_DECLARE_METATYPE(SamplingProfile)
 Q_DECLARE_METATYPE(AgentToolSpec)
 Q_DECLARE_METATYPE(QList<AgentToolSpec>)
+Q_DECLARE_METATYPE(IntentType)
+Q_DECLARE_METATYPE(TaskState)
+Q_DECLARE_METATYPE(AgentTask)
+Q_DECLARE_METATYPE(QList<AgentTask>)
+Q_DECLARE_METATYPE(BackgroundTaskResult)
+Q_DECLARE_METATYPE(QList<BackgroundTaskResult>)
 Q_DECLARE_METATYPE(AgentToolCall)
 Q_DECLARE_METATYPE(QList<AgentToolCall>)
 Q_DECLARE_METATYPE(AgentToolResult)

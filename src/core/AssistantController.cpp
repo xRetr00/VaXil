@@ -3,7 +3,11 @@
 #include <algorithm>
 
 #include <QDateTime>
+#include <QDir>
 #include <QFileInfo>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QLocale>
 #include <QRegularExpression>
 #include <QStandardPaths>
@@ -21,8 +25,11 @@
 #include "ai/ReasoningRouter.h"
 #include "ai/StreamAssembler.h"
 #include "agent/AgentToolbox.h"
+#include "core/agent/IntentDetector.h"
 #include "core/IntentRouter.h"
 #include "core/LocalResponseEngine.h"
+#include "core/tasks/TaskDispatcher.h"
+#include "core/tasks/ToolWorker.h"
 #include "devices/DeviceManager.h"
 #include "logging/LoggingService.h"
 #include "memory/MemoryStore.h"
@@ -292,6 +299,43 @@ QString firstExistingPath(const QStringList &candidates)
     return {};
 }
 
+QString extractJsonObjectPayload(const QString &payload)
+{
+    const QString trimmed = payload.trimmed();
+    const int start = trimmed.indexOf(QChar::fromLatin1('{'));
+    const int end = trimmed.lastIndexOf(QChar::fromLatin1('}'));
+    if (start < 0 || end < start) {
+        return trimmed;
+    }
+    return trimmed.mid(start, end - start + 1);
+}
+
+QList<AgentTask> parseBackgroundTasks(const nlohmann::json &jsonObject)
+{
+    QList<AgentTask> tasks;
+    if (!jsonObject.contains("background_tasks") || !jsonObject.at("background_tasks").is_array()) {
+        return tasks;
+    }
+
+    for (const auto &taskJson : jsonObject.at("background_tasks")) {
+        if (!taskJson.is_object()) {
+            continue;
+        }
+
+        AgentTask task;
+        task.type = QString::fromStdString(taskJson.value("type", std::string{}));
+        task.priority = taskJson.value("priority", 50);
+        if (taskJson.contains("args") && taskJson.at("args").is_object()) {
+            task.args = QJsonDocument::fromJson(QByteArray::fromStdString(taskJson.at("args").dump())).object();
+        }
+        if (!task.type.isEmpty()) {
+            tasks.push_back(task);
+        }
+    }
+
+    return tasks;
+}
+
 }
 
 AssistantController::AssistantController(
@@ -314,16 +358,43 @@ AssistantController::AssistantController(
     m_skillStore = new SkillStore(this);
     m_agentToolbox = new AgentToolbox(m_settings, m_memoryStore, m_skillStore, m_loggingService, this);
     m_deviceManager = new DeviceManager(this);
+    m_backgroundIntentDetector = new IntentDetector(this);
     m_intentRouter = new IntentRouter(this);
     m_localResponseEngine = new LocalResponseEngine(this);
+    m_taskDispatcher = new TaskDispatcher(m_loggingService, this);
+    m_toolWorker = new ToolWorker(backgroundAllowedRoots(), m_loggingService);
     m_whisperSttEngine = new RuntimeSpeechRecognizer(m_voicePipelineRuntime, this);
     m_ttsEngine = new WorkerTtsEngine(m_voicePipelineRuntime, this);
+    m_toolWorkerThread.setObjectName(QStringLiteral("BackgroundToolWorkerThread"));
+    m_toolWorker->moveToThread(&m_toolWorkerThread);
+    connect(&m_toolWorkerThread, &QThread::finished, m_toolWorker, &QObject::deleteLater);
+    connect(m_taskDispatcher, &TaskDispatcher::taskReady, m_toolWorker, &ToolWorker::processTask, Qt::QueuedConnection);
+    connect(m_taskDispatcher, &TaskDispatcher::taskCanceled, m_toolWorker, &ToolWorker::cancelTask, Qt::QueuedConnection);
+    connect(m_taskDispatcher, &TaskDispatcher::activeTaskChanged, this, [this](const QString &type, int taskId) {
+        m_activeBackgroundTaskIds.insert(type, taskId);
+    });
+    connect(m_toolWorker, &ToolWorker::taskStarted, m_taskDispatcher, &TaskDispatcher::handleTaskStarted, Qt::QueuedConnection);
+    connect(m_toolWorker, &ToolWorker::taskFinished, m_taskDispatcher, &TaskDispatcher::handleTaskFinished, Qt::QueuedConnection);
+    connect(m_taskDispatcher, &TaskDispatcher::taskResultReady, this, [this](const QJsonObject &resultObject) {
+        recordTaskResult(resultObject);
+    }, Qt::QueuedConnection);
     createWakeWordEngine();
+}
+
+AssistantController::~AssistantController()
+{
+    if (m_toolWorkerThread.isRunning()) {
+        m_toolWorkerThread.quit();
+        m_toolWorkerThread.wait();
+    }
 }
 
 void AssistantController::initialize()
 {
     m_statusText = QStringLiteral("Loading services...");
+    if (!m_toolWorkerThread.isRunning()) {
+        m_toolWorkerThread.start();
+    }
     m_voicePipelineRuntime->start();
     m_aiBackendClient->setEndpoint(m_settings->chatBackendEndpoint());
     m_deviceManager->registerDefaults();
@@ -341,6 +412,13 @@ void AssistantController::initialize()
             || lowered.contains(QStringLiteral("llama"))
             || lowered.contains(QStringLiteral("gpt-oss"))
             || lowered.contains(QStringLiteral("tool"));
+        m_agentCapabilities.agentEnabled = m_settings->agentEnabled();
+        m_agentCapabilities.providerMode = m_agentCapabilities.responsesApi
+            ? QStringLiteral("responses_hybrid")
+            : QStringLiteral("chat_hybrid");
+        m_agentCapabilities.status = m_agentCapabilities.responsesApi
+            ? QStringLiteral("Hybrid agent ready with responses backend")
+            : QStringLiteral("Hybrid agent ready with chat fallback");
         emit agentStateChanged();
         updateStartupState();
     });
@@ -563,6 +641,13 @@ void AssistantController::initialize()
     });
     connect(m_aiBackendClient, &AiBackendClient::capabilitiesChanged, this, [this](const AgentCapabilitySet &capabilities) {
         m_agentCapabilities = capabilities;
+        m_agentCapabilities.agentEnabled = m_settings->agentEnabled();
+        m_agentCapabilities.providerMode = capabilities.responsesApi
+            ? QStringLiteral("responses_hybrid")
+            : QStringLiteral("chat_hybrid");
+        m_agentCapabilities.status = capabilities.responsesApi
+            ? QStringLiteral("Hybrid agent ready with responses backend")
+            : QStringLiteral("Hybrid agent ready with chat fallback");
         emit agentStateChanged();
     });
     connect(m_aiBackendClient, &AiBackendClient::requestFinished, this, [this](quint64 requestId, const QString &fullText) {
@@ -578,6 +663,8 @@ void AssistantController::initialize()
 
         if (m_activeRequestKind == RequestKind::CommandExtraction) {
             handleCommandFinished(fullText);
+        } else if (m_activeRequestKind == RequestKind::AgentConversation) {
+            handleHybridAgentFinished(fullText);
         } else {
             handleConversationFinished(fullText);
         }
@@ -641,6 +728,12 @@ SamplingProfile AssistantController::samplingProfile() const
         .maxOutputTokens = m_settings->maxOutputTokens()
     };
 }
+QList<BackgroundTaskResult> AssistantController::backgroundTaskResults() const { return m_backgroundTaskResults; }
+bool AssistantController::backgroundPanelVisible() const { return m_backgroundPanelVisible; }
+QString AssistantController::latestTaskToast() const { return m_latestTaskToast; }
+QString AssistantController::latestTaskToastTone() const { return m_latestTaskToastTone; }
+int AssistantController::latestTaskToastTaskId() const { return m_latestTaskToastTaskId; }
+QString AssistantController::latestTaskToastType() const { return m_latestTaskToastType; }
 bool AssistantController::installSkill(const QString &url, QString *error)
 {
     const bool ok = m_skillStore->installSkill(url, error);
@@ -735,6 +828,16 @@ void AssistantController::submitText(const QString &text)
         return;
     }
 
+    const IntentResult detectedIntent = m_backgroundIntentDetector->detect(routedInput, QDir::currentPath());
+    if (detectedIntent.confidence > 0.8f && !detectedIntent.tasks.isEmpty()) {
+        dispatchBackgroundTasks(detectedIntent.tasks);
+        deliverLocalResponse(
+            detectedIntent.spokenMessage,
+            QStringLiteral("Background task queued"),
+            true);
+        return;
+    }
+
     const LocalIntent intent = m_intentRouter->classify(routedInput);
     const AiAvailability availability = m_modelCatalogService->availability();
 
@@ -756,9 +859,10 @@ void AssistantController::submitText(const QString &text)
 
     if (intent == LocalIntent::Command || m_reasoningRouter->isLikelyCommand(routedInput)) {
         startCommandRequest(routedInput);
-    } else if (m_settings->agentEnabled()
-               && m_agentCapabilities.agentEnabled
-               && m_agentCapabilities.selectedModelToolCapable) {
+    } else if (detectedIntent.type != IntentType::GENERAL_CHAT
+               && detectedIntent.confidence >= 0.4f
+               && detectedIntent.confidence <= 0.8f
+               && m_settings->agentEnabled()) {
         startAgentConversationRequest(routedInput);
     } else {
         startConversationRequest(routedInput);
@@ -887,6 +991,33 @@ void AssistantController::setAgentEnabled(bool enabled)
     m_settings->setAgentEnabled(enabled);
     m_settings->save();
     emit agentStateChanged();
+}
+
+void AssistantController::setBackgroundPanelVisible(bool visible)
+{
+    if (m_backgroundPanelVisible == visible) {
+        return;
+    }
+
+    m_backgroundPanelVisible = visible;
+    if (visible) {
+        emit backgroundTaskResultsChanged();
+    }
+    emit backgroundPanelVisibleChanged();
+}
+
+void AssistantController::noteTaskToastShown(int taskId)
+{
+    if (m_loggingService) {
+        m_loggingService->info(QStringLiteral("[UI] toast shown for task %1").arg(taskId));
+    }
+}
+
+void AssistantController::noteTaskPanelRendered()
+{
+    if (m_loggingService) {
+        m_loggingService->info(QStringLiteral("[UI] panel rendered"));
+    }
 }
 
 void AssistantController::saveAgentSettings(bool enabled,
@@ -1702,30 +1833,31 @@ void AssistantController::startAgentConversationRequest(const QString &input)
     m_activeAgentIteration = 0;
     m_agentTrace.clear();
     emit agentTraceChanged();
-    appendAgentTrace(QStringLiteral("session"), QStringLiteral("Agent request"), QStringLiteral("Starting agent conversation"), true);
-
-    const AgentRequest request{
-        .model = modelId,
-        .instructions = m_promptAdapter->buildAgentInstructions(
-            m_memoryStore->relevantMemory(input),
-            m_skillStore->listSkills(),
-            m_identityProfileService->identity(),
-            m_identityProfileService->userProfile(),
-            m_settings->memoryAutoWrite()),
-        .inputText = input,
-        .previousResponseId = m_previousAgentResponseId,
-        .tools = m_agentToolbox->builtInTools(),
-        .toolResults = {},
-        .sampling = samplingProfile(),
-        .mode = mode,
-        .timeout = std::chrono::milliseconds(m_settings->requestTimeoutMs())
-    };
+    appendAgentTrace(QStringLiteral("session"), QStringLiteral("Agent request"), QStringLiteral("Starting hybrid agent conversation"), true);
 
     if (m_loggingService) {
         m_loggingService->info(QStringLiteral("Starting agent request. model=\"%1\" input=\"%2\"")
             .arg(modelId, input.left(240)));
     }
-    m_activeRequestId = m_aiBackendClient->sendAgentRequest(request);
+
+    const auto messages = m_promptAdapter->buildHybridAgentMessages(
+        input,
+        m_memoryStore->relevantMemory(input),
+        m_identityProfileService->identity(),
+        m_identityProfileService->userProfile(),
+        QDir::currentPath(),
+        mode);
+
+    m_activeRequestId = m_aiBackendClient->sendChatRequest(messages, modelId, {
+        .mode = mode,
+        .kind = RequestKind::AgentConversation,
+        .stream = false,
+        .temperature = m_settings->conversationTemperature(),
+        .topP = m_settings->conversationTopP(),
+        .providerTopK = m_settings->providerTopK(),
+        .maxTokens = m_settings->maxOutputTokens(),
+        .timeout = std::chrono::milliseconds(m_settings->requestTimeoutMs())
+    });
 }
 
 void AssistantController::continueAgentConversation(const QList<AgentToolResult> &results)
@@ -1813,6 +1945,60 @@ void AssistantController::handleConversationFinished(const QString &text)
     setStatus(QStringLiteral("Response ready"));
 }
 
+void AssistantController::handleHybridAgentFinished(const QString &payload)
+{
+    appendAgentTrace(QStringLiteral("model"), QStringLiteral("Hybrid agent response"), QStringLiteral("Received hybrid payload"), true);
+
+    const QString jsonPayload = extractJsonObjectPayload(payload);
+    const auto json = nlohmann::json::parse(jsonPayload.toStdString(), nullptr, false);
+    if (json.is_discarded() || !json.is_object()) {
+        handleConversationFinished(payload);
+        return;
+    }
+
+    const QString message = QString::fromStdString(json.value("message", std::string{})).trimmed();
+    QList<AgentTask> tasks = parseBackgroundTasks(json);
+    dispatchBackgroundTasks(tasks);
+
+    const QString effectiveMessage = message.isEmpty()
+        ? QStringLiteral("Done. Any background results will appear in the panel.")
+        : message;
+
+    const SpokenReply reply = parseSpokenReply(effectiveMessage);
+    m_responseText = reply.displayText;
+    emit responseTextChanged();
+    m_memoryStore->appendConversation(QStringLiteral("assistant"), reply.displayText);
+
+    if (reply.shouldSpeak && !reply.spokenText.isEmpty()) {
+        refreshConversationSession();
+        m_ttsEngine->speakText(reply.spokenText);
+    } else if (!m_ttsEngine->isSpeaking()) {
+        setDuplexState(DuplexState::Open);
+        if (conversationSessionShouldContinue()) {
+            if (!scheduleConversationSessionListening(conversationSessionRestartDelayMs())) {
+                endConversationSession();
+                scheduleWakeMonitorRestart();
+            }
+        } else {
+            endConversationSession();
+            scheduleWakeMonitorRestart();
+        }
+        emit idleRequested();
+    }
+
+    if (m_loggingService) {
+        m_loggingService->logAgentExchange(m_lastPromptForAiLog,
+                                           reply.displayText,
+                                           QStringLiteral("agent"),
+                                           m_agentCapabilities,
+                                           samplingProfile(),
+                                           m_agentTrace,
+                                           QStringLiteral("Response ready"));
+    }
+    m_lastPromptForAiLog.clear();
+    setStatus(QStringLiteral("Response ready"));
+}
+
 void AssistantController::handleAgentResponse(const AgentResponse &response)
 {
     m_previousAgentResponseId = response.responseId;
@@ -1896,6 +2082,95 @@ void AssistantController::handleCommandFinished(const QString &text)
     m_ttsEngine->speakText(message);
     logPromptResponsePair(message, QStringLiteral("command"), QStringLiteral("Command executed"));
     setStatus(QStringLiteral("Command executed"));
+}
+
+void AssistantController::dispatchBackgroundTasks(const QList<AgentTask> &tasks)
+{
+    QList<AgentTask> sortedTasks = tasks;
+    std::sort(sortedTasks.begin(), sortedTasks.end(), [](const AgentTask &left, const AgentTask &right) {
+        return left.priority > right.priority;
+    });
+
+    for (AgentTask task : sortedTasks) {
+        task.id = m_nextTaskId++;
+        task.createdAtMs = QDateTime::currentMSecsSinceEpoch();
+        task.state = TaskState::Pending;
+        if (m_loggingService) {
+            m_loggingService->info(QStringLiteral("[TaskDispatcher] created %1 #%2").arg(task.type).arg(task.id));
+        }
+        m_taskDispatcher->enqueue(task);
+    }
+}
+
+void AssistantController::recordTaskResult(const QJsonObject &resultObject)
+{
+    BackgroundTaskResult result;
+    result.taskId = resultObject.value(QStringLiteral("taskId")).toInt();
+    result.type = resultObject.value(QStringLiteral("type")).toString();
+    result.success = resultObject.value(QStringLiteral("success")).toBool();
+    result.state = static_cast<TaskState>(resultObject.value(QStringLiteral("state")).toInt(static_cast<int>(TaskState::Finished)));
+    result.title = resultObject.value(QStringLiteral("title")).toString();
+    result.summary = resultObject.value(QStringLiteral("summary")).toString();
+    result.detail = resultObject.value(QStringLiteral("detail")).toString();
+    result.payload = resultObject.value(QStringLiteral("payload")).toObject();
+    result.finishedAt = resultObject.value(QStringLiteral("finishedAt")).toString();
+    result.taskKey = resultObject.value(QStringLiteral("taskKey")).toString();
+
+    const int activeTaskId = m_activeBackgroundTaskIds.value(result.type, -1);
+    if (activeTaskId != result.taskId) {
+        if (m_loggingService) {
+            m_loggingService->info(QStringLiteral("[UI] ignored stale task id=%1 type=%2 active=%3")
+                .arg(result.taskId)
+                .arg(result.type)
+                .arg(activeTaskId));
+        }
+        return;
+    }
+
+    if (result.state == TaskState::Canceled) {
+        if (m_loggingService) {
+            m_loggingService->info(QStringLiteral("[UI] ignored canceled task id=%1 type=%2")
+                .arg(result.taskId)
+                .arg(result.type));
+        }
+        return;
+    }
+
+    if (m_loggingService) {
+        m_loggingService->info(QStringLiteral("[TaskDispatcher] finished %1 #%2")
+            .arg(result.type)
+            .arg(result.taskId));
+    }
+
+    m_backgroundTaskResults.prepend(result);
+    while (m_backgroundTaskResults.size() > 40) {
+        m_backgroundTaskResults.removeLast();
+    }
+    if (m_backgroundPanelVisible) {
+        emit backgroundTaskResultsChanged();
+    }
+
+    m_latestTaskToastTaskId = result.taskId;
+    m_latestTaskToast = result.summary.isEmpty() ? result.title : result.summary;
+    m_latestTaskToastTone = result.success ? QStringLiteral("response") : QStringLiteral("error");
+    m_latestTaskToastType = result.type;
+    emit latestTaskToastChanged();
+
+    appendAgentTrace(QStringLiteral("tool_result"),
+                     result.type,
+                     result.detail.left(600),
+                     result.success);
+}
+
+QStringList AssistantController::backgroundAllowedRoots() const
+{
+    return {
+        QDir::cleanPath(QDir::currentPath()),
+        QDir::cleanPath(QDir::currentPath() + QStringLiteral("/config")),
+        QDir::cleanPath(QDir::currentPath() + QStringLiteral("/bin/logs")),
+        QDir::cleanPath(QDir::currentPath() + QStringLiteral("/skills")),
+        QDir::cleanPath(QStandardPaths::writableLocation(QStandardPaths::AppDataLocation))
+    };
 }
 
 void AssistantController::logPromptResponsePair(const QString &response, const QString &source, const QString &status)

@@ -25,6 +25,14 @@ public:
         const UserProfile &userProfile,
         ReasoningMode mode) const;
 
+    QList<AiMessage> buildHybridAgentMessages(
+        const QString &input,
+        const QList<MemoryRecord> &memory,
+        const AssistantIdentity &identity,
+        const UserProfile &userProfile,
+        const QString &workspaceRoot,
+        ReasoningMode mode) const;
+
     QString buildAgentInstructions(
         const QList<MemoryRecord> &memory,
         const QList<SkillManifest> &skills,

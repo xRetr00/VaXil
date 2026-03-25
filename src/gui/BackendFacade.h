@@ -83,6 +83,11 @@ class BackendFacade : public QObject
     Q_PROPERTY(QString agentStatus READ agentStatus NOTIFY agentStateChanged)
     Q_PROPERTY(bool agentAvailable READ agentAvailable NOTIFY agentStateChanged)
     Q_PROPERTY(QVariantList agentTraceEntries READ agentTraceEntries NOTIFY agentTraceChanged)
+    Q_PROPERTY(QVariantList backgroundTaskResults READ backgroundTaskResults NOTIFY backgroundTaskResultsChanged)
+    Q_PROPERTY(bool backgroundPanelVisible READ backgroundPanelVisible NOTIFY backgroundPanelVisibleChanged)
+    Q_PROPERTY(QString latestTaskToast READ latestTaskToast NOTIFY latestTaskToastChanged)
+    Q_PROPERTY(QString latestTaskToastTone READ latestTaskToastTone NOTIFY latestTaskToastChanged)
+    Q_PROPERTY(int latestTaskToastTaskId READ latestTaskToastTaskId NOTIFY latestTaskToastChanged)
     Q_PROPERTY(QString skillsRoot READ skillsRoot CONSTANT)
 
 public:
@@ -164,6 +169,11 @@ public:
     QString agentStatus() const;
     bool agentAvailable() const;
     QVariantList agentTraceEntries() const;
+    QVariantList backgroundTaskResults() const;
+    bool backgroundPanelVisible() const;
+    QString latestTaskToast() const;
+    QString latestTaskToastTone() const;
+    int latestTaskToastTaskId() const;
     QString skillsRoot() const;
 
     Q_INVOKABLE void toggleOverlay();
@@ -173,6 +183,9 @@ public:
     Q_INVOKABLE void cancelRequest();
     Q_INVOKABLE void setSelectedModel(const QString &modelId);
     Q_INVOKABLE void setAgentEnabled(bool enabled);
+    Q_INVOKABLE void setBackgroundPanelVisible(bool visible);
+    Q_INVOKABLE void notifyTaskToastShown(int taskId);
+    Q_INVOKABLE void notifyTaskPanelRendered();
     Q_INVOKABLE void saveAgentSettings(bool enabled,
                                        const QString &providerMode,
                                        double conversationTemperature,
@@ -291,6 +304,9 @@ signals:
     void toolStatusesChanged();
     void agentStateChanged();
     void agentTraceChanged();
+    void backgroundTaskResultsChanged();
+    void backgroundPanelVisibleChanged();
+    void latestTaskToastChanged();
 
 private:
     void setToolInstallStatus(const QString &status);

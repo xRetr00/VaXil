@@ -6,6 +6,7 @@
 #include <QDesktopServices>
 #include <QFile>
 #include <QFileInfo>
+#include <QJsonDocument>
 #include <QMediaDevices>
 #include <QProcess>
 #include <QRegularExpression>
@@ -645,6 +646,9 @@ BackendFacade::BackendFacade(
     });
     connect(m_assistantController, &AssistantController::agentStateChanged, this, &BackendFacade::agentStateChanged);
     connect(m_assistantController, &AssistantController::agentTraceChanged, this, &BackendFacade::agentTraceChanged);
+    connect(m_assistantController, &AssistantController::backgroundTaskResultsChanged, this, &BackendFacade::backgroundTaskResultsChanged);
+    connect(m_assistantController, &AssistantController::backgroundPanelVisibleChanged, this, &BackendFacade::backgroundPanelVisibleChanged);
+    connect(m_assistantController, &AssistantController::latestTaskToastChanged, this, &BackendFacade::latestTaskToastChanged);
     connect(m_overlayController, &OverlayController::visibilityChanged, this, &BackendFacade::overlayVisibleChanged);
     connect(m_overlayController, &OverlayController::presenceOffsetChanged, this, &BackendFacade::presenceOffsetChanged);
     connect(m_settings, &AppSettings::settingsChanged, this, &BackendFacade::settingsChanged);
@@ -809,7 +813,7 @@ bool BackendFacade::memoryAutoWrite() const { return m_settings->memoryAutoWrite
 QString BackendFacade::webSearchProvider() const { return m_settings->webSearchProvider(); }
 bool BackendFacade::tracePanelEnabled() const { return m_settings->tracePanelEnabled(); }
 QString BackendFacade::agentStatus() const { return m_assistantController->agentCapabilities().status; }
-bool BackendFacade::agentAvailable() const { return m_assistantController->agentCapabilities().agentEnabled; }
+bool BackendFacade::agentAvailable() const { return m_settings->agentEnabled(); }
 QVariantList BackendFacade::agentTraceEntries() const
 {
     QVariantList list;
@@ -824,6 +828,27 @@ QVariantList BackendFacade::agentTraceEntries() const
     }
     return list;
 }
+QVariantList BackendFacade::backgroundTaskResults() const
+{
+    QVariantList list;
+    for (const auto &entry : m_assistantController->backgroundTaskResults()) {
+        QVariantMap row;
+        row.insert(QStringLiteral("taskId"), entry.taskId);
+        row.insert(QStringLiteral("type"), entry.type);
+        row.insert(QStringLiteral("success"), entry.success);
+        row.insert(QStringLiteral("title"), entry.title);
+        row.insert(QStringLiteral("summary"), entry.summary);
+        row.insert(QStringLiteral("detail"), entry.detail);
+        row.insert(QStringLiteral("payload"), QString::fromUtf8(QJsonDocument(entry.payload).toJson(QJsonDocument::Indented)));
+        row.insert(QStringLiteral("finishedAt"), entry.finishedAt);
+        list.push_back(row);
+    }
+    return list;
+}
+bool BackendFacade::backgroundPanelVisible() const { return m_assistantController->backgroundPanelVisible(); }
+QString BackendFacade::latestTaskToast() const { return m_assistantController->latestTaskToast(); }
+QString BackendFacade::latestTaskToastTone() const { return m_assistantController->latestTaskToastTone(); }
+int BackendFacade::latestTaskToastTaskId() const { return m_assistantController->latestTaskToastTaskId(); }
 QString BackendFacade::skillsRoot() const { return QDir::currentPath() + QStringLiteral("/skills"); }
 void BackendFacade::toggleOverlay() { m_overlayController->toggleOverlay(); }
 void BackendFacade::refreshModels() { m_assistantController->refreshModels(); }
@@ -832,6 +857,9 @@ void BackendFacade::startListening() { m_assistantController->startListening(); 
 void BackendFacade::cancelRequest() { m_assistantController->cancelActiveRequest(); }
 void BackendFacade::setSelectedModel(const QString &modelId) { m_assistantController->setSelectedModel(modelId); }
 void BackendFacade::setAgentEnabled(bool enabled) { m_assistantController->setAgentEnabled(enabled); }
+void BackendFacade::setBackgroundPanelVisible(bool visible) { m_assistantController->setBackgroundPanelVisible(visible); }
+void BackendFacade::notifyTaskToastShown(int taskId) { m_assistantController->noteTaskToastShown(taskId); }
+void BackendFacade::notifyTaskPanelRendered() { m_assistantController->noteTaskPanelRendered(); }
 void BackendFacade::saveAgentSettings(bool enabled,
                                       const QString &providerMode,
                                       double conversationTemperature,

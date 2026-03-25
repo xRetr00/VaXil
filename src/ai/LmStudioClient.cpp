@@ -37,10 +37,16 @@ LmStudioClient::LmStudioClient(QObject *parent)
     m_timeoutTimer = new QTimer(this);
     m_timeoutTimer->setSingleShot(true);
     connect(m_timeoutTimer, &QTimer::timeout, this, [this]() {
-        if (m_activeReply) {
-            m_activeReply->abort();
+        const quint64 expiredRequestId = m_activeRequestId;
+        if (expiredRequestId == 0) {
+            return;
         }
-        finishWithFailure(m_activeRequestId, QStringLiteral("LM Studio request timed out"));
+
+        m_activeRequestId = 0;
+        m_activeReply = nullptr;
+        m_streamBuffer.clear();
+        m_streamedContent.clear();
+        finishWithFailure(expiredRequestId, QStringLiteral("LM Studio request timed out"));
     });
 }
 
@@ -83,7 +89,11 @@ void LmStudioClient::fetchModels()
 
 quint64 LmStudioClient::sendChatRequest(const QList<AiMessage> &messages, const QString &model, const AiRequestOptions &options)
 {
-    cancelActiveRequest();
+    m_timeoutTimer->stop();
+    m_activeRequestId = 0;
+    m_activeReply = nullptr;
+    m_streamBuffer.clear();
+    m_streamedContent.clear();
 
     QJsonArray jsonMessages;
     for (const auto &message : messages) {
@@ -111,8 +121,6 @@ quint64 LmStudioClient::sendChatRequest(const QList<AiMessage> &messages, const 
     }
 
     m_activeRequestId = ++m_requestCounter;
-    m_streamBuffer.clear();
-    m_streamedContent.clear();
 
     QNetworkRequest request = buildJsonRequest(QStringLiteral("/v1/chat/completions"));
     m_activeReply = m_networkAccessManager->post(request, QJsonDocument(body).toJson(QJsonDocument::Compact));
@@ -172,12 +180,10 @@ quint64 LmStudioClient::sendChatRequest(const QList<AiMessage> &messages, const 
 void LmStudioClient::cancelActiveRequest()
 {
     m_timeoutTimer->stop();
-    if (m_activeReply) {
-        m_activeReply->abort();
-        m_activeReply->deleteLater();
-        m_activeReply = nullptr;
-    }
     m_activeRequestId = 0;
+    m_activeReply = nullptr;
+    m_streamBuffer.clear();
+    m_streamedContent.clear();
 }
 
 void LmStudioClient::finishWithFailure(quint64 requestId, const QString &errorText)

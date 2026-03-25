@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Controls
 import QtQuick.Window
 import "." as JarvisUi
 
@@ -138,6 +139,161 @@ Window {
             anchors.rightMargin: 28
             anchors.bottom: parent.bottom
             anchors.bottomMargin: 30
+            onToastClicked: function(taskId) {
+                backend.setBackgroundPanelVisible(true)
+                backend.notifyTaskToastShown(taskId)
+            }
+        }
+
+        Rectangle {
+            id: taskPanel
+            anchors.top: parent.top
+            anchors.topMargin: 84
+            anchors.right: parent.right
+            anchors.rightMargin: 26
+            width: 420
+            height: parent.height - 160
+            visible: backend.backgroundPanelVisible && backend.backgroundTaskResults.length > 0
+            radius: 28
+            color: "#c40b1320"
+            border.width: 1
+            border.color: "#284762"
+
+            Column {
+                anchors.fill: parent
+                anchors.margins: 18
+                spacing: 12
+
+                Row {
+                    width: parent.width
+                    spacing: 10
+
+                    Text {
+                        text: "Background Results"
+                        color: "#eef7ff"
+                        font.pixelSize: 20
+                        font.weight: Font.Medium
+                    }
+
+                    Rectangle {
+                        width: 86
+                        height: 30
+                        radius: 15
+                        color: "#13283d"
+                        border.width: 1
+                        border.color: "#325274"
+
+                        Text {
+                            anchors.centerIn: parent
+                            text: "Hide"
+                            color: "#d5e8ff"
+                            font.pixelSize: 12
+                        }
+
+                        MouseArea {
+                            anchors.fill: parent
+                            onClicked: backend.setBackgroundPanelVisible(false)
+                        }
+                    }
+                }
+
+                ScrollView {
+                    width: parent.width
+                    height: parent.height - 48
+                    clip: true
+
+                    Column {
+                        width: taskPanel.width - 54
+                        spacing: 12
+
+                        Repeater {
+                            model: backend.backgroundTaskResults
+
+                            delegate: Rectangle {
+                                required property var modelData
+                                width: parent.width
+                                radius: 18
+                                color: "#101d2b"
+                                border.width: 1
+                                border.color: modelData.success ? "#346b52" : "#7a4557"
+                                height: resultColumn.implicitHeight + 20
+
+                                Column {
+                                    id: resultColumn
+                                    anchors.fill: parent
+                                    anchors.margins: 12
+                                    spacing: 6
+
+                                    Text {
+                                        text: modelData.finishedAt + "  " + modelData.title
+                                        color: "#edf6ff"
+                                        font.pixelSize: 13
+                                        wrapMode: Text.Wrap
+                                    }
+
+                                    Text {
+                                        text: modelData.summary
+                                        color: modelData.success ? "#8fe1b0" : "#ffb5cc"
+                                        font.pixelSize: 12
+                                        wrapMode: Text.Wrap
+                                    }
+
+                                    Text {
+                                        text: modelData.detail
+                                        color: "#bfd3ea"
+                                        font.pixelSize: 12
+                                        wrapMode: Text.Wrap
+                                    }
+
+                                    TextArea {
+                                        width: parent.width
+                                        readOnly: true
+                                        wrapMode: TextArea.Wrap
+                                        text: modelData.payload
+                                        color: "#dcecff"
+                                        background: Rectangle {
+                                            radius: 12
+                                            color: "#0b1520"
+                                            border.width: 1
+                                            border.color: "#20364b"
+                                        }
+                                        implicitHeight: Math.min(160, Math.max(60, contentHeight + 18))
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        Rectangle {
+            anchors.top: parent.top
+            anchors.topMargin: 90
+            anchors.right: parent.right
+            anchors.rightMargin: 26
+            width: 92
+            height: 34
+            radius: 17
+            visible: !taskPanel.visible && backend.backgroundTaskResults.length > 0
+            color: "#13283d"
+            border.width: 1
+            border.color: "#325274"
+
+            Text {
+                anchors.centerIn: parent
+                text: "Results"
+                color: "#d5e8ff"
+                font.pixelSize: 12
+            }
+
+            MouseArea {
+                anchors.fill: parent
+                onClicked: {
+                    backend.setBackgroundPanelVisible(true)
+                    backend.notifyTaskPanelRendered()
+                }
+            }
         }
     }
 
@@ -148,14 +304,27 @@ Window {
             if (backend.statusText.length === 0) {
                 return
             }
-            toastManager.pushToast(backend.statusText, backend.statusText.toLowerCase().indexOf("error") >= 0 ? "error" : "status")
+            toastManager.pushToast(backend.statusText, backend.statusText.toLowerCase().indexOf("error") >= 0 ? "error" : "status", -1)
         }
 
         function onResponseTextChanged() {
             if (backend.responseText.length === 0) {
                 return
             }
-            toastManager.pushToast(backend.responseText, "response")
+            toastManager.pushToast(backend.responseText, "response", -1)
+        }
+
+        function onLatestTaskToastChanged() {
+            if (backend.latestTaskToast.length === 0) {
+                return
+            }
+            toastManager.pushToast(backend.latestTaskToast, backend.latestTaskToastTone, backend.latestTaskToastTaskId)
+        }
+
+        function onBackgroundPanelVisibleChanged() {
+            if (backend.backgroundPanelVisible) {
+                backend.notifyTaskPanelRendered()
+            }
         }
     }
 }

@@ -1,5 +1,6 @@
 #include <QStringList>
 #include <QDateTime>
+#include <QDir>
 #include <QLocale>
 #include <QTimeZone>
 
@@ -147,6 +148,65 @@ QList<AiMessage> PromptAdapter::buildCommandMessages(
                          displayName.isEmpty() ? QStringLiteral("unknown") : displayName,
                          spokenName.isEmpty() ? QStringLiteral("unknown") : spokenName,
                          currentTimeContext())
+        },
+        {
+            .role = QStringLiteral("user"),
+            .content = applyReasoningMode(input, mode)
+        }
+    };
+}
+
+QList<AiMessage> PromptAdapter::buildHybridAgentMessages(
+    const QString &input,
+    const QList<MemoryRecord> &memory,
+    const AssistantIdentity &identity,
+    const UserProfile &userProfile,
+    const QString &workspaceRoot,
+    ReasoningMode mode) const
+{
+    QString systemPrompt =
+        QStringLiteral("You are %1, a desktop assistant. "
+                       "Return exactly one JSON object with keys: intent, message, background_tasks. "
+                       "The message must be short, natural, and safe to speak aloud. "
+                       "Never wait for tools or claim a tool already finished. "
+                       "If a task is needed, mention that the visual result will appear in the panel. "
+                       "Use background_tasks only for these task types: dir_list, file_read, file_write, memory_write. "
+                       "Each background task must have keys: type, args, priority. "
+                       "If no tool is needed, return background_tasks as an empty array. "
+                       "Keep file paths inside this workspace root when uncertain: %2. "
+                       "Do not include markdown, code fences, explanations, or extra keys.")
+            .arg(identity.assistantName, QDir::cleanPath(workspaceRoot));
+
+    const QString displayName = resolvedDisplayName(userProfile);
+    const QString spokenName = resolvedSpokenName(userProfile);
+    systemPrompt += QStringLiteral("\nIdentity:");
+    systemPrompt += QStringLiteral("\n- personality: %1").arg(identity.personality);
+    systemPrompt += QStringLiteral("\n- tone: %1").arg(identity.tone);
+    systemPrompt += QStringLiteral("\n- addressing style: %1").arg(identity.addressingStyle);
+    systemPrompt += QStringLiteral("\nUser:");
+    systemPrompt += QStringLiteral("\n- display name: %1").arg(displayName.isEmpty() ? QStringLiteral("unknown") : displayName);
+    systemPrompt += QStringLiteral("\n- spoken name: %1").arg(spokenName.isEmpty() ? QStringLiteral("unknown") : spokenName);
+    systemPrompt += QStringLiteral("\n- preferences: %1").arg(profilePreferencesText(userProfile));
+    systemPrompt += QStringLiteral("\nRuntime:");
+    systemPrompt += QStringLiteral("\n%1").arg(currentTimeContext());
+    systemPrompt += QStringLiteral("\n- workspace root: %1").arg(QDir::cleanPath(workspaceRoot));
+
+    if (!memory.isEmpty()) {
+        systemPrompt += QStringLiteral("\nRelevant memory:");
+        for (const auto &record : memory) {
+            systemPrompt += QStringLiteral("\n- %1: %2 = %3").arg(record.type, record.key, record.value);
+        }
+    }
+
+    systemPrompt += QStringLiteral(
+        "\nValid intent values: LIST_FILES, READ_FILE, WRITE_FILE, MEMORY_WRITE, GENERAL_CHAT."
+        "\nExample JSON:"
+        "\n{\"intent\":\"GENERAL_CHAT\",\"message\":\"Sure. What do you want me to check?\",\"background_tasks\":[]}");
+
+    return {
+        {
+            .role = QStringLiteral("system"),
+            .content = systemPrompt
         },
         {
             .role = QStringLiteral("user"),

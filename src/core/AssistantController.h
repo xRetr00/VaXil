@@ -1,12 +1,15 @@
 #pragma once
 
+#include <QHash>
 #include <QObject>
+#include <QThread>
 
 #include "core/AssistantTypes.h"
 
 class AppSettings;
 class AgentToolbox;
 class DeviceManager;
+class IntentDetector;
 class IntentRouter;
 class AiBackendClient;
 class LocalResponseEngine;
@@ -18,8 +21,10 @@ class ReasoningRouter;
 class IdentityProfileService;
 class SkillStore;
 class StreamAssembler;
+class TaskDispatcher;
 class SpeechRecognizer;
 class TtsEngine;
+class ToolWorker;
 class WakeWordEngine;
 class VoicePipelineRuntime;
 
@@ -38,6 +43,7 @@ public:
         IdentityProfileService *identityProfileService,
         LoggingService *loggingService,
         QObject *parent = nullptr);
+    ~AssistantController() override;
 
     void initialize();
 
@@ -55,6 +61,12 @@ public:
     AgentCapabilitySet agentCapabilities() const;
     QList<AgentTraceEntry> agentTrace() const;
     SamplingProfile samplingProfile() const;
+    QList<BackgroundTaskResult> backgroundTaskResults() const;
+    bool backgroundPanelVisible() const;
+    QString latestTaskToast() const;
+    QString latestTaskToastTone() const;
+    int latestTaskToastTaskId() const;
+    QString latestTaskToastType() const;
     bool installSkill(const QString &url, QString *error = nullptr);
     bool createSkill(const QString &id, const QString &name, const QString &description, QString *error = nullptr);
 
@@ -68,6 +80,9 @@ public slots:
     void cancelActiveRequest();
     void setSelectedModel(const QString &modelId);
     void setAgentEnabled(bool enabled);
+    void setBackgroundPanelVisible(bool visible);
+    void noteTaskToastShown(int taskId);
+    void noteTaskPanelRendered();
     void saveAgentSettings(bool enabled,
                            const QString &providerMode,
                            double conversationTemperature,
@@ -115,6 +130,9 @@ signals:
     void modelsChanged();
     void agentStateChanged();
     void agentTraceChanged();
+    void backgroundTaskResultsChanged();
+    void backgroundPanelVisibleChanged();
+    void latestTaskToastChanged();
     void startupStateChanged();
     void listeningRequested();
     void processingRequested();
@@ -178,8 +196,12 @@ private:
     void continueAgentConversation(const QList<AgentToolResult> &results);
     void startCommandRequest(const QString &input);
     void handleConversationFinished(const QString &text);
+    void handleHybridAgentFinished(const QString &payload);
     void handleAgentResponse(const AgentResponse &response);
     void handleCommandFinished(const QString &text);
+    void dispatchBackgroundTasks(const QList<AgentTask> &tasks);
+    void recordTaskResult(const QJsonObject &resultObject);
+    QStringList backgroundAllowedRoots() const;
     void logPromptResponsePair(const QString &response, const QString &source, const QString &status = QString());
     void appendAgentTrace(const QString &kind, const QString &title, const QString &detail, bool success = true);
     CommandEnvelope parseCommand(const QString &payload) const;
@@ -201,8 +223,11 @@ private:
     SkillStore *m_skillStore = nullptr;
     AgentToolbox *m_agentToolbox = nullptr;
     DeviceManager *m_deviceManager = nullptr;
+    IntentDetector *m_backgroundIntentDetector = nullptr;
     IntentRouter *m_intentRouter = nullptr;
     LocalResponseEngine *m_localResponseEngine = nullptr;
+    TaskDispatcher *m_taskDispatcher = nullptr;
+    ToolWorker *m_toolWorker = nullptr;
     SpeechRecognizer *m_whisperSttEngine = nullptr;
     WakeWordEngine *m_wakeWordEngine = nullptr;
     TtsEngine *m_ttsEngine = nullptr;
@@ -223,6 +248,14 @@ private:
     int m_activeAgentIteration = 0;
     AgentCapabilitySet m_agentCapabilities;
     QList<AgentTraceEntry> m_agentTrace;
+    QList<BackgroundTaskResult> m_backgroundTaskResults;
+    bool m_backgroundPanelVisible = false;
+    QString m_latestTaskToast;
+    QString m_latestTaskToastTone = QStringLiteral("status");
+    int m_latestTaskToastTaskId = -1;
+    QString m_latestTaskToastType = QStringLiteral("background");
+    int m_nextTaskId = 1;
+    QHash<QString, int> m_activeBackgroundTaskIds;
     AudioCaptureMode m_audioCaptureMode = AudioCaptureMode::None;
     AudioCaptureMode m_lastCompletedCaptureMode = AudioCaptureMode::None;
     bool m_wakeMonitorEnabled = false;
@@ -239,4 +272,5 @@ private:
     bool m_wakeStartRequested = false;
     QString m_lastWakeError;
     QString m_startupBlockingIssue = QStringLiteral("Loading services...");
+    QThread m_toolWorkerThread;
 };

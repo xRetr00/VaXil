@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QHash>
 #include <QObject>
 
 #include "core/AssistantTypes.h"
@@ -32,5 +33,6 @@ signals:
 
 private:
     OpenAiCompatibleClient *m_client = nullptr;
-    quint64 m_generationId = 0;
+    QHash<quint64, quint64> m_requestGenerationMap;
+    quint64 m_lastRequestedGenerationId = 0;
 };
