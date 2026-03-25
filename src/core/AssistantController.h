@@ -59,6 +59,8 @@ public:
     QList<ModelInfo> availableModels() const;
     QStringList availableModelIds() const;
     QString selectedModel() const;
+    QList<SkillManifest> installedSkills() const;
+    QList<AgentToolSpec> availableAgentTools() const;
     AgentCapabilitySet agentCapabilities() const;
     QList<AgentTraceEntry> agentTrace() const;
     SamplingProfile samplingProfile() const;

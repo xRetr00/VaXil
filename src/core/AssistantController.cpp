@@ -861,6 +861,8 @@ QStringList AssistantController::availableModelIds() const
     return ids;
 }
 QString AssistantController::selectedModel() const { return m_settings->chatBackendModel(); }
+QList<SkillManifest> AssistantController::installedSkills() const { return m_skillStore->listSkills(); }
+QList<AgentToolSpec> AssistantController::availableAgentTools() const { return m_agentToolbox->builtInTools(); }
 AgentCapabilitySet AssistantController::agentCapabilities() const { return m_agentCapabilities; }
 QList<AgentTraceEntry> AssistantController::agentTrace() const { return m_agentTrace; }
 SamplingProfile AssistantController::samplingProfile() const

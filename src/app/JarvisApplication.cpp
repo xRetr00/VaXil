@@ -124,6 +124,7 @@ bool JarvisApplication::initialize()
     m_engine->load(QUrl(QStringLiteral("qrc:/qt/qml/JARVIS/gui/qml/OverlayWindow.qml")));
     m_engine->load(QUrl(QStringLiteral("qrc:/qt/qml/JARVIS/gui/qml/SettingsWindow.qml")));
     m_engine->load(QUrl(QStringLiteral("qrc:/qt/qml/JARVIS/gui/qml/SetupWizard.qml")));
+    m_engine->load(QUrl(QStringLiteral("qrc:/qt/qml/JARVIS/gui/qml/ToolsHubWindow.qml")));
     if (m_engine->rootObjects().isEmpty()) {
         qCritical() << "QML load failed: no root objects were created";
         return false;
@@ -157,6 +158,15 @@ bool JarvisApplication::initialize()
             m_setupWindow->hide();
         }
     }
+    if (m_engine->rootObjects().size() > 3) {
+        m_toolsWindow = qobject_cast<QQuickWindow *>(m_engine->rootObjects().at(3));
+        if (m_toolsWindow) {
+            if (!appIcon.isNull()) {
+                m_toolsWindow->setIcon(appIcon);
+            }
+            m_toolsWindow->hide();
+        }
+    }
     if (m_setupWindow) {
         connect(m_setupWindow, &QWindow::visibleChanged, this, [this]() {
             m_overlayController->setSetupVisible(m_setupWindow && m_setupWindow->isVisible());
@@ -185,6 +195,13 @@ bool JarvisApplication::initialize()
             m_setupWindow->show();
             m_setupWindow->raise();
             m_setupWindow->requestActivate();
+        }
+    });
+    trayMenu->addAction(QStringLiteral("Tools && Stores"), [this]() {
+        if (m_toolsWindow) {
+            m_toolsWindow->show();
+            m_toolsWindow->raise();
+            m_toolsWindow->requestActivate();
         }
     });
     trayMenu->addSeparator();
@@ -275,6 +292,13 @@ bool JarvisApplication::initialize()
         m_overlayController->showOverlay();
         m_assistantController->startWakeMonitor();
         qInfo() << "Initial setup completed. Waiting for services readiness.";
+    });
+    connect(m_backendFacade.get(), &BackendFacade::toolsWindowRequested, this, [this]() {
+        if (m_toolsWindow) {
+            m_toolsWindow->show();
+            m_toolsWindow->raise();
+            m_toolsWindow->requestActivate();
+        }
     });
     return true;
 }

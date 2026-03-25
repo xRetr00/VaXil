@@ -38,4 +38,5 @@ private:
     QPointer<QQuickWindow> m_mainWindow;
     QPointer<QQuickWindow> m_settingsWindow;
     QPointer<QQuickWindow> m_setupWindow;
+    QPointer<QQuickWindow> m_toolsWindow;
 };

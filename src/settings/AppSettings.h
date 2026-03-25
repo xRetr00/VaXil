@@ -69,6 +69,15 @@ public:
     QString webSearchProvider() const;
     void setWebSearchProvider(const QString &provider);
 
+    bool mcpEnabled() const;
+    void setMcpEnabled(bool enabled);
+
+    QString mcpCatalogUrl() const;
+    void setMcpCatalogUrl(const QString &url);
+
+    QString mcpServerUrl() const;
+    void setMcpServerUrl(const QString &url);
+
     bool tracePanelEnabled() const;
     void setTracePanelEnabled(bool enabled);
 
@@ -171,6 +180,9 @@ private:
     int m_maxOutputTokens = 1024;
     bool m_memoryAutoWrite = true;
     QString m_webSearchProvider = QStringLiteral("brave");
+    bool m_mcpEnabled = false;
+    QString m_mcpCatalogUrl;
+    QString m_mcpServerUrl;
     bool m_tracePanelEnabled = true;
     QString m_whisperExecutable;
     QString m_whisperModelPath;

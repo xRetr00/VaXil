@@ -246,6 +246,11 @@ Window {
                                 font.pixelSize: 12
                             }
                         }
+
+                        Button {
+                            text: "Tools & Stores"
+                            onClicked: backend.openToolsHub()
+                        }
                     }
                 }
             }

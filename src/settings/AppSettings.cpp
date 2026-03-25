@@ -141,6 +141,9 @@ bool AppSettings::load()
     m_maxOutputTokens = clampMaxOutputTokens(parsed.value("maxOutputTokens", 1024));
     m_memoryAutoWrite = parsed.value("memoryAutoWrite", true);
     m_webSearchProvider = QString::fromStdString(parsed.value("webSearchProvider", m_webSearchProvider.toStdString()));
+    m_mcpEnabled = parsed.value("mcpEnabled", false);
+    m_mcpCatalogUrl = QString::fromStdString(parsed.value("mcpCatalogUrl", std::string{}));
+    m_mcpServerUrl = QString::fromStdString(parsed.value("mcpServerUrl", std::string{}));
     m_tracePanelEnabled = parsed.value("tracePanelEnabled", true);
     m_whisperExecutable = QString::fromStdString(parsed.value("whisperExecutable", std::string{}));
     m_whisperModelPath = QString::fromStdString(parsed.value("whisperModelPath", std::string{}));
@@ -192,6 +195,9 @@ bool AppSettings::save() const
         {"maxOutputTokens", m_maxOutputTokens},
         {"memoryAutoWrite", m_memoryAutoWrite},
         {"webSearchProvider", m_webSearchProvider.toStdString()},
+        {"mcpEnabled", m_mcpEnabled},
+        {"mcpCatalogUrl", m_mcpCatalogUrl.toStdString()},
+        {"mcpServerUrl", m_mcpServerUrl.toStdString()},
         {"tracePanelEnabled", m_tracePanelEnabled},
         {"whisperExecutable", m_whisperExecutable.toStdString()},
         {"whisperModelPath", m_whisperModelPath.toStdString()},
@@ -315,6 +321,20 @@ QString AppSettings::webSearchProvider() const { return m_webSearchProvider; }
 void AppSettings::setWebSearchProvider(const QString &provider)
 {
     m_webSearchProvider = provider.trimmed().isEmpty() ? QStringLiteral("brave") : provider.trimmed();
+    emit settingsChanged();
+}
+bool AppSettings::mcpEnabled() const { return m_mcpEnabled; }
+void AppSettings::setMcpEnabled(bool enabled) { m_mcpEnabled = enabled; emit settingsChanged(); }
+QString AppSettings::mcpCatalogUrl() const { return m_mcpCatalogUrl; }
+void AppSettings::setMcpCatalogUrl(const QString &url)
+{
+    m_mcpCatalogUrl = url.trimmed();
+    emit settingsChanged();
+}
+QString AppSettings::mcpServerUrl() const { return m_mcpServerUrl; }
+void AppSettings::setMcpServerUrl(const QString &url)
+{
+    m_mcpServerUrl = url.trimmed();
     emit settingsChanged();
 }
 bool AppSettings::tracePanelEnabled() const { return m_tracePanelEnabled; }

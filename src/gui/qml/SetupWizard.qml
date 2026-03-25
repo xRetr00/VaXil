@@ -143,6 +143,12 @@ Window {
                     horizontalAlignment: Text.AlignHCenter
                 }
 
+                Button {
+                    width: parent.width
+                    text: "Open Tools & Stores"
+                    onClicked: backend.openToolsHub()
+                }
+
                 Column {
                     width: parent.width
                     spacing: 10

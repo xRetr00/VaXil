@@ -47,6 +47,26 @@ struct IntentModelPreset {
     QString recommendation;
 };
 
+QVariantMap toVariantMap(const SkillManifest &skill)
+{
+    QVariantMap map;
+    map.insert(QStringLiteral("id"), skill.id);
+    map.insert(QStringLiteral("name"), skill.name);
+    map.insert(QStringLiteral("version"), skill.version);
+    map.insert(QStringLiteral("description"), skill.description);
+    map.insert(QStringLiteral("promptTemplatePath"), skill.promptTemplatePath);
+    return map;
+}
+
+QVariantMap toVariantMap(const AgentToolSpec &tool)
+{
+    QVariantMap map;
+    map.insert(QStringLiteral("name"), tool.name);
+    map.insert(QStringLiteral("description"), tool.description);
+    map.insert(QStringLiteral("parameters"), QString::fromStdString(tool.parameters.dump(2)));
+    return map;
+}
+
 QString firstValidPath(const QStringList &candidates)
 {
     for (const QString &candidate : candidates) {
@@ -972,6 +992,9 @@ int BackendFacade::providerTopK() const { return m_settings->providerTopK().valu
 int BackendFacade::maxOutputTokens() const { return m_settings->maxOutputTokens(); }
 bool BackendFacade::memoryAutoWrite() const { return m_settings->memoryAutoWrite(); }
 QString BackendFacade::webSearchProvider() const { return m_settings->webSearchProvider(); }
+bool BackendFacade::mcpEnabled() const { return m_settings->mcpEnabled(); }
+QString BackendFacade::mcpCatalogUrl() const { return m_settings->mcpCatalogUrl(); }
+QString BackendFacade::mcpServerUrl() const { return m_settings->mcpServerUrl(); }
 bool BackendFacade::tracePanelEnabled() const { return m_settings->tracePanelEnabled(); }
 QString BackendFacade::agentStatus() const { return m_assistantController->agentCapabilities().status; }
 bool BackendFacade::agentAvailable() const { return m_settings->agentEnabled(); }
@@ -986,6 +1009,22 @@ QVariantList BackendFacade::agentTraceEntries() const
         row.insert(QStringLiteral("detail"), entry.detail);
         row.insert(QStringLiteral("success"), entry.success);
         list.push_back(row);
+    }
+    return list;
+}
+QVariantList BackendFacade::availableAgentTools() const
+{
+    QVariantList list;
+    for (const auto &tool : m_assistantController->availableAgentTools()) {
+        list.push_back(toVariantMap(tool));
+    }
+    return list;
+}
+QVariantList BackendFacade::installedSkills() const
+{
+    QVariantList list;
+    for (const auto &skill : m_assistantController->installedSkills()) {
+        list.push_back(toVariantMap(skill));
     }
     return list;
 }
@@ -1019,6 +1058,7 @@ void BackendFacade::submitText(const QString &text) { m_assistantController->sub
 void BackendFacade::startListening() { m_assistantController->startListening(); }
 void BackendFacade::cancelRequest() { m_assistantController->cancelActiveRequest(); }
 void BackendFacade::setSelectedModel(const QString &modelId) { m_assistantController->setSelectedModel(modelId); }
+void BackendFacade::openToolsHub() { emit toolsWindowRequested(); }
 void BackendFacade::setSelectedIntentModelId(const QString &modelId)
 {
     const IntentModelPreset *preset = findIntentModelPreset(modelId);
@@ -1877,6 +1917,7 @@ bool BackendFacade::installSkill(const QString &url)
     setToolInstallStatus(ok ? QStringLiteral("Skill installed.") : error);
     if (ok) {
         emit agentTraceChanged();
+        emit toolStatusesChanged();
     }
     return ok;
 }
@@ -1888,6 +1929,26 @@ bool BackendFacade::createSkill(const QString &id, const QString &name, const QS
     setToolInstallStatus(ok ? QStringLiteral("Skill created.") : error);
     if (ok) {
         emit agentTraceChanged();
+        emit toolStatusesChanged();
     }
     return ok;
+}
+
+bool BackendFacade::saveToolsStoreSettings(const QString &webSearchProviderValue,
+                                           bool mcpEnabledValue,
+                                           const QString &mcpCatalogUrlValue,
+                                           const QString &mcpServerUrlValue)
+{
+    m_settings->setWebSearchProvider(webSearchProviderValue);
+    m_settings->setMcpEnabled(mcpEnabledValue);
+    m_settings->setMcpCatalogUrl(mcpCatalogUrlValue);
+    m_settings->setMcpServerUrl(mcpServerUrlValue);
+    const bool ok = m_settings->save();
+    if (!ok) {
+        setToolInstallStatus(QStringLiteral("Failed to save tools and store settings."));
+        return false;
+    }
+    setToolInstallStatus(QStringLiteral("Tools and store settings saved."));
+    emit settingsChanged();
+    return true;
 }

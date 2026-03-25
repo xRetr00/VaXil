@@ -85,10 +85,15 @@ class BackendFacade : public QObject
     Q_PROPERTY(int maxOutputTokens READ maxOutputTokens NOTIFY agentStateChanged)
     Q_PROPERTY(bool memoryAutoWrite READ memoryAutoWrite NOTIFY agentStateChanged)
     Q_PROPERTY(QString webSearchProvider READ webSearchProvider NOTIFY agentStateChanged)
+    Q_PROPERTY(bool mcpEnabled READ mcpEnabled NOTIFY settingsChanged)
+    Q_PROPERTY(QString mcpCatalogUrl READ mcpCatalogUrl NOTIFY settingsChanged)
+    Q_PROPERTY(QString mcpServerUrl READ mcpServerUrl NOTIFY settingsChanged)
     Q_PROPERTY(bool tracePanelEnabled READ tracePanelEnabled NOTIFY agentStateChanged)
     Q_PROPERTY(QString agentStatus READ agentStatus NOTIFY agentStateChanged)
     Q_PROPERTY(bool agentAvailable READ agentAvailable NOTIFY agentStateChanged)
     Q_PROPERTY(QVariantList agentTraceEntries READ agentTraceEntries NOTIFY agentTraceChanged)
+    Q_PROPERTY(QVariantList availableAgentTools READ availableAgentTools NOTIFY toolStatusesChanged)
+    Q_PROPERTY(QVariantList installedSkills READ installedSkills NOTIFY toolStatusesChanged)
     Q_PROPERTY(QVariantList backgroundTaskResults READ backgroundTaskResults NOTIFY backgroundTaskResultsChanged)
     Q_PROPERTY(bool backgroundPanelVisible READ backgroundPanelVisible NOTIFY backgroundPanelVisibleChanged)
     Q_PROPERTY(QString latestTaskToast READ latestTaskToast NOTIFY latestTaskToastChanged)
@@ -178,10 +183,15 @@ public:
     int maxOutputTokens() const;
     bool memoryAutoWrite() const;
     QString webSearchProvider() const;
+    bool mcpEnabled() const;
+    QString mcpCatalogUrl() const;
+    QString mcpServerUrl() const;
     bool tracePanelEnabled() const;
     QString agentStatus() const;
     bool agentAvailable() const;
     QVariantList agentTraceEntries() const;
+    QVariantList availableAgentTools() const;
+    QVariantList installedSkills() const;
     QVariantList backgroundTaskResults() const;
     bool backgroundPanelVisible() const;
     QString latestTaskToast() const;
@@ -198,6 +208,7 @@ public:
     Q_INVOKABLE void setSelectedModel(const QString &modelId);
     Q_INVOKABLE void setSelectedIntentModelId(const QString &modelId);
     Q_INVOKABLE void setAgentEnabled(bool enabled);
+    Q_INVOKABLE void openToolsHub();
     Q_INVOKABLE void setBackgroundPanelVisible(bool visible);
     Q_INVOKABLE void notifyTaskToastShown(int taskId);
     Q_INVOKABLE void notifyTaskPanelRendered();
@@ -299,6 +310,10 @@ public:
     Q_INVOKABLE void refreshAudioDevices();
     Q_INVOKABLE bool installSkill(const QString &url);
     Q_INVOKABLE bool createSkill(const QString &id, const QString &name, const QString &description);
+    Q_INVOKABLE bool saveToolsStoreSettings(const QString &webSearchProvider,
+                                            bool mcpEnabled,
+                                            const QString &mcpCatalogUrl,
+                                            const QString &mcpServerUrl);
 
 signals:
     void stateNameChanged();
@@ -321,6 +336,7 @@ signals:
     void backgroundTaskResultsChanged();
     void backgroundPanelVisibleChanged();
     void latestTaskToastChanged();
+    void toolsWindowRequested();
 
 private:
     void setToolInstallStatus(const QString &status);

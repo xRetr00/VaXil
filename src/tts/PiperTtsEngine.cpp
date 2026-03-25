@@ -72,6 +72,7 @@ QString normalizeSpeechText(QString text)
 {
     QString cleaned = stripHiddenReasoning(text);
     cleaned.replace(QRegularExpression(QStringLiteral("\\s*\\n+\\s*")), QStringLiteral(". "));
+    cleaned.replace(QRegularExpression(QStringLiteral("(?<=[A-Za-z0-9])[-_/](?=[A-Za-z0-9])")), QStringLiteral(" "));
     cleaned = removeNonSpeechArtifacts(cleaned);
     cleaned.replace(QRegularExpression(QStringLiteral("\\s*([,.;:!?])\\s*")), QStringLiteral("\\1 "));
     cleaned.replace(QRegularExpression(QStringLiteral("\\s*\\.\\.\\.\\s*")), QStringLiteral("... "));
@@ -138,7 +139,7 @@ QString injectNaturalPauses(const QString &text)
     }
 
     withPauses.replace(QStringLiteral(": "), QStringLiteral("... "));
-    withPauses.replace(QRegularExpression(QStringLiteral("\\s*-\\s*")), QStringLiteral("... "));
+    withPauses.replace(QRegularExpression(QStringLiteral("\\s+[\\-–—]\\s+")), QStringLiteral("... "));
     withPauses.replace(QRegularExpression(QStringLiteral("\\b(please wait|stand by)\\b"),
                                           QRegularExpression::CaseInsensitiveOption),
                        QStringLiteral("please wait"));
