@@ -5,15 +5,16 @@
 #include <QByteArray>
 #include <QDateTime>
 #include <QIODevice>
-#include <QObject>
 #include <QPointer>
 #include <QProcess>
 #include <QQueue>
 #include <memory>
 
+#include "wakeword/WakeWordEngine.h"
+
 class LoggingService;
 
-class WakeWordEnginePrecise : public QObject
+class WakeWordEnginePrecise : public WakeWordEngine
 {
     Q_OBJECT
 
@@ -26,17 +27,12 @@ public:
         const QString &modelPath,
         float threshold,
         int cooldownMs,
-        const QString &preferredDeviceId = {});
-    void pause();
-    void resume();
-    void stop();
-    bool isActive() const;
-    bool isPaused() const;
-
-signals:
-    void probabilityUpdated(float probability);
-    void wakeWordDetected();
-    void errorOccurred(const QString &message);
+        const QString &preferredDeviceId = {}) override;
+    void pause() override;
+    void resume() override;
+    void stop() override;
+    bool isActive() const override;
+    bool isPaused() const override;
 
 private:
     bool startAudioCapture();

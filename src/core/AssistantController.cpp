@@ -11,9 +11,11 @@
 
 #include <nlohmann/json.hpp>
 
-#include "ai/LmStudioClient.h"
+#include "ai/AiBackendClient.h"
 #include "ai/ModelCatalogService.h"
 #include "ai/PromptAdapter.h"
+#include "ai/RuntimeAiBackendClient.h"
+#include "ai/SpokenReply.h"
 #include "ai/ReasoningRouter.h"
 #include "ai/StreamAssembler.h"
 #include "audio/AudioInputService.h"
@@ -24,9 +26,12 @@
 #include "memory/MemoryStore.h"
 #include "settings/AppSettings.h"
 #include "settings/IdentityProfileService.h"
-#include "stt/WhisperSttEngine.h"
-#include "tts/PiperTtsEngine.h"
+#include "stt/RuntimeSpeechRecognizer.h"
+#include "tts/TtsEngine.h"
+#include "tts/WorkerTtsEngine.h"
+#include "wakeword/WakeWordEngine.h"
 #include "wakeword/WakeWordEnginePrecise.h"
+#include "workers/VoicePipelineRuntime.h"
 
 namespace {
 QString stateToString(AssistantState state)
@@ -229,8 +234,9 @@ AssistantController::AssistantController(
     , m_identityProfileService(identityProfileService)
     , m_loggingService(loggingService)
 {
-    m_lmStudioClient = new LmStudioClient(this);
-    m_modelCatalogService = new ModelCatalogService(m_settings, m_lmStudioClient, this);
+    m_voicePipelineRuntime = new VoicePipelineRuntime(m_settings, m_loggingService, this);
+    m_aiBackendClient = new RuntimeAiBackendClient(m_voicePipelineRuntime, this);
+    m_modelCatalogService = new ModelCatalogService(m_settings, m_aiBackendClient, this);
     m_reasoningRouter = new ReasoningRouter(this);
     m_promptAdapter = new PromptAdapter(this);
     m_streamAssembler = new StreamAssembler(this);
@@ -239,14 +245,15 @@ AssistantController::AssistantController(
     m_intentRouter = new IntentRouter(this);
     m_localResponseEngine = new LocalResponseEngine(this);
     m_audioInputService = new AudioInputService(this);
-    m_whisperSttEngine = new WhisperSttEngine(m_settings, m_loggingService, this);
-    m_wakeWordEnginePrecise = new WakeWordEnginePrecise(m_loggingService, this);
-    m_piperTtsEngine = new PiperTtsEngine(m_settings, this);
+    m_whisperSttEngine = new RuntimeSpeechRecognizer(m_voicePipelineRuntime, this);
+    m_wakeWordEngine = new WakeWordEnginePrecise(m_loggingService, this);
+    m_ttsEngine = new WorkerTtsEngine(m_voicePipelineRuntime, this);
 }
 
 void AssistantController::initialize()
 {
-    m_lmStudioClient->setEndpoint(m_settings->lmStudioEndpoint());
+    m_voicePipelineRuntime->start();
+    m_aiBackendClient->setEndpoint(m_settings->chatBackendEndpoint());
     m_deviceManager->registerDefaults();
     m_localResponseEngine->initialize();
     setupStateMachine();
@@ -262,6 +269,10 @@ void AssistantController::initialize()
         emit audioLevelChanged();
     });
     connect(m_audioInputService, &AudioInputService::speechDetected, this, [this]() {
+        if (isMicrophoneBlocked()) {
+            clearActiveSpeechCapture();
+            return;
+        }
         if (m_loggingService) {
             const QString mode = m_audioCaptureMode == AudioCaptureMode::Direct
                     ? QStringLiteral("direct")
@@ -279,6 +290,11 @@ void AssistantController::initialize()
                 .arg(hadSpeech ? QStringLiteral("true") : QStringLiteral("false")));
         }
 
+        if (isMicrophoneBlocked()) {
+            clearActiveSpeechCapture();
+            return;
+        }
+
         if (!hadSpeech) {
             m_audioInputService->stop();
             m_audioCaptureMode = AudioCaptureMode::None;
@@ -291,18 +307,24 @@ void AssistantController::initialize()
 
         stopListening();
     });
-    connect(m_audioInputService, &AudioInputService::speechEnded, this, &AssistantController::stopListening);
+    connect(m_audioInputService, &AudioInputService::speechEnded, this, [this]() {
+        if (isMicrophoneBlocked()) {
+            clearActiveSpeechCapture();
+            return;
+        }
+        stopListening();
+    });
 
-    connect(m_wakeWordEnginePrecise, &WakeWordEnginePrecise::wakeWordDetected, this, [this]() {
+    connect(m_wakeWordEngine, &WakeWordEngine::wakeWordDetected, this, [this]() {
         const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
-        if (nowMs < m_ignoreWakeUntilMs) {
+        if (isMicrophoneBlocked() || nowMs < m_ignoreWakeUntilMs) {
             if (m_loggingService) {
-                m_loggingService->info(QStringLiteral("Wake trigger ignored during post-playback cooldown."));
+                m_loggingService->info(QStringLiteral("Wake trigger ignored while microphone gate is closed."));
             }
             return;
         }
 
-        if (m_currentState == AssistantState::Speaking || m_currentState == AssistantState::Processing || m_piperTtsEngine->isSpeaking()) {
+        if (m_currentState == AssistantState::Speaking || m_currentState == AssistantState::Processing || m_ttsEngine->isSpeaking()) {
             if (m_loggingService) {
                 m_loggingService->info(QStringLiteral("Wake trigger ignored while assistant is busy."));
             }
@@ -311,8 +333,9 @@ void AssistantController::initialize()
 
         pauseWakeMonitor();
         invalidateWakeMonitorResume();
-        m_lmStudioClient->cancelActiveRequest();
-        m_piperTtsEngine->clear();
+        m_aiBackendClient->cancelActiveRequest();
+        invalidateActiveTranscription();
+        m_ttsEngine->clear();
         m_streamAssembler->reset();
         if (!m_responseText.isEmpty()) {
             m_responseText.clear();
@@ -325,14 +348,17 @@ void AssistantController::initialize()
             QStringLiteral("Wake word detected"),
             true);
     });
-    connect(m_wakeWordEnginePrecise, &WakeWordEnginePrecise::errorOccurred, this, [this](const QString &message) {
+    connect(m_wakeWordEngine, &WakeWordEngine::errorOccurred, this, [this](const QString &message) {
         if (m_loggingService) {
             m_loggingService->error(QStringLiteral("Precise wake engine error: %1").arg(message));
         }
         setStatus(message);
     });
 
-    connect(m_whisperSttEngine, &WhisperSttEngine::transcriptionReady, this, [this](const TranscriptionResult &result) {
+    connect(m_whisperSttEngine, &SpeechRecognizer::transcriptionReady, this, [this](quint64 requestId, const TranscriptionResult &result) {
+        if (requestId != m_activeSttRequestId || isMicrophoneBlocked()) {
+            return;
+        }
         const QString transcript = result.text.trimmed();
         m_transcript = transcript;
         emit transcriptChanged();
@@ -359,7 +385,10 @@ void AssistantController::initialize()
         }
         submitText(transcript);
     });
-    connect(m_whisperSttEngine, &WhisperSttEngine::transcriptionFailed, this, [this](const QString &errorText) {
+    connect(m_whisperSttEngine, &SpeechRecognizer::transcriptionFailed, this, [this](quint64 requestId, const QString &errorText) {
+        if (requestId != m_activeSttRequestId) {
+            return;
+        }
         if (m_loggingService) {
             m_loggingService->error(QStringLiteral("Speech transcription failed: %1").arg(errorText));
         }
@@ -372,59 +401,61 @@ void AssistantController::initialize()
         m_responseText = text;
         emit responseTextChanged();
     });
-    connect(m_streamAssembler, &StreamAssembler::sentenceReady, m_piperTtsEngine, &PiperTtsEngine::enqueueSentence);
 
-    connect(m_piperTtsEngine, &PiperTtsEngine::playbackStarted, this, [this]() {
+    connect(m_ttsEngine, &TtsEngine::playbackStarted, this, [this]() {
         if (m_loggingService) {
             m_loggingService->info(QStringLiteral("TTS playback started."));
         }
-        ignoreWakeTriggersFor(postSpeechWakeResumeDelayMs());
-        pauseWakeMonitor();
+        beginTtsExclusiveMode();
         emit speakingRequested();
     });
-    connect(m_piperTtsEngine, &PiperTtsEngine::playbackFinished, this, [this]() {
+    connect(m_ttsEngine, &TtsEngine::playbackFinished, this, [this]() {
         if (m_loggingService) {
             m_loggingService->info(QStringLiteral("TTS playback finished."));
         }
-        ignoreWakeTriggersFor(postSpeechWakeResumeDelayMs());
+        enterPostSpeechCooldown();
         if (m_followUpListeningAfterWakeAck) {
-            m_followUpListeningAfterWakeAck = false;
-            if (!startAudioCapture(AudioCaptureMode::Direct, true)) {
-                resumeWakeMonitor(shortWakeResumeDelayMs());
-                emit idleRequested();
-            }
+            QTimer::singleShot(followUpListeningDelayMs(), this, [this]() {
+                m_followUpListeningAfterWakeAck = false;
+                if (!m_ttsEngine->isSpeaking() && !startAudioCapture(AudioCaptureMode::Direct, true)) {
+                    resumeWakeMonitor(shortWakeResumeDelayMs());
+                    emit idleRequested();
+                }
+            });
             return;
         }
         resumeWakeMonitor(postSpeechWakeResumeDelayMs());
         emit idleRequested();
     });
-    connect(m_piperTtsEngine, &PiperTtsEngine::playbackFailed, this, [this](const QString &errorText) {
+    connect(m_ttsEngine, &TtsEngine::playbackFailed, this, [this](const QString &errorText) {
+        enterPostSpeechCooldown();
         setStatus(errorText);
         resumeWakeMonitor(shortWakeResumeDelayMs());
         emit idleRequested();
     });
 
-    connect(m_lmStudioClient, &LmStudioClient::requestStarted, this, [this](quint64 requestId) {
+    connect(m_aiBackendClient, &AiBackendClient::requestStarted, this, [this](quint64 requestId) {
         m_activeRequestId = requestId;
         if (m_loggingService) {
-            m_loggingService->info(QStringLiteral("LM Studio request started. requestId=%1 kind=%2")
+            m_loggingService->info(QStringLiteral("Local AI backend request started. requestId=%1 kind=%2")
                 .arg(requestId)
                 .arg(m_activeRequestKind == RequestKind::CommandExtraction ? QStringLiteral("command") : QStringLiteral("conversation")));
         }
+        setDuplexState(DuplexState::Processing);
         emit processingRequested();
     });
-    connect(m_lmStudioClient, &LmStudioClient::requestDelta, this, [this](quint64 requestId, const QString &delta) {
+    connect(m_aiBackendClient, &AiBackendClient::requestDelta, this, [this](quint64 requestId, const QString &delta) {
         if (requestId == m_activeRequestId && m_activeRequestKind == RequestKind::Conversation) {
             m_streamAssembler->appendChunk(delta);
         }
     });
-    connect(m_lmStudioClient, &LmStudioClient::requestFinished, this, [this](quint64 requestId, const QString &fullText) {
+    connect(m_aiBackendClient, &AiBackendClient::requestFinished, this, [this](quint64 requestId, const QString &fullText) {
         if (requestId != m_activeRequestId) {
             return;
         }
 
         if (m_loggingService) {
-            m_loggingService->info(QStringLiteral("LM Studio request finished. requestId=%1 chars=%2")
+            m_loggingService->info(QStringLiteral("Local AI backend request finished. requestId=%1 chars=%2")
                 .arg(requestId)
                 .arg(fullText.size()));
         }
@@ -435,10 +466,10 @@ void AssistantController::initialize()
             handleConversationFinished(fullText);
         }
     });
-    connect(m_lmStudioClient, &LmStudioClient::requestFailed, this, [this](quint64 requestId, const QString &errorText) {
+    connect(m_aiBackendClient, &AiBackendClient::requestFailed, this, [this](quint64 requestId, const QString &errorText) {
         if (requestId == m_activeRequestId) {
             if (m_loggingService) {
-                m_loggingService->error(QStringLiteral("LM Studio request failed. requestId=%1 error=\"%2\"")
+                m_loggingService->error(QStringLiteral("Local AI backend request failed. requestId=%1 error=\"%2\"")
                     .arg(QString::number(requestId), errorText));
             }
             const QString errorGroup = errorText.contains(QStringLiteral("timed out"), Qt::CaseInsensitive)
@@ -470,11 +501,11 @@ QStringList AssistantController::availableModelIds() const
     }
     return ids;
 }
-QString AssistantController::selectedModel() const { return m_settings->selectedModel(); }
+QString AssistantController::selectedModel() const { return m_settings->chatBackendModel(); }
 
 void AssistantController::refreshModels()
 {
-    m_lmStudioClient->setEndpoint(m_settings->lmStudioEndpoint());
+    m_aiBackendClient->setEndpoint(m_settings->chatBackendEndpoint());
     m_modelCatalogService->refresh();
 }
 
@@ -497,9 +528,11 @@ void AssistantController::submitText(const QString &text)
     m_transcript = trimmed;
     m_responseText.clear();
     m_streamAssembler->reset();
-    m_piperTtsEngine->clear();
+    m_ttsEngine->clear();
+    invalidateActiveTranscription();
     emit transcriptChanged();
     emit responseTextChanged();
+    setDuplexState(DuplexState::Processing);
     setStatus(QStringLiteral("Processing request"));
     if (m_loggingService) {
         m_loggingService->info(QStringLiteral("submitText received. raw=\"%1\" wakeDetected=%2 routed=\"%3\"")
@@ -563,6 +596,12 @@ void AssistantController::submitText(const QString &text)
 
 void AssistantController::startListening()
 {
+    if (isMicrophoneBlocked()) {
+        if (m_loggingService) {
+            m_loggingService->info(QStringLiteral("Listening request ignored while microphone gate is closed."));
+        }
+        return;
+    }
     pauseWakeMonitor();
     startAudioCapture(AudioCaptureMode::Direct, true);
 }
@@ -570,9 +609,9 @@ void AssistantController::startListening()
 void AssistantController::startWakeMonitor()
 {
     m_wakeMonitorEnabled = true;
-    if (m_wakeWordEnginePrecise->isActive()) {
-        if (m_wakeWordEnginePrecise->isPaused() && canStartWakeMonitor()) {
-            m_wakeWordEnginePrecise->resume();
+    if (m_wakeWordEngine->isActive()) {
+        if (m_wakeWordEngine->isPaused() && canStartWakeMonitor()) {
+            m_wakeWordEngine->resume();
         }
         return;
     }
@@ -581,7 +620,7 @@ void AssistantController::startWakeMonitor()
         return;
     }
 
-    if (!m_wakeWordEnginePrecise->start(
+    if (!m_wakeWordEngine->start(
             m_settings->preciseEngineExecutable(),
             m_settings->preciseModelPath(),
             static_cast<float>(m_settings->preciseTriggerThreshold()),
@@ -596,8 +635,8 @@ void AssistantController::startWakeMonitor()
 void AssistantController::stopWakeMonitor()
 {
     m_wakeMonitorEnabled = false;
-    if (m_wakeWordEnginePrecise->isActive()) {
-        m_wakeWordEnginePrecise->stop();
+    if (m_wakeWordEngine->isActive()) {
+        m_wakeWordEngine->stop();
     }
     if (m_loggingService) {
         m_loggingService->info(QStringLiteral("Wake monitor stopped."));
@@ -606,6 +645,10 @@ void AssistantController::stopWakeMonitor()
 
 void AssistantController::stopListening()
 {
+    if (isMicrophoneBlocked()) {
+        clearActiveSpeechCapture();
+        return;
+    }
     invalidateWakeMonitorResume();
     const QByteArray pcm = m_audioInputService->recordedPcm();
     const AudioCaptureMode completedMode = m_audioCaptureMode;
@@ -625,14 +668,15 @@ void AssistantController::stopListening()
         emit idleRequested();
         return;
     }
-    m_whisperSttEngine->transcribePcm(pcm, buildSttPrompt(), true);
+    m_activeSttRequestId = m_whisperSttEngine->transcribePcm(pcm, buildSttPrompt(), true);
 }
 
 void AssistantController::cancelActiveRequest()
 {
     invalidateWakeMonitorResume();
-    m_lmStudioClient->cancelActiveRequest();
-    m_piperTtsEngine->clear();
+    invalidateActiveTranscription();
+    m_aiBackendClient->cancelActiveRequest();
+    m_ttsEngine->clear();
     setStatus(QStringLiteral("Request cancelled"));
     resumeWakeMonitor(shortWakeResumeDelayMs());
     emit idleRequested();
@@ -640,7 +684,7 @@ void AssistantController::cancelActiveRequest()
 
 void AssistantController::setSelectedModel(const QString &modelId)
 {
-    m_settings->setSelectedModel(modelId);
+    m_settings->setChatBackendModel(modelId);
     m_settings->save();
     emit modelsChanged();
     refreshModels();
@@ -653,12 +697,17 @@ void AssistantController::saveSettings(
     bool autoRouting,
     bool streaming,
     int timeoutMs,
+    bool aecEnabled,
+    bool rnnoiseEnabled,
+    double vadSensitivity,
+    const QString &wakeEngineKind,
     const QString &whisperPath,
     const QString &whisperModelPath,
     const QString &preciseEnginePath,
     const QString &preciseModelPath,
     double preciseThreshold,
     int preciseCooldownMs,
+    const QString &ttsEngineKind,
     const QString &piperPath,
     const QString &voicePath,
     const QString &ffmpegPath,
@@ -669,18 +718,23 @@ void AssistantController::saveSettings(
     const QString &audioOutputDeviceId,
     bool clickThrough)
 {
-    m_settings->setLmStudioEndpoint(endpoint);
-    m_settings->setSelectedModel(modelId);
+    m_settings->setChatBackendEndpoint(endpoint);
+    m_settings->setChatBackendModel(modelId);
     m_settings->setDefaultReasoningMode(static_cast<ReasoningMode>(defaultMode));
     m_settings->setAutoRoutingEnabled(autoRouting);
     m_settings->setStreamingEnabled(streaming);
     m_settings->setRequestTimeoutMs(timeoutMs);
+    m_settings->setAecEnabled(aecEnabled);
+    m_settings->setRnnoiseEnabled(rnnoiseEnabled);
+    m_settings->setVadSensitivity(vadSensitivity);
+    m_settings->setWakeEngineKind(wakeEngineKind);
     m_settings->setWhisperExecutable(whisperPath);
     m_settings->setWhisperModelPath(whisperModelPath);
     m_settings->setPreciseEngineExecutable(preciseEnginePath);
     m_settings->setPreciseModelPath(preciseModelPath);
     m_settings->setPreciseTriggerThreshold(preciseThreshold);
     m_settings->setPreciseTriggerCooldownMs(preciseCooldownMs);
+    m_settings->setTtsEngineKind(ttsEngineKind);
     m_settings->setPiperExecutable(piperPath);
     m_settings->setPiperVoiceModel(voicePath);
     m_settings->setFfmpegExecutable(ffmpegPath);
@@ -693,7 +747,7 @@ void AssistantController::saveSettings(
     m_settings->save();
     refreshModels();
     setStatus(QStringLiteral("Settings saved"));
-    if (m_wakeWordEnginePrecise->isActive()) {
+    if (m_wakeWordEngine->isActive()) {
         stopWakeMonitor();
     }
     m_wakeMonitorEnabled = m_settings->initialSetupCompleted();
@@ -739,19 +793,59 @@ void AssistantController::setStatus(const QString &status)
     emit statusTextChanged();
 }
 
+void AssistantController::setDuplexState(DuplexState state)
+{
+    m_duplexState = state;
+}
+
 void AssistantController::invalidateWakeMonitorResume()
 {
     ++m_wakeResumeSequence;
 }
 
+void AssistantController::invalidateActiveTranscription()
+{
+    m_activeSttRequestId = 0;
+}
+
+void AssistantController::clearActiveSpeechCapture()
+{
+    invalidateActiveTranscription();
+    if (m_audioInputService->isActive()) {
+        m_audioInputService->stop();
+    }
+    m_audioInputService->clearRecordedAudio();
+    m_audioCaptureMode = AudioCaptureMode::None;
+    m_lastCompletedCaptureMode = AudioCaptureMode::None;
+}
+
+void AssistantController::beginTtsExclusiveMode()
+{
+    ignoreWakeTriggersFor(postSpeechWakeResumeDelayMs());
+    clearActiveSpeechCapture();
+    pauseWakeMonitor();
+    setDuplexState(DuplexState::TtsExclusive);
+}
+
+void AssistantController::enterPostSpeechCooldown()
+{
+    ignoreWakeTriggersFor(postSpeechWakeResumeDelayMs());
+    setDuplexState(DuplexState::Cooldown);
+}
+
+bool AssistantController::isMicrophoneBlocked() const
+{
+    return m_duplexState == DuplexState::TtsExclusive || m_duplexState == DuplexState::Cooldown;
+}
+
 void AssistantController::pauseWakeMonitor()
 {
     invalidateWakeMonitorResume();
-    if (!m_wakeMonitorEnabled || !m_wakeWordEnginePrecise->isActive()) {
+    if (!m_wakeMonitorEnabled || !m_wakeWordEngine->isActive()) {
         return;
     }
 
-    m_wakeWordEnginePrecise->pause();
+    m_wakeWordEngine->pause();
 }
 
 void AssistantController::resumeWakeMonitor(int delayMs)
@@ -769,9 +863,10 @@ void AssistantController::resumeWakeMonitor(int delayMs)
             return;
         }
 
-        if (m_wakeWordEnginePrecise->isActive()) {
-            if (m_wakeWordEnginePrecise->isPaused()) {
-                m_wakeWordEnginePrecise->resume();
+        setDuplexState(DuplexState::WakeOnly);
+        if (m_wakeWordEngine->isActive()) {
+            if (m_wakeWordEngine->isPaused()) {
+                m_wakeWordEngine->resume();
             }
         } else {
             startWakeMonitor();
@@ -793,6 +888,11 @@ int AssistantController::shortWakeResumeDelayMs() const
 int AssistantController::postSpeechWakeResumeDelayMs() const
 {
     return std::max(1200, m_settings->preciseTriggerCooldownMs());
+}
+
+int AssistantController::followUpListeningDelayMs() const
+{
+    return 200;
 }
 
 QString AssistantController::buildSttPrompt() const
@@ -867,8 +967,9 @@ bool AssistantController::canStartWakeMonitor() const
 {
     return m_wakeMonitorEnabled
         && m_currentState != AssistantState::Listening
+        && !isMicrophoneBlocked()
         && !m_audioInputService->isActive()
-        && !m_piperTtsEngine->isSpeaking()
+        && !m_ttsEngine->isSpeaking()
         && !m_settings->preciseEngineExecutable().isEmpty()
         && !m_settings->preciseModelPath().isEmpty();
 }
@@ -876,6 +977,9 @@ bool AssistantController::canStartWakeMonitor() const
 bool AssistantController::startAudioCapture(AudioCaptureMode mode, bool announceListening)
 {
     invalidateWakeMonitorResume();
+    if (isMicrophoneBlocked() || m_ttsEngine->isSpeaking()) {
+        return false;
+    }
     if (m_audioInputService->isActive()) {
         return false;
     }
@@ -889,8 +993,11 @@ bool AssistantController::startAudioCapture(AudioCaptureMode mode, bool announce
                 .arg(m_settings->micSensitivity(), 0, 'f', 3));
         }
         if (announceListening) {
+            setDuplexState(DuplexState::Listening);
             setStatus(QStringLiteral("Listening"));
             emit listeningRequested();
+        } else {
+            setDuplexState(DuplexState::Open);
         }
         return true;
     }
@@ -959,8 +1066,9 @@ void AssistantController::deliverLocalResponse(const QString &text, const QStrin
     logPromptResponsePair(text, QStringLiteral("local"), status);
     setStatus(status);
     if (speak) {
-        m_piperTtsEngine->enqueueSentence(text);
+        m_ttsEngine->speakText(text);
     } else {
+        setDuplexState(DuplexState::Open);
         emit idleRequested();
     }
 }
@@ -968,9 +1076,9 @@ void AssistantController::deliverLocalResponse(const QString &text, const QStrin
 void AssistantController::startConversationRequest(const QString &input)
 {
     const ReasoningMode mode = m_reasoningRouter->chooseMode(input, m_settings->autoRoutingEnabled(), m_settings->defaultReasoningMode());
-    const QString modelId = m_settings->selectedModel().isEmpty() && !availableModelIds().isEmpty() ? availableModelIds().first() : m_settings->selectedModel();
+    const QString modelId = m_settings->chatBackendModel().isEmpty() && !availableModelIds().isEmpty() ? availableModelIds().first() : m_settings->chatBackendModel();
     if (modelId.isEmpty()) {
-        setStatus(QStringLiteral("No LM Studio model selected"));
+        setStatus(QStringLiteral("No local AI backend model selected"));
         emit idleRequested();
         return;
     }
@@ -988,7 +1096,7 @@ void AssistantController::startConversationRequest(const QString &input)
         m_identityProfileService->userProfile(),
         mode);
 
-    m_activeRequestId = m_lmStudioClient->sendChatRequest(messages, modelId, {
+    m_activeRequestId = m_aiBackendClient->sendChatRequest(messages, modelId, {
         .mode = mode,
         .kind = RequestKind::Conversation,
         .stream = m_settings->streamingEnabled(),
@@ -998,9 +1106,9 @@ void AssistantController::startConversationRequest(const QString &input)
 
 void AssistantController::startCommandRequest(const QString &input)
 {
-    const QString modelId = m_settings->selectedModel().isEmpty() && !availableModelIds().isEmpty() ? availableModelIds().first() : m_settings->selectedModel();
+    const QString modelId = m_settings->chatBackendModel().isEmpty() && !availableModelIds().isEmpty() ? availableModelIds().first() : m_settings->chatBackendModel();
     if (modelId.isEmpty()) {
-        setStatus(QStringLiteral("No LM Studio model selected"));
+        setStatus(QStringLiteral("No local AI backend model selected"));
         emit idleRequested();
         return;
     }
@@ -1010,7 +1118,7 @@ void AssistantController::startCommandRequest(const QString &input)
         m_loggingService->info(QStringLiteral("Starting command extraction request. model=\"%1\" input=\"%2\"")
             .arg(modelId, input.left(240)));
     }
-    m_activeRequestId = m_lmStudioClient->sendChatRequest(
+    m_activeRequestId = m_aiBackendClient->sendChatRequest(
         m_promptAdapter->buildCommandMessages(
             input,
             m_identityProfileService->identity(),
@@ -1022,20 +1130,19 @@ void AssistantController::startCommandRequest(const QString &input)
 
 void AssistantController::handleConversationFinished(const QString &text)
 {
-    m_responseText = text;
+    const SpokenReply reply = parseSpokenReply(text);
+    m_responseText = reply.displayText;
     emit responseTextChanged();
-    m_memoryStore->appendConversation(QStringLiteral("assistant"), text);
-    const QString remainder = m_streamAssembler->drainRemainingText();
-    if (!remainder.isEmpty()) {
-        m_piperTtsEngine->enqueueSentence(remainder);
-    }
-    if (!m_settings->streamingEnabled()) {
-        m_piperTtsEngine->enqueueSentence(text);
-    } else if (!m_piperTtsEngine->isSpeaking()) {
+    m_memoryStore->appendConversation(QStringLiteral("assistant"), reply.displayText);
+    m_streamAssembler->drainRemainingText();
+    if (reply.shouldSpeak && !reply.spokenText.isEmpty()) {
+        m_ttsEngine->speakText(reply.spokenText);
+    } else if (!m_ttsEngine->isSpeaking()) {
+        setDuplexState(DuplexState::Open);
         scheduleWakeMonitorRestart();
         emit idleRequested();
     }
-    logPromptResponsePair(text, QStringLiteral("conversation"), QStringLiteral("Response ready"));
+    logPromptResponsePair(reply.displayText, QStringLiteral("conversation"), QStringLiteral("Response ready"));
     setStatus(QStringLiteral("Response ready"));
 }
 
@@ -1059,7 +1166,7 @@ void AssistantController::handleCommandFinished(const QString &text)
     m_responseText = message;
     emit responseTextChanged();
     m_memoryStore->appendConversation(QStringLiteral("assistant"), message);
-    m_piperTtsEngine->enqueueSentence(message);
+    m_ttsEngine->speakText(message);
     logPromptResponsePair(message, QStringLiteral("command"), QStringLiteral("Command executed"));
     setStatus(QStringLiteral("Command executed"));
 }

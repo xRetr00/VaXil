@@ -48,6 +48,7 @@ Window {
         if (visible) {
             backend.refreshAudioDevices()
             backend.refreshModels()
+            backend.rescanTools()
             syncVoiceFieldsFromBackend()
         }
     }
@@ -193,7 +194,7 @@ Window {
 
                 Text {
                     text: wizard.stepIndex === 0 ? "Define how the assistant should address you."
-                        : wizard.stepIndex === 1 ? "Point JARVIS at LM Studio and choose the active model."
+                        : wizard.stepIndex === 1 ? "Point JARVIS at the local AI backend and choose the active model."
                         : wizard.stepIndex === 2 ? "Connect whisper.cpp, Piper, FFmpeg, and the voice model you want."
                         : wizard.stepIndex === 3 ? "Configure the fully local Mycroft Precise wake model runtime and training path."
                         : "Run final checks, trigger tests, and confirm the real startup behavior."
@@ -209,12 +210,18 @@ Window {
                     value: wizard.stepIndex + 1
                 }
 
-                StackLayout {
+                ScrollView {
+                    id: stepScroll
                     Layout.fillWidth: true
                     Layout.fillHeight: true
-                    currentIndex: wizard.stepIndex
+                    clip: true
 
-                    ColumnLayout {
+                    StackLayout {
+                        id: stepStack
+                        width: stepScroll.availableWidth
+                        currentIndex: wizard.stepIndex
+
+                        ColumnLayout {
                         spacing: 14
 
                         Text { text: "Display name"; color: "#d0e3f5"; font.pixelSize: 13 }
@@ -232,12 +239,12 @@ Window {
                             text: backend.spokenUserName
                             placeholderText: "Pronunciation for voice replies (optional)"
                         }
-                    }
+                        }
 
-                    ColumnLayout {
+                        ColumnLayout {
                         spacing: 14
 
-                        Text { text: "LM Studio endpoint"; color: "#d0e3f5"; font.pixelSize: 13 }
+                        Text { text: "Local AI backend endpoint"; color: "#d0e3f5"; font.pixelSize: 13 }
                         TextField {
                             id: endpointField
                             Layout.fillWidth: true
@@ -260,15 +267,24 @@ Window {
                         }
 
                         Text {
-                            text: "The selected model is stored in settings and used for all LM Studio requests."
+                            text: "The selected model is stored in settings and used for all local AI backend requests."
                             color: "#9ab0ca"
                             font.pixelSize: 12
                             wrapMode: Text.Wrap
                         }
-                    }
+                        }
 
-                    ColumnLayout {
+                        ColumnLayout {
                         spacing: 14
+
+                        Text { text: "TTS engine"; color: "#d0e3f5"; font.pixelSize: 13 }
+                        ComboBox {
+                            id: wizardTtsEngineCombo
+                            Layout.fillWidth: true
+                            model: ["piper", "qwen3-tts"]
+                            currentIndex: Math.max(0, model.indexOf(backend.ttsEngineKind))
+                            onActivated: backend.setTtsEngineKind(currentText)
+                        }
 
                         Text { text: "whisper.cpp executable"; color: "#d0e3f5"; font.pixelSize: 13 }
                         RowLayout {
@@ -339,6 +355,32 @@ Window {
                             Button { text: "Open Dir"; onClicked: backend.openContainingDirectory(ffmpegPathField.text) }
                         }
 
+                        RowLayout {
+                            Layout.fillWidth: true
+                            CheckBox {
+                                id: wizardAecCheck
+                                text: "AEC enabled"
+                                checked: backend.aecEnabled
+                                onToggled: backend.saveAudioProcessing(checked, wizardRnnoiseCheck.checked, wizardVadSlider.value)
+                            }
+                            CheckBox {
+                                id: wizardRnnoiseCheck
+                                text: "RNNoise enabled"
+                                checked: backend.rnnoiseEnabled
+                                onToggled: backend.saveAudioProcessing(wizardAecCheck.checked, checked, wizardVadSlider.value)
+                            }
+                        }
+
+                        Text { text: "VAD sensitivity"; color: "#d0e3f5"; font.pixelSize: 13 }
+                        Slider {
+                            id: wizardVadSlider
+                            Layout.fillWidth: true
+                            from: 0.05
+                            to: 0.95
+                            value: backend.vadSensitivity
+                            onPressedChanged: if (!pressed) backend.saveAudioProcessing(wizardAecCheck.checked, wizardRnnoiseCheck.checked, value)
+                        }
+
                         Text { text: "Input device (microphone)"; color: "#d0e3f5"; font.pixelSize: 13 }
                         ComboBox {
                             id: inputDeviceCombo
@@ -353,9 +395,9 @@ Window {
                             model: backend.audioOutputDeviceNames
                         }
 
-                    }
+                        }
 
-                    ColumnLayout {
+                        ColumnLayout {
                         spacing: 14
 
                         Text { text: "Wake phrase"; color: "#d0e3f5"; font.pixelSize: 13 }
@@ -377,10 +419,18 @@ Window {
                         }
 
                         Text {
-                            text: "Using Local Wake Model (Mycroft Precise)"
+                            text: "Wake engine"
                             color: "#eef7ff"
                             font.pixelSize: 18
                             font.weight: Font.Medium
+                        }
+
+                        ComboBox {
+                            id: wizardWakeEngineCombo
+                            Layout.fillWidth: true
+                            model: ["precise", "sherpa-onnx"]
+                            currentIndex: Math.max(0, model.indexOf(backend.wakeEngineKind))
+                            onActivated: backend.setWakeEngineKind(currentText)
                         }
 
                         Text {
@@ -494,9 +544,9 @@ Window {
                             text: "Enable click-through overlay by default"
                             checked: backend.clickThroughEnabled
                         }
-                    }
+                        }
 
-                    ColumnLayout {
+                        ColumnLayout {
                         spacing: 14
 
                         Text {
@@ -599,6 +649,63 @@ Window {
                             color: "#9ab0ca"
                             font.pixelSize: 12
                             wrapMode: Text.Wrap
+                        }
+
+                        Text {
+                            text: "Tools status"
+                            color: "#d0e3f5"
+                            font.pixelSize: 13
+                        }
+
+                        RowLayout {
+                            Layout.fillWidth: true
+                            Button { text: "Rescan"; onClicked: backend.rescanTools() }
+                            Button { text: "Install All"; onClicked: backend.installAllTools() }
+                        }
+
+                        Text {
+                            Layout.fillWidth: true
+                            text: backend.toolInstallStatus.length > 0 ? backend.toolInstallStatus : "No active download."
+                            color: "#9ab0ca"
+                            font.pixelSize: 12
+                            wrapMode: Text.Wrap
+                        }
+
+                        ProgressBar {
+                            Layout.fillWidth: true
+                            visible: backend.toolDownloadPercent >= 0
+                            from: 0
+                            to: 100
+                            value: backend.toolDownloadPercent >= 0 ? backend.toolDownloadPercent : 0
+                        }
+
+                        Repeater {
+                            model: backend.toolStatuses
+
+                            delegate: Rectangle {
+                                required property var modelData
+                                Layout.fillWidth: true
+                                width: parent.width
+                                height: 52
+                                radius: 14
+                                color: "#0f1a2a"
+                                border.width: 1
+                                border.color: modelData.installed ? "#2e7e4b" : "#284666"
+
+                                RowLayout {
+                                    anchors.fill: parent
+                                    anchors.margins: 12
+                                    Rectangle { width: 10; height: 10; radius: 5; color: modelData.installed ? "#1ecb6b" : "#f04d5d" }
+                                    Text { text: modelData.name; color: "#eef7ff"; font.pixelSize: 13; Layout.preferredWidth: 150 }
+                                    Text { text: modelData.installed ? "Installed" : "Missing"; color: "#9ab0ca"; font.pixelSize: 12; Layout.fillWidth: true }
+                                    Button {
+                                        visible: modelData.downloadable === true && modelData.installed !== true
+                                        text: "Download"
+                                        onClicked: backend.downloadModel(modelData.name)
+                                    }
+                                }
+                            }
+                        }
                         }
                     }
                 }

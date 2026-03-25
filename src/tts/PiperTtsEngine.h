@@ -1,9 +1,12 @@
 #pragma once
 
-#include <QObject>
+#include <QBuffer>
 #include <QFutureWatcher>
 #include <QQueue>
 #include <QString>
+#include <QTimer>
+
+#include "tts/TtsEngine.h"
 
 struct TtsSynthesisResult
 {
@@ -12,37 +15,35 @@ struct TtsSynthesisResult
 };
 
 class AppSettings;
-class QAudioOutput;
-class QMediaPlayer;
+class QAudioSink;
 
-class PiperTtsEngine : public QObject
+class PiperTtsEngine : public TtsEngine
 {
     Q_OBJECT
 
 public:
     explicit PiperTtsEngine(AppSettings *settings, QObject *parent = nullptr);
 
-    void enqueueSentence(const QString &sentence);
-    void clear();
-    bool isSpeaking() const;
-
-signals:
-    void playbackStarted();
-    void playbackFinished();
-    void playbackFailed(const QString &errorText);
+    void speakText(const QString &text) override;
+    void clear() override;
+    bool isSpeaking() const override;
 
 private:
     void applySelectedOutputDevice();
     void processNext();
-    TtsSynthesisResult synthesizeAndProcess(const QString &sentence, quint64 generation) const;
+    TtsSynthesisResult synthesizeAndProcess(const QString &text, quint64 generation) const;
     void playFile(const QString &path);
+    void stopPlayback();
 
     AppSettings *m_settings = nullptr;
-    QQueue<QString> m_sentences;
+    QQueue<QString> m_pendingTexts;
     bool m_processing = false;
     QFutureWatcher<TtsSynthesisResult> m_synthesisWatcher;
-    QMediaPlayer *m_player = nullptr;
-    QAudioOutput *m_audioOutput = nullptr;
+    QAudioSink *m_audioSink = nullptr;
+    QBuffer *m_playbackBuffer = nullptr;
+    QByteArray m_playbackPcm;
+    QTimer m_farEndTimer;
+    qint64 m_lastFarEndOffset = 0;
     quint64 m_generationCounter = 0;
     quint64 m_activeGeneration = 0;
 };

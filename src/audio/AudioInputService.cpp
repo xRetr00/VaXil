@@ -92,6 +92,18 @@ void AudioInputService::stop()
     clearVad();
 }
 
+void AudioInputService::clearRecordedAudio()
+{
+    m_recordedData.clear();
+    m_vadPendingData.clear();
+    m_consecutiveSpeechMs = 0;
+    m_consecutiveSilenceMs = 0;
+    m_speechStarted = false;
+    m_hasDetectedSpeech = false;
+    m_captureElapsed.invalidate();
+    m_speechElapsed.invalidate();
+}
+
 QByteArray AudioInputService::recordedPcm() const
 {
     return m_recordedData;

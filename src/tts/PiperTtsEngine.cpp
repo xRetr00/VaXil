@@ -1,18 +1,22 @@
 #include "tts/PiperTtsEngine.h"
 
 #include <algorithm>
+#include <cstring>
 
 #include <QtConcurrent>
+#include <QAudio>
+#include <QAudioFormat>
 #include <QAudioDevice>
-#include <QAudioOutput>
+#include <QAudioSink>
+#include <QBuffer>
 #include <QDir>
+#include <QFile>
 #include <QMediaDevices>
-#include <QMediaPlayer>
 #include <QProcess>
 #include <QRegularExpression>
 #include <QStandardPaths>
+#include <QTimer>
 #include <QUuid>
-#include <QUrl>
 
 #include "settings/AppSettings.h"
 
@@ -158,17 +162,61 @@ QString applyVoicePipeline(const QString &aiResponse)
     const QString paused = injectNaturalPauses(styled);
     return normalizeSpeechText(paused);
 }
+
+bool parseWaveFile(const QString &path, QByteArray *pcmData, QAudioFormat *format)
+{
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly)) {
+        return false;
+    }
+
+    const QByteArray data = file.readAll();
+    if (data.size() < 44 || !data.startsWith("RIFF") || data.mid(8, 4) != "WAVE") {
+        return false;
+    }
+
+    int offset = 12;
+    quint16 channels = 1;
+    quint32 sampleRate = 22050;
+    quint16 bitsPerSample = 16;
+    int dataOffset = -1;
+    int dataSize = 0;
+
+    while (offset + 8 <= data.size()) {
+        const QByteArray chunkId = data.mid(offset, 4);
+        quint32 chunkSize = 0;
+        std::memcpy(&chunkSize, data.constData() + offset + 4, sizeof(chunkSize));
+        offset += 8;
+
+        if (chunkId == "fmt " && offset + 16 <= data.size()) {
+            std::memcpy(&channels, data.constData() + offset + 2, sizeof(channels));
+            std::memcpy(&sampleRate, data.constData() + offset + 4, sizeof(sampleRate));
+            std::memcpy(&bitsPerSample, data.constData() + offset + 14, sizeof(bitsPerSample));
+        } else if (chunkId == "data") {
+            dataOffset = offset;
+            dataSize = static_cast<int>(chunkSize);
+            break;
+        }
+
+        offset += static_cast<int>(chunkSize);
+    }
+
+    if (dataOffset < 0 || dataSize <= 0 || dataOffset + dataSize > data.size()) {
+        return false;
+    }
+
+    format->setSampleRate(static_cast<int>(sampleRate));
+    format->setChannelCount(static_cast<int>(channels));
+    format->setSampleFormat(bitsPerSample == 16 ? QAudioFormat::Int16 : QAudioFormat::UInt8);
+    *pcmData = data.mid(dataOffset, dataSize);
+    return true;
+}
 }
 
 PiperTtsEngine::PiperTtsEngine(AppSettings *settings, QObject *parent)
-    : QObject(parent)
+    : TtsEngine(parent)
     , m_settings(settings)
 {
-    m_player = new QMediaPlayer(this);
-    m_audioOutput = new QAudioOutput(this);
-    m_player->setAudioOutput(m_audioOutput);
-    applySelectedOutputDevice();
-
     connect(&m_synthesisWatcher, &QFutureWatcher<TtsSynthesisResult>::finished, this, [this]() {
         const TtsSynthesisResult result = m_synthesisWatcher.result();
         if (result.generation != m_activeGeneration || !m_processing) {
@@ -185,24 +233,37 @@ PiperTtsEngine::PiperTtsEngine(AppSettings *settings, QObject *parent)
         playFile(result.outputFile);
     });
 
-    connect(m_player, &QMediaPlayer::mediaStatusChanged, this, [this](QMediaPlayer::MediaStatus status) {
-        if (!m_processing) {
+    m_farEndTimer.setInterval(10);
+    connect(&m_farEndTimer, &QTimer::timeout, this, [this]() {
+        if (m_playbackBuffer == nullptr || m_playbackPcm.isEmpty()) {
             return;
         }
-        if (status == QMediaPlayer::EndOfMedia || status == QMediaPlayer::InvalidMedia) {
-            processNext();
+
+        const qint64 currentOffset = std::clamp(m_playbackBuffer->pos(), static_cast<qint64>(0), static_cast<qint64>(m_playbackPcm.size()));
+        const qint64 bytesPerFrame = 320 * static_cast<qint64>(sizeof(qint16));
+        while (m_lastFarEndOffset + bytesPerFrame <= currentOffset) {
+            AudioFrame frame;
+            frame.sampleRate = 16000;
+            frame.channels = 1;
+            frame.sampleCount = 320;
+            const auto *samples = reinterpret_cast<const qint16 *>(m_playbackPcm.constData() + m_lastFarEndOffset);
+            for (int i = 0; i < frame.sampleCount; ++i) {
+                frame.samples[static_cast<std::size_t>(i)] = static_cast<float>(samples[i]) / 32768.0f;
+            }
+            emit farEndFrameReady(frame);
+            m_lastFarEndOffset += bytesPerFrame;
         }
     });
 }
 
-void PiperTtsEngine::enqueueSentence(const QString &sentence)
+void PiperTtsEngine::speakText(const QString &text)
 {
-    const QString prepared = applyVoicePipeline(sentence);
+    const QString prepared = applyVoicePipeline(text);
     if (prepared.isEmpty()) {
         return;
     }
 
-    m_sentences.enqueue(prepared);
+    m_pendingTexts.enqueue(prepared);
     if (!m_processing) {
         processNext();
     }
@@ -212,21 +273,19 @@ void PiperTtsEngine::clear()
 {
     ++m_generationCounter;
     m_activeGeneration = 0;
-    m_sentences.clear();
+    m_pendingTexts.clear();
     m_processing = false;
-    if (m_player) {
-        m_player->stop();
-    }
+    stopPlayback();
 }
 
 bool PiperTtsEngine::isSpeaking() const
 {
-    return m_processing || !m_sentences.isEmpty();
+    return m_processing || !m_pendingTexts.isEmpty();
 }
 
 void PiperTtsEngine::processNext()
 {
-    if (m_sentences.isEmpty()) {
+    if (m_pendingTexts.isEmpty()) {
         m_processing = false;
         m_activeGeneration = 0;
         emit playbackFinished();
@@ -234,16 +293,15 @@ void PiperTtsEngine::processNext()
     }
 
     if (m_settings->piperExecutable().isEmpty() || m_settings->piperVoiceModel().isEmpty()) {
-        m_sentences.clear();
+        m_pendingTexts.clear();
         m_processing = false;
         emit playbackFailed(QStringLiteral("Piper executable or voice model is not configured"));
         return;
     }
 
     m_processing = true;
-    applySelectedOutputDevice();
     emit playbackStarted();
-    const QString sentence = m_sentences.dequeue();
+    const QString sentence = m_pendingTexts.dequeue();
     const quint64 generation = ++m_generationCounter;
     m_activeGeneration = generation;
     m_synthesisWatcher.setFuture(QtConcurrent::run([this, sentence, generation]() {
@@ -327,28 +385,66 @@ TtsSynthesisResult PiperTtsEngine::synthesizeAndProcess(const QString &sentence,
 
 void PiperTtsEngine::playFile(const QString &path)
 {
-    m_player->setSource(QUrl::fromLocalFile(path));
-    m_player->play();
+    stopPlayback();
+
+    QByteArray pcmData;
+    QAudioFormat format;
+    if (!parseWaveFile(path, &pcmData, &format)) {
+        m_processing = false;
+        emit playbackFailed(QStringLiteral("Failed to parse synthesized audio"));
+        return;
+    }
+
+    QAudioDevice device = QMediaDevices::defaultAudioOutput();
+    const QString selectedId = m_settings != nullptr ? m_settings->selectedAudioOutputDeviceId() : QString{};
+    if (!selectedId.isEmpty()) {
+        for (const QAudioDevice &candidate : QMediaDevices::audioOutputs()) {
+            if (QString::fromUtf8(candidate.id()) == selectedId) {
+                device = candidate;
+                break;
+            }
+        }
+    }
+
+    m_audioSink = new QAudioSink(device, format, this);
+    m_playbackPcm = pcmData;
+    m_playbackBuffer = new QBuffer(this);
+    m_playbackBuffer->setData(m_playbackPcm);
+    m_playbackBuffer->open(QIODevice::ReadOnly);
+    m_lastFarEndOffset = 0;
+
+    connect(m_audioSink, &QAudioSink::stateChanged, this, [this](QAudio::State state) {
+        if (state == QAudio::IdleState) {
+            stopPlayback();
+            processNext();
+        } else if (state == QAudio::StoppedState && m_audioSink != nullptr && m_audioSink->error() != QtAudio::NoError) {
+            stopPlayback();
+            m_processing = false;
+            emit playbackFailed(QStringLiteral("Audio playback failed"));
+        }
+    });
+
+    m_audioSink->start(m_playbackBuffer);
+    m_farEndTimer.start();
 }
 
 void PiperTtsEngine::applySelectedOutputDevice()
 {
-    if (!m_audioOutput || !m_settings) {
-        return;
-    }
+}
 
-    const QString selectedId = m_settings->selectedAudioOutputDeviceId();
-    if (selectedId.isEmpty()) {
-        m_audioOutput->setDevice(QMediaDevices::defaultAudioOutput());
-        return;
+void PiperTtsEngine::stopPlayback()
+{
+    m_farEndTimer.stop();
+    m_lastFarEndOffset = 0;
+    if (m_audioSink != nullptr) {
+        m_audioSink->stop();
+        m_audioSink->deleteLater();
+        m_audioSink = nullptr;
     }
-
-    for (const QAudioDevice &device : QMediaDevices::audioOutputs()) {
-        if (QString::fromUtf8(device.id()) == selectedId) {
-            m_audioOutput->setDevice(device);
-            return;
-        }
+    if (m_playbackBuffer != nullptr) {
+        m_playbackBuffer->close();
+        m_playbackBuffer->deleteLater();
+        m_playbackBuffer = nullptr;
     }
-
-    m_audioOutput->setDevice(QMediaDevices::defaultAudioOutput());
+    m_playbackPcm.clear();
 }

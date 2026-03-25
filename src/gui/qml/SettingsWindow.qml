@@ -42,12 +42,48 @@ Window {
         )
     }
 
+    function syncFieldsFromBackend() {
+        endpointField.text = backend.lmStudioEndpoint
+        whisperPathField.text = backend.whisperExecutable
+        whisperModelPathField.text = backend.whisperModelPath
+        preciseEnginePathField.text = backend.preciseEngineExecutable
+        preciseModelPathField.text = backend.preciseModelPath
+        preciseThresholdSlider.value = backend.preciseTriggerThreshold
+        preciseCooldownSpin.value = backend.preciseTriggerCooldownMs
+        piperPathField.text = backend.piperExecutable
+        voicePathField.text = backend.piperVoiceModel
+        ffmpegPathField.text = backend.ffmpegExecutable
+        speedSlider.value = backend.voiceSpeed
+        pitchSlider.value = backend.voicePitch
+        vadSlider.value = backend.vadSensitivity
+        micSlider.value = backend.micSensitivity
+        aecCheck.checked = backend.aecEnabled
+        rnnoiseCheck.checked = backend.rnnoiseEnabled
+        autoRoutingCheck.checked = backend.autoRoutingEnabled
+        streamCheck.checked = backend.streamingEnabled
+        timeoutSpin.value = backend.requestTimeoutMs
+        clickThroughCheck.checked = backend.clickThroughEnabled
+
+        const modelIndex = backend.models.indexOf(backend.selectedModel)
+        modelCombo.currentIndex = modelIndex >= 0 ? modelIndex : 0
+
+        const modeIndex = backend.defaultReasoningMode
+        modeCombo.currentIndex = modeIndex >= 0 ? modeIndex : 0
+
+        const ttsIndex = ["piper", "qwen3-tts"].indexOf(backend.ttsEngineKind)
+        ttsEngineCombo.currentIndex = ttsIndex >= 0 ? ttsIndex : 0
+
+        const wakeIndex = ["precise", "sherpa-onnx"].indexOf(backend.wakeEngineKind)
+        wakeEngineCombo.currentIndex = wakeIndex >= 0 ? wakeIndex : 0
+    }
+
     onVisibleChanged: {
         if (!visible) {
             return
         }
 
         backend.refreshAudioDevices()
+        syncFieldsFromBackend()
         const inputIndex = backend.audioInputDeviceIds.indexOf(backend.selectedAudioInputDeviceId)
         inputDeviceCombo.currentIndex = inputIndex >= 0 ? inputIndex : 0
         const outputIndex = backend.audioOutputDeviceIds.indexOf(backend.selectedAudioOutputDeviceId)
@@ -204,7 +240,7 @@ Window {
                         font.pixelSize: 14
                     }
 
-                    Text { text: "LM Studio endpoint"; color: "#c9def3"; font.pixelSize: 13 }
+                    Text { text: "Local AI backend endpoint"; color: "#c9def3"; font.pixelSize: 13 }
                     TextField { id: endpointField; Layout.fillWidth: true; text: backend.lmStudioEndpoint }
                     RowLayout {
                         Layout.fillWidth: true
@@ -289,6 +325,15 @@ Window {
                         text: "Local binaries, voice model, and speech tuning."
                         color: "#8099b8"
                         font.pixelSize: 14
+                    }
+
+                    Text { text: "TTS engine"; color: "#c9def3"; font.pixelSize: 13 }
+                    ComboBox {
+                        id: ttsEngineCombo
+                        Layout.fillWidth: true
+                        model: ["piper", "qwen3-tts"]
+                        currentIndex: Math.max(0, model.indexOf(backend.ttsEngineKind))
+                        onActivated: backend.setTtsEngineKind(currentText)
                     }
 
                     Text { text: "whisper.cpp executable"; color: "#c9def3"; font.pixelSize: 13 }
@@ -423,8 +468,43 @@ Window {
                         font.pixelSize: 14
                     }
 
+                    RowLayout {
+                        Layout.fillWidth: true
+                        CheckBox {
+                            id: aecCheck
+                            text: "AEC enabled"
+                            checked: backend.aecEnabled
+                            onToggled: backend.saveAudioProcessing(checked, rnnoiseCheck.checked, vadSlider.value)
+                        }
+                        CheckBox {
+                            id: rnnoiseCheck
+                            text: "RNNoise enabled"
+                            checked: backend.rnnoiseEnabled
+                            onToggled: backend.saveAudioProcessing(aecCheck.checked, checked, vadSlider.value)
+                        }
+                    }
+
+                    Text { text: "VAD sensitivity"; color: "#c9def3"; font.pixelSize: 13 }
+                    Slider {
+                        id: vadSlider
+                        Layout.fillWidth: true
+                        from: 0.05
+                        to: 0.95
+                        value: backend.vadSensitivity
+                        onPressedChanged: if (!pressed) backend.saveAudioProcessing(aecCheck.checked, rnnoiseCheck.checked, value)
+                    }
+
                     Text { text: "Mic sensitivity"; color: "#c9def3"; font.pixelSize: 13 }
                     Slider { id: micSlider; Layout.fillWidth: true; from: 0.01; to: 0.10; value: backend.micSensitivity }
+
+                    Text { text: "Wake engine"; color: "#c9def3"; font.pixelSize: 13 }
+                    ComboBox {
+                        id: wakeEngineCombo
+                        Layout.fillWidth: true
+                        model: ["precise", "sherpa-onnx"]
+                        currentIndex: Math.max(0, model.indexOf(backend.wakeEngineKind))
+                        onActivated: backend.setWakeEngineKind(currentText)
+                    }
 
                     Text { text: "Mycroft Precise engine"; color: "#c9def3"; font.pixelSize: 13 }
                     TextField { id: preciseEnginePathField; Layout.fillWidth: true; text: backend.preciseEngineExecutable; placeholderText: backend.preciseRuntimeRoot + "/precise-engine.exe" }
@@ -597,12 +677,17 @@ Window {
                                         autoRoutingCheck.checked,
                                         streamCheck.checked,
                                         timeoutSpin.value,
+                                        aecCheck.checked,
+                                        rnnoiseCheck.checked,
+                                        vadSlider.value,
+                                        wakeEngineCombo.currentText,
                                         whisperPathField.text,
                                         whisperModelPathField.text,
                                         preciseEnginePathField.text,
                                         preciseModelPathField.text,
                                         preciseThresholdSlider.value,
                                         preciseCooldownSpin.value,
+                                        ttsEngineCombo.currentText,
                                         piperPathField.text,
                                         voicePathField.text,
                                         ffmpegPathField.text,
@@ -613,6 +698,88 @@ Window {
                                         outputDeviceCombo.currentIndex >= 0 ? backend.audioOutputDeviceIds[outputDeviceCombo.currentIndex] : "",
                                         clickThroughCheck.checked
                                     )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            Rectangle {
+                width: parent.width
+                radius: 30
+                color: "#9208111d"
+                border.width: 1
+                border.color: "#1d2f4d"
+
+                ColumnLayout {
+                    anchors.fill: parent
+                    anchors.margins: 22
+                    spacing: 14
+
+                    Text {
+                        text: "Tools Status"
+                        color: "#eef7ff"
+                        font.pixelSize: 22
+                        font.weight: Font.Medium
+                    }
+
+                    Text {
+                        text: "Auto-detected runtimes, models, and downloadable assets."
+                        color: "#8099b8"
+                        font.pixelSize: 14
+                    }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        Button { text: "Rescan"; onClicked: backend.rescanTools() }
+                        Button { text: "Install All"; onClicked: backend.installAllTools() }
+                        Item { Layout.fillWidth: true }
+                        Text { text: backend.toolsRoot; color: "#7f97b7"; font.pixelSize: 11; Layout.fillWidth: true; horizontalAlignment: Text.AlignRight }
+                    }
+
+                    Text {
+                        Layout.fillWidth: true
+                        text: backend.toolInstallStatus.length > 0 ? backend.toolInstallStatus : "No active download."
+                        color: "#9ab0ca"
+                        font.pixelSize: 12
+                        wrapMode: Text.Wrap
+                    }
+
+                    ProgressBar {
+                        Layout.fillWidth: true
+                        visible: backend.toolDownloadPercent >= 0
+                        from: 0
+                        to: 100
+                        value: backend.toolDownloadPercent >= 0 ? backend.toolDownloadPercent : 0
+                    }
+
+                    Repeater {
+                        model: backend.toolStatuses
+
+                        delegate: Rectangle {
+                            required property var modelData
+                            Layout.fillWidth: true
+                            width: parent.width
+                            radius: 18
+                            color: "#102034"
+                            border.width: 1
+                            border.color: modelData.installed ? "#2e7e4b" : "#3b506b"
+                            height: 58
+
+                            RowLayout {
+                                anchors.fill: parent
+                                anchors.margins: 14
+                                spacing: 12
+
+                                Rectangle { width: 10; height: 10; radius: 5; color: modelData.installed ? "#1ecb6b" : "#f04d5d" }
+                                Text { text: modelData.name; color: "#eaf4ff"; font.pixelSize: 14; Layout.preferredWidth: 150 }
+                                Text { text: modelData.category; color: "#8ea8c8"; font.pixelSize: 12; Layout.preferredWidth: 80 }
+                                Text { text: modelData.version && modelData.version.length > 0 ? modelData.version : (modelData.installed ? "Installed" : "Missing"); color: "#c9def3"; font.pixelSize: 12; Layout.fillWidth: true }
+                                Button {
+                                    visible: modelData.downloadable === true && modelData.installed !== true
+                                    text: "Download"
+                                    onClicked: backend.downloadModel(modelData.name)
                                 }
                             }
                         }

@@ -8,18 +8,19 @@ class AppSettings;
 class AudioInputService;
 class DeviceManager;
 class IntentRouter;
-class LmStudioClient;
+class AiBackendClient;
 class LocalResponseEngine;
 class LoggingService;
 class MemoryStore;
 class ModelCatalogService;
-class PiperTtsEngine;
 class PromptAdapter;
 class ReasoningRouter;
 class IdentityProfileService;
 class StreamAssembler;
-class WhisperSttEngine;
-class WakeWordEnginePrecise;
+class SpeechRecognizer;
+class TtsEngine;
+class WakeWordEngine;
+class VoicePipelineRuntime;
 
 class AssistantController : public QObject
 {
@@ -64,12 +65,17 @@ public slots:
         bool autoRouting,
         bool streaming,
         int timeoutMs,
+        bool aecEnabled,
+        bool rnnoiseEnabled,
+        double vadSensitivity,
+        const QString &wakeEngineKind,
         const QString &whisperPath,
         const QString &whisperModelPath,
         const QString &preciseEnginePath,
         const QString &preciseModelPath,
         double preciseThreshold,
         int preciseCooldownMs,
+        const QString &ttsEngineKind,
         const QString &piperPath,
         const QString &voicePath,
         const QString &ffmpegPath,
@@ -99,15 +105,31 @@ private:
         WakeMonitor
     };
 
+    enum class DuplexState {
+        Open,
+        WakeOnly,
+        Listening,
+        Processing,
+        TtsExclusive,
+        Cooldown
+    };
+
     void setupStateMachine();
     void transitionToState(AssistantState state);
     void setStatus(const QString &status);
+    void setDuplexState(DuplexState state);
     void invalidateWakeMonitorResume();
+    void invalidateActiveTranscription();
+    void clearActiveSpeechCapture();
+    void beginTtsExclusiveMode();
+    void enterPostSpeechCooldown();
+    bool isMicrophoneBlocked() const;
     void pauseWakeMonitor();
     void resumeWakeMonitor(int delayMs = 0);
     void ignoreWakeTriggersFor(int delayMs);
     int shortWakeResumeDelayMs() const;
     int postSpeechWakeResumeDelayMs() const;
+    int followUpListeningDelayMs() const;
     QString buildSttPrompt() const;
     bool shouldIgnoreAmbiguousTranscript(const QString &transcript) const;
     void updateUserProfileFromInput(const QString &input);
@@ -126,7 +148,7 @@ private:
     AppSettings *m_settings = nullptr;
     IdentityProfileService *m_identityProfileService = nullptr;
     LoggingService *m_loggingService = nullptr;
-    LmStudioClient *m_lmStudioClient = nullptr;
+    AiBackendClient *m_aiBackendClient = nullptr;
     ModelCatalogService *m_modelCatalogService = nullptr;
     ReasoningRouter *m_reasoningRouter = nullptr;
     PromptAdapter *m_promptAdapter = nullptr;
@@ -136,15 +158,18 @@ private:
     IntentRouter *m_intentRouter = nullptr;
     LocalResponseEngine *m_localResponseEngine = nullptr;
     AudioInputService *m_audioInputService = nullptr;
-    WhisperSttEngine *m_whisperSttEngine = nullptr;
-    WakeWordEnginePrecise *m_wakeWordEnginePrecise = nullptr;
-    PiperTtsEngine *m_piperTtsEngine = nullptr;
+    SpeechRecognizer *m_whisperSttEngine = nullptr;
+    WakeWordEngine *m_wakeWordEngine = nullptr;
+    TtsEngine *m_ttsEngine = nullptr;
+    VoicePipelineRuntime *m_voicePipelineRuntime = nullptr;
     AssistantState m_currentState = AssistantState::Idle;
+    DuplexState m_duplexState = DuplexState::Open;
     QString m_transcript;
     QString m_responseText;
     QString m_statusText = QStringLiteral("Initializing");
     float m_audioLevel = 0.0f;
     quint64 m_activeRequestId = 0;
+    quint64 m_activeSttRequestId = 0;
     RequestKind m_activeRequestKind = RequestKind::Conversation;
     QString m_lastPromptForAiLog;
     AudioCaptureMode m_audioCaptureMode = AudioCaptureMode::None;

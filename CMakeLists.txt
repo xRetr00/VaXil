@@ -79,12 +79,15 @@ qt_standard_project_setup(REQUIRES 6.6)
 
 set(JARVIS_SOURCES
     src/app/JarvisApplication.cpp
-    src/ai/LmStudioClient.cpp
+    src/ai/OpenAiCompatibleClient.cpp
+    src/ai/RuntimeAiBackendClient.cpp
+    src/ai/SpokenReply.cpp
     src/ai/ModelCatalogService.cpp
     src/ai/PromptAdapter.cpp
     src/ai/ReasoningRouter.cpp
     src/ai/StreamAssembler.cpp
     src/audio/AudioInputService.cpp
+    src/audio/AudioProcessingChain.cpp
     src/core/AssistantController.cpp
     src/core/IntentRouter.cpp
     src/core/LocalResponseEngine.cpp
@@ -97,18 +100,30 @@ set(JARVIS_SOURCES
     src/settings/AppSettings.cpp
     src/settings/IdentityProfileService.cpp
     src/stt/WhisperSttEngine.cpp
+    src/stt/RuntimeSpeechRecognizer.cpp
+    src/tools/ToolManager.cpp
     src/tts/PiperTtsEngine.cpp
+    src/tts/WorkerTtsEngine.cpp
     src/wakeword/WakeWordEnginePrecise.cpp
+    src/workers/AiBackendWorker.cpp
+    src/workers/SpeechInputWorker.cpp
+    src/workers/SpeechIoWorker.cpp
+    src/workers/VoicePipelineRuntime.cpp
 )
 
 set(JARVIS_HEADERS
     src/app/JarvisApplication.h
-    src/ai/LmStudioClient.h
+    src/ai/AiBackendClient.h
+    src/ai/OpenAiCompatibleClient.h
+    src/ai/RuntimeAiBackendClient.h
+    src/ai/SpokenReply.h
     src/ai/ModelCatalogService.h
     src/ai/PromptAdapter.h
     src/ai/ReasoningRouter.h
     src/ai/StreamAssembler.h
     src/audio/AudioInputService.h
+    src/audio/AudioProcessingChain.h
+    src/audio/AudioProcessingTypes.h
     src/core/AssistantController.h
     src/core/AssistantTypes.h
     src/core/IntentRouter.h
@@ -123,8 +138,18 @@ set(JARVIS_HEADERS
     src/settings/AppSettings.h
     src/settings/IdentityProfileService.h
     src/stt/WhisperSttEngine.h
+    src/stt/SpeechRecognizer.h
+    src/stt/RuntimeSpeechRecognizer.h
+    src/tools/ToolManager.h
+    src/tts/TtsEngine.h
     src/tts/PiperTtsEngine.h
+    src/tts/WorkerTtsEngine.h
+    src/wakeword/WakeWordEngine.h
     src/wakeword/WakeWordEnginePrecise.h
+    src/workers/AiBackendWorker.h
+    src/workers/SpeechInputWorker.h
+    src/workers/SpeechIoWorker.h
+    src/workers/VoicePipelineRuntime.h
 )
 
 qt_add_resources(JARVIS_RESOURCES src/gui/resources.qrc)

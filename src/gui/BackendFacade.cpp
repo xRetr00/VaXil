@@ -17,6 +17,7 @@
 #include "overlay/OverlayController.h"
 #include "settings/AppSettings.h"
 #include "settings/IdentityProfileService.h"
+#include "tools/ToolManager.h"
 
 namespace {
 struct PiperVoicePreset {
@@ -570,6 +571,7 @@ BackendFacade::BackendFacade(
     , m_assistantController(assistantController)
     , m_overlayController(overlayController)
 {
+    m_toolManager = new ToolManager(this);
     connect(m_assistantController, &AssistantController::stateChanged, this, &BackendFacade::stateNameChanged);
     connect(m_assistantController, &AssistantController::transcriptChanged, this, &BackendFacade::transcriptChanged);
     connect(m_assistantController, &AssistantController::responseTextChanged, this, &BackendFacade::responseTextChanged);
@@ -586,6 +588,17 @@ BackendFacade::BackendFacade(
     auto *mediaDevices = new QMediaDevices(this);
     connect(mediaDevices, &QMediaDevices::audioInputsChanged, this, &BackendFacade::audioDevicesChanged);
     connect(mediaDevices, &QMediaDevices::audioOutputsChanged, this, &BackendFacade::audioDevicesChanged);
+    connect(m_toolManager, &ToolManager::toolsUpdated, this, &BackendFacade::toolStatusesChanged);
+    connect(m_toolManager, &ToolManager::downloadProgress, this, [this](const QString &name, qint64 received, qint64 total) {
+        setToolInstallStatus(total > 0
+            ? QStringLiteral("%1: %2 / %3 bytes").arg(name).arg(received).arg(total)
+            : QStringLiteral("%1: %2 bytes").arg(name).arg(received));
+    });
+    connect(m_toolManager, &ToolManager::downloadFinished, this, [this](const QString &name, bool success, const QString &message) {
+        setToolInstallStatus(QStringLiteral("%1: %2").arg(name, success ? message : QStringLiteral("failed - %1").arg(message)));
+        emit toolStatusesChanged();
+    });
+    m_toolManager->rescan();
 }
 
 QString BackendFacade::stateName() const { return m_assistantController->stateName(); }
@@ -620,8 +633,13 @@ int BackendFacade::defaultReasoningMode() const { return static_cast<int>(m_sett
 bool BackendFacade::autoRoutingEnabled() const { return m_settings->autoRoutingEnabled(); }
 bool BackendFacade::streamingEnabled() const { return m_settings->streamingEnabled(); }
 int BackendFacade::requestTimeoutMs() const { return m_settings->requestTimeoutMs(); }
+bool BackendFacade::aecEnabled() const { return m_settings->aecEnabled(); }
+bool BackendFacade::rnnoiseEnabled() const { return m_settings->rnnoiseEnabled(); }
+double BackendFacade::vadSensitivity() const { return m_settings->vadSensitivity(); }
+QString BackendFacade::wakeEngineKind() const { return m_settings->wakeEngineKind(); }
 QString BackendFacade::whisperExecutable() const { return m_settings->whisperExecutable(); }
 QString BackendFacade::whisperModelPath() const { return m_settings->whisperModelPath(); }
+QString BackendFacade::ttsEngineKind() const { return m_settings->ttsEngineKind(); }
 QString BackendFacade::piperExecutable() const { return m_settings->piperExecutable(); }
 QString BackendFacade::piperVoiceModel() const { return m_settings->piperVoiceModel(); }
 QString BackendFacade::preciseEngineExecutable() const { return m_settings->preciseEngineExecutable(); }
@@ -688,6 +706,10 @@ QString BackendFacade::spokenUserName() const
 }
 bool BackendFacade::initialSetupCompleted() const { return m_settings->initialSetupCompleted(); }
 QString BackendFacade::toolInstallStatus() const { return m_toolInstallStatus; }
+QVariantList BackendFacade::toolStatuses() const { return m_toolManager != nullptr ? m_toolManager->toolStatusList() : QVariantList{}; }
+int BackendFacade::toolDownloadPercent() const { return m_toolManager != nullptr ? m_toolManager->activeDownloadPercent() : -1; }
+QString BackendFacade::activeToolDownloadName() const { return m_toolManager != nullptr ? m_toolManager->activeDownloadName() : QString{}; }
+QString BackendFacade::toolsRoot() const { return m_toolManager != nullptr ? m_toolManager->toolsRoot() : QString{}; }
 QString BackendFacade::wakeWordPhrase() const { return m_settings->wakeWordPhrase(); }
 void BackendFacade::toggleOverlay() { m_overlayController->toggleOverlay(); }
 void BackendFacade::refreshModels() { m_assistantController->refreshModels(); }
@@ -695,6 +717,26 @@ void BackendFacade::submitText(const QString &text) { m_assistantController->sub
 void BackendFacade::startListening() { m_assistantController->startListening(); }
 void BackendFacade::cancelRequest() { m_assistantController->cancelActiveRequest(); }
 void BackendFacade::setSelectedModel(const QString &modelId) { m_assistantController->setSelectedModel(modelId); }
+void BackendFacade::setWakeEngineKind(const QString &kind)
+{
+    m_settings->setWakeEngineKind(kind);
+    m_settings->save();
+    emit settingsChanged();
+}
+void BackendFacade::setTtsEngineKind(const QString &kind)
+{
+    m_settings->setTtsEngineKind(kind);
+    m_settings->save();
+    emit settingsChanged();
+}
+void BackendFacade::saveAudioProcessing(bool aecEnabled, bool rnnoiseEnabled, double vadSensitivity)
+{
+    m_settings->setAecEnabled(aecEnabled);
+    m_settings->setRnnoiseEnabled(rnnoiseEnabled);
+    m_settings->setVadSensitivity(vadSensitivity);
+    m_settings->save();
+    emit settingsChanged();
+}
 void BackendFacade::setSelectedVoicePresetId(const QString &voiceId)
 {
     if (findVoicePreset(voiceId) == nullptr) {
@@ -727,12 +769,17 @@ void BackendFacade::saveSettings(
     bool autoRouting,
     bool streaming,
     int timeoutMs,
+    bool aecEnabled,
+    bool rnnoiseEnabled,
+    double vadSensitivity,
+    const QString &wakeEngineKind,
     const QString &whisperPath,
     const QString &whisperModelPath,
     const QString &preciseEnginePath,
     const QString &preciseModelPath,
     double preciseThreshold,
     int preciseCooldownMs,
+    const QString &ttsEngineKind,
     const QString &piperPath,
     const QString &voicePath,
     const QString &ffmpegPath,
@@ -750,12 +797,17 @@ void BackendFacade::saveSettings(
 
     m_assistantController->saveSettings(
         endpoint, modelId, defaultMode, autoRouting, streaming, timeoutMs,
+        aecEnabled,
+        rnnoiseEnabled,
+        vadSensitivity,
+        wakeEngineKind,
         whisperPath,
         whisperModelPath,
         preciseEnginePath,
         preciseModelPath,
         preciseThreshold,
         preciseCooldownMs,
+        ttsEngineKind,
         piperPath,
         voicePath,
         ffmpegPath,
@@ -825,7 +877,7 @@ bool BackendFacade::completeInitialSetup(
 {
     const QString normalizedEndpoint = endpoint.trimmed();
     if (normalizedEndpoint.isEmpty()) {
-        setToolInstallStatus(QStringLiteral("LM Studio endpoint is required."));
+        setToolInstallStatus(QStringLiteral("Local AI backend endpoint is required."));
         return false;
     }
 
@@ -911,12 +963,17 @@ bool BackendFacade::completeInitialSetup(
         true,
         true,
         12000,
+        m_settings->aecEnabled(),
+        m_settings->rnnoiseEnabled(),
+        m_settings->vadSensitivity(),
+        m_settings->wakeEngineKind(),
         resolvedWhisper,
         resolvedWhisperModel,
         resolvedPreciseEngine,
         resolvedPreciseModel,
         preciseThreshold,
         preciseCooldownMs,
+        m_settings->ttsEngineKind(),
         resolvedPiper,
         resolvedVoiceModel,
         resolvedFfmpeg,
@@ -960,7 +1017,7 @@ bool BackendFacade::runSetupScenario(
 {
     const QString normalizedEndpoint = endpoint.trimmed();
     if (normalizedEndpoint.isEmpty()) {
-        setToolInstallStatus(QStringLiteral("LM Studio endpoint is required before running a setup scenario."));
+        setToolInstallStatus(QStringLiteral("Local AI backend endpoint is required before running a setup scenario."));
         return false;
     }
 
@@ -1055,12 +1112,17 @@ bool BackendFacade::runSetupScenario(
         true,
         true,
         12000,
+        m_settings->aecEnabled(),
+        m_settings->rnnoiseEnabled(),
+        m_settings->vadSensitivity(),
+        m_settings->wakeEngineKind(),
         resolvedWhisper,
         resolvedWhisperModel,
         resolvedPreciseEngine,
         resolvedPreciseModel,
         preciseThreshold,
         preciseCooldownMs,
+        m_settings->ttsEngineKind(),
         resolvedPiper,
         resolvedVoiceModel,
         resolvedFfmpeg,
@@ -1205,6 +1267,34 @@ void BackendFacade::openContainingDirectory(const QString &path)
     }
 
     QDesktopServices::openUrl(QUrl::fromLocalFile(directoryPath));
+}
+
+void BackendFacade::rescanTools()
+{
+    if (m_toolManager != nullptr) {
+        m_toolManager->rescan();
+    }
+}
+
+void BackendFacade::downloadTool(const QString &name)
+{
+    if (m_toolManager != nullptr) {
+        m_toolManager->downloadTool(name);
+    }
+}
+
+void BackendFacade::downloadModel(const QString &name)
+{
+    if (m_toolManager != nullptr) {
+        m_toolManager->downloadModel(name);
+    }
+}
+
+void BackendFacade::installAllTools()
+{
+    if (m_toolManager != nullptr) {
+        m_toolManager->installAll();
+    }
 }
 
 void BackendFacade::setToolInstallStatus(const QString &status)

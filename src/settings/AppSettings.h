@@ -15,6 +15,15 @@ public:
     bool load();
     bool save() const;
 
+    QString chatBackendKind() const;
+    void setChatBackendKind(const QString &kind);
+
+    QString chatBackendEndpoint() const;
+    void setChatBackendEndpoint(const QString &endpoint);
+
+    QString chatBackendModel() const;
+    void setChatBackendModel(const QString &modelId);
+
     QString lmStudioEndpoint() const;
     void setLmStudioEndpoint(const QString &endpoint);
 
@@ -54,6 +63,15 @@ public:
     QString preciseModelPath() const;
     void setPreciseModelPath(const QString &path);
 
+    bool aecEnabled() const;
+    void setAecEnabled(bool enabled);
+
+    bool rnnoiseEnabled() const;
+    void setRnnoiseEnabled(bool enabled);
+
+    double vadSensitivity() const;
+    void setVadSensitivity(double sensitivity);
+
     double preciseTriggerThreshold() const;
     void setPreciseTriggerThreshold(double threshold);
 
@@ -62,6 +80,9 @@ public:
 
     QString ffmpegExecutable() const;
     void setFfmpegExecutable(const QString &path);
+
+    QString ttsEngineKind() const;
+    void setTtsEngineKind(const QString &kind);
 
     double voiceSpeed() const;
     void setVoiceSpeed(double speed);
@@ -87,12 +108,18 @@ public:
     QString wakeWordPhrase() const;
     void setWakeWordPhrase(const QString &wakeWordPhrase);
 
+    QString wakeEngineKind() const;
+    void setWakeEngineKind(const QString &kind);
+
     QString storagePath() const;
 
 signals:
     void settingsChanged();
 
 private:
+    QString m_chatBackendKind = QStringLiteral("openai_compatible_local");
+    QString m_chatBackendEndpoint;
+    QString m_chatBackendModel;
     QString m_lmStudioEndpoint;
     QString m_selectedModel;
     ReasoningMode m_defaultReasoningMode = ReasoningMode::Balanced;
@@ -106,9 +133,13 @@ private:
     QString m_selectedVoicePresetId = QStringLiteral("en_GB-alba-medium");
     QString m_preciseEngineExecutable;
     QString m_preciseModelPath;
+    bool m_aecEnabled = true;
+    bool m_rnnoiseEnabled = false;
+    double m_vadSensitivity = 0.55;
     double m_preciseTriggerThreshold = 0.30;
     int m_preciseTriggerCooldownMs = 750;
     QString m_ffmpegExecutable;
+    QString m_ttsEngineKind = QStringLiteral("piper");
     double m_voiceSpeed = 0.89;
     double m_voicePitch = 0.93;
     double m_micSensitivity = 0.02;
@@ -117,4 +148,5 @@ private:
     bool m_clickThroughEnabled = true;
     bool m_initialSetupCompleted = false;
     QString m_wakeWordPhrase = QStringLiteral("Jarvis");
+    QString m_wakeEngineKind = QStringLiteral("precise");
 };

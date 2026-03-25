@@ -7,6 +7,7 @@ class AssistantController;
 class AppSettings;
 class IdentityProfileService;
 class OverlayController;
+class ToolManager;
 
 class BackendFacade : public QObject
 {
@@ -29,8 +30,13 @@ class BackendFacade : public QObject
     Q_PROPERTY(bool autoRoutingEnabled READ autoRoutingEnabled NOTIFY settingsChanged)
     Q_PROPERTY(bool streamingEnabled READ streamingEnabled NOTIFY settingsChanged)
     Q_PROPERTY(int requestTimeoutMs READ requestTimeoutMs NOTIFY settingsChanged)
+    Q_PROPERTY(bool aecEnabled READ aecEnabled NOTIFY settingsChanged)
+    Q_PROPERTY(bool rnnoiseEnabled READ rnnoiseEnabled NOTIFY settingsChanged)
+    Q_PROPERTY(double vadSensitivity READ vadSensitivity NOTIFY settingsChanged)
+    Q_PROPERTY(QString wakeEngineKind READ wakeEngineKind NOTIFY settingsChanged)
     Q_PROPERTY(QString whisperExecutable READ whisperExecutable NOTIFY settingsChanged)
     Q_PROPERTY(QString whisperModelPath READ whisperModelPath NOTIFY settingsChanged)
+    Q_PROPERTY(QString ttsEngineKind READ ttsEngineKind NOTIFY settingsChanged)
     Q_PROPERTY(QString piperExecutable READ piperExecutable NOTIFY settingsChanged)
     Q_PROPERTY(QString piperVoiceModel READ piperVoiceModel NOTIFY settingsChanged)
     Q_PROPERTY(QString preciseEngineExecutable READ preciseEngineExecutable NOTIFY settingsChanged)
@@ -56,6 +62,10 @@ class BackendFacade : public QObject
     Q_PROPERTY(QString spokenUserName READ spokenUserName NOTIFY profileChanged)
     Q_PROPERTY(bool initialSetupCompleted READ initialSetupCompleted NOTIFY settingsChanged)
     Q_PROPERTY(QString toolInstallStatus READ toolInstallStatus NOTIFY toolInstallStatusChanged)
+    Q_PROPERTY(QVariantList toolStatuses READ toolStatuses NOTIFY toolStatusesChanged)
+    Q_PROPERTY(int toolDownloadPercent READ toolDownloadPercent NOTIFY toolInstallStatusChanged)
+    Q_PROPERTY(QString activeToolDownloadName READ activeToolDownloadName NOTIFY toolInstallStatusChanged)
+    Q_PROPERTY(QString toolsRoot READ toolsRoot CONSTANT)
     Q_PROPERTY(QString wakeWordPhrase READ wakeWordPhrase NOTIFY settingsChanged)
 
 public:
@@ -84,8 +94,13 @@ public:
     bool autoRoutingEnabled() const;
     bool streamingEnabled() const;
     int requestTimeoutMs() const;
+    bool aecEnabled() const;
+    bool rnnoiseEnabled() const;
+    double vadSensitivity() const;
+    QString wakeEngineKind() const;
     QString whisperExecutable() const;
     QString whisperModelPath() const;
+    QString ttsEngineKind() const;
     QString piperExecutable() const;
     QString piperVoiceModel() const;
     QString preciseEngineExecutable() const;
@@ -111,6 +126,10 @@ public:
     QString spokenUserName() const;
     bool initialSetupCompleted() const;
     QString toolInstallStatus() const;
+    QVariantList toolStatuses() const;
+    int toolDownloadPercent() const;
+    QString activeToolDownloadName() const;
+    QString toolsRoot() const;
     QString wakeWordPhrase() const;
 
     Q_INVOKABLE void toggleOverlay();
@@ -120,6 +139,9 @@ public:
     Q_INVOKABLE void cancelRequest();
     Q_INVOKABLE void setSelectedModel(const QString &modelId);
     Q_INVOKABLE void setSelectedVoicePresetId(const QString &voiceId);
+    Q_INVOKABLE void setWakeEngineKind(const QString &kind);
+    Q_INVOKABLE void setTtsEngineKind(const QString &kind);
+    Q_INVOKABLE void saveAudioProcessing(bool aecEnabled, bool rnnoiseEnabled, double vadSensitivity);
     Q_INVOKABLE void saveWakeDetectionTuning(double preciseThreshold, int preciseCooldownMs);
     Q_INVOKABLE void saveSettings(
         const QString &endpoint,
@@ -128,12 +150,17 @@ public:
         bool autoRouting,
         bool streaming,
         int timeoutMs,
+        bool aecEnabled,
+        bool rnnoiseEnabled,
+        double vadSensitivity,
+        const QString &wakeEngineKind,
         const QString &whisperPath,
         const QString &whisperModelPath,
         const QString &preciseEnginePath,
         const QString &preciseModelPath,
         double preciseThreshold,
         int preciseCooldownMs,
+        const QString &ttsEngineKind,
         const QString &piperPath,
         const QString &voicePath,
         const QString &ffmpegPath,
@@ -190,6 +217,10 @@ public:
         const QString &voicePath,
         const QString &ffmpegPath);
     Q_INVOKABLE void openContainingDirectory(const QString &path);
+    Q_INVOKABLE void rescanTools();
+    Q_INVOKABLE void downloadTool(const QString &name);
+    Q_INVOKABLE void downloadModel(const QString &name);
+    Q_INVOKABLE void installAllTools();
     Q_INVOKABLE bool autoDetectVoiceTools();
     Q_INVOKABLE bool startTrainingSetup();
     Q_INVOKABLE void refreshAudioDevices();
@@ -209,6 +240,7 @@ signals:
     void profileChanged();
     void initialSetupFinished();
     void toolInstallStatusChanged();
+    void toolStatusesChanged();
 
 private:
     void setToolInstallStatus(const QString &status);
@@ -217,5 +249,6 @@ private:
     IdentityProfileService *m_identityProfileService = nullptr;
     AssistantController *m_assistantController = nullptr;
     OverlayController *m_overlayController = nullptr;
+    ToolManager *m_toolManager = nullptr;
     QString m_toolInstallStatus;
 };

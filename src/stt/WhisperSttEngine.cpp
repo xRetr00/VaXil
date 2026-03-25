@@ -40,21 +40,22 @@ void writeWaveHeader(QFile &file, quint32 pcmSize)
 }
 
 WhisperSttEngine::WhisperSttEngine(AppSettings *settings, LoggingService *loggingService, QObject *parent)
-    : QObject(parent)
+    : SpeechRecognizer(parent)
     , m_settings(settings)
     , m_loggingService(loggingService)
 {
 }
 
-void WhisperSttEngine::transcribePcm(const QByteArray &pcmData, const QString &initialPrompt, bool suppressNonSpeechTokens)
+quint64 WhisperSttEngine::transcribePcm(const QByteArray &pcmData, const QString &initialPrompt, bool suppressNonSpeechTokens)
 {
+    const quint64 requestId = ++m_requestCounter;
     if (m_settings->whisperExecutable().isEmpty()) {
         const QString message = QStringLiteral("whisper.cpp executable is not configured");
         if (m_loggingService) {
             m_loggingService->error(message);
         }
-        emit transcriptionFailed(message);
-        return;
+        emit transcriptionFailed(requestId, message);
+        return requestId;
     }
 
     if (m_settings->whisperModelPath().isEmpty()) {
@@ -62,8 +63,8 @@ void WhisperSttEngine::transcribePcm(const QByteArray &pcmData, const QString &i
         if (m_loggingService) {
             m_loggingService->error(message);
         }
-        emit transcriptionFailed(message);
-        return;
+        emit transcriptionFailed(requestId, message);
+        return requestId;
     }
 
     if (!QFileInfo::exists(m_settings->whisperModelPath())) {
@@ -71,8 +72,8 @@ void WhisperSttEngine::transcribePcm(const QByteArray &pcmData, const QString &i
         if (m_loggingService) {
             m_loggingService->error(QStringLiteral("%1: %2").arg(message, m_settings->whisperModelPath()));
         }
-        emit transcriptionFailed(message);
-        return;
+        emit transcriptionFailed(requestId, message);
+        return requestId;
     }
 
     const QString waveFile = writeWaveFile(pcmData);
@@ -81,8 +82,8 @@ void WhisperSttEngine::transcribePcm(const QByteArray &pcmData, const QString &i
         if (m_loggingService) {
             m_loggingService->error(message);
         }
-        emit transcriptionFailed(message);
-        return;
+        emit transcriptionFailed(requestId, message);
+        return requestId;
     }
 
     if (m_loggingService) {
@@ -107,7 +108,7 @@ void WhisperSttEngine::transcribePcm(const QByteArray &pcmData, const QString &i
         }
     });
 
-    connect(process, &QProcess::finished, this, [this, process, waveFile](int exitCode, QProcess::ExitStatus status) {
+    connect(process, &QProcess::finished, this, [this, process, waveFile, requestId](int exitCode, QProcess::ExitStatus status) {
         const auto cleanup = qScopeGuard([process]() { process->deleteLater(); });
         const QString stdoutText = QString::fromUtf8(process->readAllStandardOutput()).trimmed();
         const QString stderrText = QString::fromUtf8(process->readAllStandardError()).trimmed();
@@ -122,7 +123,7 @@ void WhisperSttEngine::transcribePcm(const QByteArray &pcmData, const QString &i
                         .arg(m_settings->whisperExecutable(), m_settings->whisperModelPath(), waveFile, stdoutText, stderrText));
             }
             const QString uiDetailed = stderrText.isEmpty() ? uiMessage : QStringLiteral("%1: %2").arg(uiMessage, stderrText.left(180));
-            emit transcriptionFailed(uiDetailed);
+            emit transcriptionFailed(requestId, uiDetailed);
             return;
         }
 
@@ -144,7 +145,7 @@ void WhisperSttEngine::transcribePcm(const QByteArray &pcmData, const QString &i
                 }
             }
         }
-        emit transcriptionReady({text, text.isEmpty() ? 0.0f : 0.85f});
+        emit transcriptionReady(requestId, {text, text.isEmpty() ? 0.0f : 0.85f});
     });
 
     QStringList arguments{
@@ -163,6 +164,7 @@ void WhisperSttEngine::transcribePcm(const QByteArray &pcmData, const QString &i
     }
 
     process->start(m_settings->whisperExecutable(), arguments);
+    return requestId;
 }
 
 QString WhisperSttEngine::writeWaveFile(const QByteArray &pcmData) const

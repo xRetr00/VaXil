@@ -5,6 +5,7 @@
 #include <string>
 #include <vector>
 
+#include <QMetaType>
 #include <QString>
 
 #include <nlohmann/json.hpp>
@@ -121,3 +122,11 @@ struct LocalResponseContext {
     QString currentDate;
     QString wakeWord;
 };
+
+Q_DECLARE_METATYPE(AiMessage)
+Q_DECLARE_METATYPE(QList<AiMessage>)
+Q_DECLARE_METATYPE(ModelInfo)
+Q_DECLARE_METATYPE(QList<ModelInfo>)
+Q_DECLARE_METATYPE(AiAvailability)
+Q_DECLARE_METATYPE(TranscriptionResult)
+Q_DECLARE_METATYPE(AiRequestOptions)

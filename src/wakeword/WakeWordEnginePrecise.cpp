@@ -16,7 +16,7 @@ constexpr int kProbabilityLogEveryNFrames = 5;
 }
 
 WakeWordEnginePrecise::WakeWordEnginePrecise(LoggingService *loggingService, QObject *parent)
-    : QObject(parent)
+    : WakeWordEngine(parent)
     , m_loggingService(loggingService)
 {
     connect(&m_engineProcess, &QProcess::readyReadStandardOutput, this, &WakeWordEnginePrecise::consumeEngineOutput);

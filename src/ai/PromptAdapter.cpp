@@ -71,7 +71,9 @@ QList<AiMessage> PromptAdapter::buildConversationMessages(
                        "Keep replies concise by default: 1-3 short sentences unless the user asks for detail. "
                        "Prefer direct language over filler. "
                        "When the answer may be spoken aloud, use smooth punctuation for natural pauses. "
-                       "Do not include markdown formatting unless the user explicitly asks for it.")
+                       "Do not include markdown formatting unless the user explicitly asks for it. "
+                       "Return only the final user-facing answer. "
+                       "Do not include chain-of-thought, reasoning tags, analysis headers, role labels, code fences, URLs unless specifically requested, or emojis.")
             .arg(identity.assistantName, identity.personality, identity.tone, identity.addressingStyle);
 
     const QString displayName = resolvedDisplayName(userProfile);
@@ -90,6 +92,7 @@ QList<AiMessage> PromptAdapter::buildConversationMessages(
     systemPrompt += QStringLiteral("\n- If the user asks for steps, return a short numbered list.");
     systemPrompt += QStringLiteral("\n- If the user asks for comparison, present concise tradeoffs.");
     systemPrompt += QStringLiteral("\n- If unsure, state uncertainty briefly and request only missing details.");
+    systemPrompt += QStringLiteral("\n- Spoken-safe output only: no emojis, no markdown-only tokens, and no internal reasoning.");
 
     if (!memory.isEmpty()) {
         systemPrompt += QStringLiteral("\nRelevant user memory:");

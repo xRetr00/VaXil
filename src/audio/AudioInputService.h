@@ -24,6 +24,7 @@ public:
 
     bool start(double sensitivity, const QString &preferredDeviceId = {});
     void stop();
+    void clearRecordedAudio();
     QByteArray recordedPcm() const;
     bool isActive() const;
 

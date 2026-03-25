@@ -5,14 +5,14 @@
 #include "core/AssistantTypes.h"
 
 class AppSettings;
-class LmStudioClient;
+class AiBackendClient;
 
 class ModelCatalogService : public QObject
 {
     Q_OBJECT
 
 public:
-    ModelCatalogService(AppSettings *settings, LmStudioClient *client, QObject *parent = nullptr);
+    ModelCatalogService(AppSettings *settings, AiBackendClient *client, QObject *parent = nullptr);
 
     QList<ModelInfo> models() const;
     AiAvailability availability() const;
@@ -25,7 +25,7 @@ signals:
 
 private:
     AppSettings *m_settings = nullptr;
-    LmStudioClient *m_client = nullptr;
+    AiBackendClient *m_client = nullptr;
     QList<ModelInfo> m_models;
     AiAvailability m_availability;
 };

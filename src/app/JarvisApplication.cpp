@@ -14,12 +14,15 @@
 #include <QWindow>
 #include <functional>
 
+#include "audio/AudioProcessingTypes.h"
 #include "core/AssistantController.h"
+#include "core/AssistantTypes.h"
 #include "gui/BackendFacade.h"
 #include "logging/LoggingService.h"
 #include "overlay/OverlayController.h"
 #include "settings/AppSettings.h"
 #include "settings/IdentityProfileService.h"
+#include "tools/ToolManager.h"
 
 #ifdef Q_OS_WIN
 #include <windows.h>
@@ -66,6 +69,17 @@ JarvisApplication::~JarvisApplication() = default;
 
 bool JarvisApplication::initialize()
 {
+    qRegisterMetaType<AudioFrame>("AudioFrame");
+    qRegisterMetaType<AudioProcessingConfig>("AudioProcessingConfig");
+    qRegisterMetaType<AiMessage>("AiMessage");
+    qRegisterMetaType<QList<AiMessage>>("QList<AiMessage>");
+    qRegisterMetaType<ModelInfo>("ModelInfo");
+    qRegisterMetaType<QList<ModelInfo>>("QList<ModelInfo>");
+    qRegisterMetaType<AiAvailability>("AiAvailability");
+    qRegisterMetaType<TranscriptionResult>("TranscriptionResult");
+    qRegisterMetaType<AiRequestOptions>("AiRequestOptions");
+    qRegisterMetaType<ToolInfo>("ToolInfo");
+
     qInfo() << "Loading settings";
     m_settings = std::make_unique<AppSettings>();
     if (!m_settings->load()) {
