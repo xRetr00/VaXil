@@ -65,6 +65,12 @@ AudioProcessingChain::~AudioProcessingChain()
 void AudioProcessingChain::initialize(const AudioProcessingConfig &config)
 {
     m_config = config;
+    m_nativeProcessingEnabled =
+#ifdef Q_OS_WIN
+        qEnvironmentVariableIntValue("JARVIS_ENABLE_EXPERIMENTAL_AUDIO_DSP") == 1;
+#else
+        true;
+#endif
 
     if (m_vad != nullptr) {
         fvad_free(m_vad);
@@ -93,18 +99,20 @@ void AudioProcessingChain::initialize(const AudioProcessingConfig &config)
         m_rnnoise = nullptr;
     }
 
-    m_echoState = speex_echo_state_init(
-        kProcessFrameSamples,
-        (kProcessSampleRate * kEchoTailMs) / 1000);
-    if (m_echoState != nullptr) {
-        int sampleRate = kProcessSampleRate;
-        speex_echo_ctl(m_echoState, SPEEX_ECHO_SET_SAMPLING_RATE, &sampleRate);
+    if (m_nativeProcessingEnabled) {
+        m_echoState = speex_echo_state_init(
+            kProcessFrameSamples,
+            (kProcessSampleRate * kEchoTailMs) / 1000);
+        if (m_echoState != nullptr) {
+            int sampleRate = kProcessSampleRate;
+            speex_echo_ctl(m_echoState, SPEEX_ECHO_SET_SAMPLING_RATE, &sampleRate);
+        }
+
+        m_preprocessState = speex_preprocess_state_init(kProcessFrameSamples, kProcessSampleRate);
+        configureSpeexPreprocessor();
+
+        m_rnnoise = rnnoise_create(nullptr);
     }
-
-    m_preprocessState = speex_preprocess_state_init(kProcessFrameSamples, kProcessSampleRate);
-    configureSpeexPreprocessor();
-
-    m_rnnoise = rnnoise_create(nullptr);
     initializeSileroVad();
     resetProcessingState();
 }
@@ -121,6 +129,14 @@ AudioFrame AudioProcessingChain::process(const AudioFrame &in)
     }
 
     if (sampleCount != kProcessFrameSamples || in.sampleRate != kProcessSampleRate) {
+        out.speechDetected = detectVoiceActivity(out, false);
+        return out;
+    }
+
+    if (!m_nativeProcessingEnabled) {
+        out.sampleCount = sampleCount;
+        out.sampleRate = in.sampleRate;
+        out.channels = in.channels;
         out.speechDetected = detectVoiceActivity(out, false);
         return out;
     }
@@ -166,7 +182,7 @@ AudioFrame AudioProcessingChain::process(const AudioFrame &in)
 
 void AudioProcessingChain::setFarEnd(const AudioFrame &ttsFrame)
 {
-    if (!m_config.aecEnabled || m_echoState == nullptr || ttsFrame.sampleCount <= 0) {
+    if (!m_nativeProcessingEnabled || !m_config.aecEnabled || m_echoState == nullptr || ttsFrame.sampleCount <= 0) {
         return;
     }
 

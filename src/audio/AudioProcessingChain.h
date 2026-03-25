@@ -54,4 +54,5 @@ private:
     std::array<float, kProcessFrameSamples> m_rnnoiseOutput{};
     std::array<float, AudioFrame::kMaxSamples * 2> m_farEndResampled{};
     int m_farEndPlaybackSampleCount = 0;
+    bool m_nativeProcessingEnabled = false;
 };

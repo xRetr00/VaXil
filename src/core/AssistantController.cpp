@@ -1090,7 +1090,16 @@ void AssistantController::resumeWakeMonitor(int delayMs)
         if (resumeSequence != m_wakeResumeSequence) {
             return;
         }
-        if (!m_wakeMonitorEnabled || !canStartWakeMonitor()) {
+        if (!m_wakeMonitorEnabled) {
+            return;
+        }
+
+        // The wake resume timer is the point where post-TTS cooldown ends.
+        // Lift the mic gate before evaluating whether wake monitoring can start.
+        if (m_duplexState == DuplexState::Cooldown) {
+            setDuplexState(DuplexState::Open);
+        }
+        if (!canStartWakeMonitor()) {
             return;
         }
 
