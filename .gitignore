@@ -51,3 +51,4 @@ __pycache__/
 *.rej
 config/user_profile.json
 bin/logs/
+third_party/
