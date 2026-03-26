@@ -12,11 +12,11 @@ Item {
     property real glow: 0.3
     property real orbScale: 1.0
     property real orbitalRotation: 0.0
-    property int quality: QualityHigh
+    property int quality: qualityHigh
 
-    readonly property int QualityLow: 0
-    readonly property int QualityMedium: 1
-    readonly property int QualityHigh: 2
+    readonly property int qualityLow: 0
+    readonly property int qualityMedium: 1
+    readonly property int qualityHigh: 2
 
     readonly property real stateIndex: stateName === "LISTENING" ? 1.0
         : stateName === "PROCESSING" ? 2.0

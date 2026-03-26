@@ -137,7 +137,7 @@ Window {
                 y: -agentVm.presenceOffsetY * 10 + motion.listeningVibration * 2
                 stateName: agentVm.stateName
                 uiState: agentVm.uiState
-                quality: width < 220 * dpiScale ? QualityMedium : QualityHigh
+                quality: width < 220 * dpiScale ? orb.qualityMedium : orb.qualityHigh
                 time: motion.time
                 audioLevel: motion.inputBoost
                 speakingLevel: motion.speakingSignal

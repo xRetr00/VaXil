@@ -19,15 +19,15 @@ Item {
     property real speakingSignal: speakingTarget
     property real jitterSignal: Math.sin(time * 33.0) * 0.5 + Math.sin(time * 51.0 + 0.7) * 0.5
 
-    readonly property int StateIdle: 0
-    readonly property int StateListening: 1
-    readonly property int StateThinking: 2
-    readonly property int StateExecuting: 3
+    readonly property int stateIdle: 0
+    readonly property int stateListening: 1
+    readonly property int stateThinking: 2
+    readonly property int stateExecuting: 3
 
-    readonly property real idleAmount: uiState === StateIdle ? 1.0 : 0.0
-    readonly property real listeningAmount: uiState === StateListening ? 1.0 : 0.0
-    readonly property real thinkingAmount: uiState === StateThinking ? 1.0 : 0.0
-    readonly property real executingAmount: uiState === StateExecuting ? 1.0 : 0.0
+    readonly property real idleAmount: uiState === stateIdle ? 1.0 : 0.0
+    readonly property real listeningAmount: uiState === stateListening ? 1.0 : 0.0
+    readonly property real thinkingAmount: uiState === stateThinking ? 1.0 : 0.0
+    readonly property real executingAmount: uiState === stateExecuting ? 1.0 : 0.0
     readonly property real inputBoost: Math.min(1.0, smoothedInput * 8.5)
     readonly property real idleBreath: 0.5 + 0.5 * Math.sin(time * 1.05)
     readonly property real orbitalRotation: (time * (22 + thinkingAmount * 78 + executingAmount * 54)) % 360
@@ -52,15 +52,15 @@ Item {
     function mapUiState(name) {
         const normalized = (name || "").toString().trim().toUpperCase()
         if (normalized === "LISTENING") {
-            return StateListening
+            return stateListening
         }
         if (normalized === "PROCESSING" || normalized === "THINKING") {
-            return StateThinking
+            return stateThinking
         }
         if (normalized === "SPEAKING" || normalized === "EXECUTING") {
-            return StateExecuting
+            return stateExecuting
         }
-        return StateIdle
+        return stateIdle
     }
 
     onStateNameChanged: {
