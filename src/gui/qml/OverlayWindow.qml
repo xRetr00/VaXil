@@ -32,6 +32,12 @@ Window {
         : 0
     property real presenceDriftX: agentVm.presenceOffsetX * Math.min(width * 0.04, 34 * dpiScale)
     property real presenceDriftY: agentVm.presenceOffsetY * Math.min(height * 0.03, 24 * dpiScale)
+    property real bgLuma: (0.2126 * palette.window.r) + (0.7152 * palette.window.g) + (0.0722 * palette.window.b)
+    property bool useDarkText: bgLuma > 0.55
+    property color textPrimaryColor: useDarkText ? "#14202c" : "#edf6ff"
+    property color textSecondaryColor: useDarkText ? "#2b4056" : "#bfd3ea"
+    property color textMutedColor: useDarkText ? "#3f5871" : "#7f9fc7"
+    property color textOutlineColor: useDarkText ? "#80ffffff" : "#90060d14"
     property real textShimmerStrength: Math.min(
         0.85,
         0.08
@@ -104,8 +110,10 @@ Window {
             anchors.topMargin: root.pageMargin
             anchors.horizontalCenter: parent.horizontalCenter
             text: agentVm.assistantName + "  |  " + microStatus()
-            color: "#dbeeff"
+            color: root.textPrimaryColor
             opacity: 0.78
+            style: Text.Outline
+            styleColor: root.textOutlineColor
             font.pixelSize: Math.round(12 * root.dpiScale)
             font.letterSpacing: 1.8
         }
@@ -143,11 +151,13 @@ Window {
                             Layout.fillWidth: true
                             horizontalAlignment: Text.AlignHCenter
                             text: presenceLine()
-                            color: "#edf6ff"
+                            color: root.textPrimaryColor
                             font.pixelSize: Math.round(Math.max(18 * root.dpiScale, Math.min(root.shortEdge * 0.03, 28 * root.dpiScale)))
                             wrapMode: Text.Wrap
                             maximumLineCount: 2
                             elide: Text.ElideRight
+                            style: Text.Outline
+                            styleColor: root.textOutlineColor
                             layer.enabled: root.visible
                             layer.smooth: true
                             layer.effect: ShaderEffect {
@@ -165,11 +175,13 @@ Window {
                             horizontalAlignment: Text.AlignHCenter
                             text: compactText(agentVm.statusText, "")
                             visible: text.length > 0 && text !== presenceLine()
-                            color: "#7f9fc7"
+                            color: root.textMutedColor
                             font.pixelSize: Math.round(12 * root.dpiScale)
                             wrapMode: Text.Wrap
                             maximumLineCount: 1
                             elide: Text.ElideRight
+                            style: Text.Outline
+                            styleColor: root.textOutlineColor
                         }
                     }
                 }
@@ -230,7 +242,9 @@ Window {
                     Text {
                         Layout.fillWidth: true
                         text: "Background Results"
-                        color: "#eef7ff"
+                        color: root.textPrimaryColor
+                        style: Text.Outline
+                        styleColor: root.textOutlineColor
                         font.pixelSize: Math.round(20 * root.dpiScale)
                         font.weight: Font.Medium
                     }
@@ -273,9 +287,11 @@ Window {
                                     Text {
                                         Layout.fillWidth: true
                                         text: resultCard.modelData.finishedAt + "  " + resultCard.modelData.title
-                                        color: "#edf6ff"
+                                        color: root.textPrimaryColor
                                         font.pixelSize: Math.round(13 * root.dpiScale)
                                         wrapMode: Text.Wrap
+                                        style: Text.Outline
+                                        styleColor: root.textOutlineColor
                                     }
 
                                     Text {
@@ -289,9 +305,11 @@ Window {
                                     Text {
                                         Layout.fillWidth: true
                                         text: resultCard.modelData.detail
-                                        color: "#bfd3ea"
+                                        color: root.textSecondaryColor
                                         font.pixelSize: Math.round(12 * root.dpiScale)
                                         wrapMode: Text.Wrap
+                                        style: Text.Outline
+                                        styleColor: root.textOutlineColor
                                     }
 
                                     TextArea {
@@ -299,7 +317,7 @@ Window {
                                         readOnly: true
                                         wrapMode: TextArea.Wrap
                                         text: resultCard.modelData.payload
-                                        color: "#dcecff"
+                                        color: root.textPrimaryColor
                                         background: Rectangle {
                                             radius: 12 * root.dpiScale
                                             color: "#0b1520"

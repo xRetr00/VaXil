@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- Added computer-control agent tools and background tasks for opening URLs, listing and launching installed Windows apps, creating text files outside the workspace, and setting local timers.
+
+### Changed
+
+- Expanded hybrid agent prompting and routing so browser/app/timer/desktop-file requests are sent through the agent tool path instead of plain conversation mode.
+- Added a direct Responses API tool-calling entry path when the selected model/backend reports tool capability, while preserving the existing hybrid JSON fallback.
+
 ### Documentation
 
 - Updated README and docs to match current codebase behavior and module layout.
