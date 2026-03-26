@@ -12,7 +12,7 @@ Window {
     minimumWidth: 900
     minimumHeight: 720
     visible: false
-    title: backend.assistantName + " Setup"
+    title: settingsVm.assistantName + " Setup"
     color: "#050912"
 
     property real dpiScale: Math.max(1.0, Screen.devicePixelRatio)
@@ -20,29 +20,29 @@ Window {
     property int stepIndex: 0
 
     function syncVoiceFieldsFromBackend() {
-        whisperPathField.text = backend.whisperExecutable
-        whisperModelPathField.text = backend.whisperModelPath
-        intentModelPathField.text = backend.intentModelPath
-        piperPathField.text = backend.piperExecutable
-        voicePathField.text = backend.piperVoiceModel
-        ffmpegPathField.text = backend.ffmpegExecutable
+        whisperPathField.text = settingsVm.whisperExecutable
+        whisperModelPathField.text = settingsVm.whisperModelPath
+        intentModelPathField.text = settingsVm.intentModelPath
+        piperPathField.text = settingsVm.piperExecutable
+        voicePathField.text = settingsVm.piperVoiceModel
+        ffmpegPathField.text = settingsVm.ffmpegExecutable
 
-        const modelIndex = backend.models.indexOf(backend.selectedModel)
+        const modelIndex = settingsVm.models.indexOf(settingsVm.selectedModel)
         modelCombo.currentIndex = modelIndex >= 0 ? modelIndex : 0
 
-        const voiceIndex = backend.voicePresetIds.indexOf(backend.selectedVoicePresetId)
+        const voiceIndex = settingsVm.voicePresetIds.indexOf(settingsVm.selectedVoicePresetId)
         voicePresetCombo.currentIndex = voiceIndex >= 0 ? voiceIndex : 0
 
-        const whisperModelIndex = backend.whisperModelPresetIds.indexOf(backend.selectedWhisperModelPresetId)
+        const whisperModelIndex = settingsVm.whisperModelPresetIds.indexOf(settingsVm.selectedWhisperModelPresetId)
         whisperModelPresetCombo.currentIndex = whisperModelIndex >= 0 ? whisperModelIndex : 1
 
-        const intentModelIndex = backend.intentModelPresetIds.indexOf(backend.selectedIntentModelId)
+        const intentModelIndex = settingsVm.intentModelPresetIds.indexOf(settingsVm.selectedIntentModelId)
         intentModelCombo.currentIndex = intentModelIndex >= 0 ? intentModelIndex : 0
 
-        const inputIndex = backend.audioInputDeviceIds.indexOf(backend.selectedAudioInputDeviceId)
+        const inputIndex = settingsVm.audioInputDeviceIds.indexOf(settingsVm.selectedAudioInputDeviceId)
         inputDeviceCombo.currentIndex = inputIndex >= 0 ? inputIndex : 0
 
-        const outputIndex = backend.audioOutputDeviceIds.indexOf(backend.selectedAudioOutputDeviceId)
+        const outputIndex = settingsVm.audioOutputDeviceIds.indexOf(settingsVm.selectedAudioOutputDeviceId)
         outputDeviceCombo.currentIndex = outputIndex >= 0 ? outputIndex : 0
     }
 
@@ -53,15 +53,15 @@ Window {
 
     onVisibleChanged: {
         if (visible) {
-            backend.refreshAudioDevices()
-            backend.refreshModels()
-            backend.rescanTools()
+            settingsVm.refreshAudioDevices()
+            settingsVm.refreshModels()
+            settingsVm.rescanTools()
             syncVoiceFieldsFromBackend()
         }
     }
 
     Connections {
-        target: backend
+        target: settingsVm
         function onModelsChanged() {
             wizard.syncVoiceFieldsFromBackend()
         }
@@ -131,7 +131,7 @@ Window {
 
                 Text {
                     width: parent.width
-                    text: backend.assistantName + " Setup"
+                    text: settingsVm.assistantName + " Setup"
                     color: "#eef7ff"
                     font.pixelSize: 30
                     font.weight: Font.Medium
@@ -150,7 +150,7 @@ Window {
                 Button {
                     width: parent.width
                     text: "Open Tools & Stores"
-                    onClicked: backend.openToolsHub()
+                    onClicked: settingsVm.openToolsHub()
                 }
 
                 Column {
@@ -254,7 +254,7 @@ Window {
                         TextField {
                             id: userNameField
                             Layout.fillWidth: true
-                            text: backend.userName
+                            text: settingsVm.userName
                             placeholderText: "Name used across interface and voice replies"
                         }
                         }
@@ -268,7 +268,7 @@ Window {
                         TextField {
                             id: endpointField
                             Layout.fillWidth: true
-                            text: backend.lmStudioEndpoint
+                            text: settingsVm.lmStudioEndpoint
                         }
 
                         RowLayout {
@@ -276,13 +276,13 @@ Window {
 
                             Button {
                                 text: "Refresh models"
-                                onClicked: backend.refreshModels()
+                                onClicked: settingsVm.refreshModels()
                             }
 
                             ComboBox {
                                 id: modelCombo
                                 Layout.fillWidth: true
-                                model: backend.models
+                                model: settingsVm.models
                             }
                         }
 
@@ -300,22 +300,22 @@ Window {
                             ComboBox {
                                 id: intentModelCombo
                                 Layout.fillWidth: true
-                                model: backend.intentModelPresetNames
+                                model: settingsVm.intentModelPresetNames
                                 onActivated: {
-                                    backend.setSelectedIntentModelId(backend.intentModelPresetIds[currentIndex])
-                                    intentModelPathField.text = backend.intentModelPath
+                                    settingsVm.setSelectedIntentModelId(settingsVm.intentModelPresetIds[currentIndex])
+                                    intentModelPathField.text = settingsVm.intentModelPath
                                 }
                             }
 
                             Button {
                                 text: "Download"
-                                onClicked: backend.downloadModel(backend.intentModelPresetIds[intentModelCombo.currentIndex])
+                                onClicked: settingsVm.downloadModel(settingsVm.intentModelPresetIds[intentModelCombo.currentIndex])
                             }
                         }
 
                         Text {
                             Layout.fillWidth: true
-                            text: "Recommended: " + backend.recommendedIntentModelLabel + "\n" + backend.intentHardwareSummary
+                            text: "Recommended: " + settingsVm.recommendedIntentModelLabel + "\n" + settingsVm.intentHardwareSummary
                             color: "#9ab0ca"
                             font.pixelSize: 12
                             wrapMode: Text.Wrap
@@ -324,11 +324,11 @@ Window {
                         Text { text: "Intent model path"; color: "#d0e3f5"; font.pixelSize: 13 }
                         RowLayout {
                             Layout.fillWidth: true
-                            TextField { id: intentModelPathField; Layout.fillWidth: true; text: backend.intentModelPath; readOnly: true }
+                            TextField { id: intentModelPathField; Layout.fillWidth: true; text: settingsVm.intentModelPath; readOnly: true }
                             Button {
                                 text: "Open Dir"
                                 enabled: intentModelPathField.text.length > 0
-                                onClicked: backend.openContainingDirectory(intentModelPathField.text)
+                                onClicked: settingsVm.openContainingDirectory(intentModelPathField.text)
                             }
                         }
                         }
@@ -344,21 +344,21 @@ Window {
                         Text { text: "whisper.cpp executable"; color: "#d0e3f5"; font.pixelSize: 13 }
                         RowLayout {
                             Layout.fillWidth: true
-                            TextField { id: whisperPathField; Layout.fillWidth: true; text: backend.whisperExecutable }
-                            Button { text: "Open Dir"; onClicked: backend.openContainingDirectory(whisperPathField.text) }
+                            TextField { id: whisperPathField; Layout.fillWidth: true; text: settingsVm.whisperExecutable }
+                            Button { text: "Open Dir"; onClicked: settingsVm.openContainingDirectory(whisperPathField.text) }
                         }
 
                         RowLayout {
                             Layout.fillWidth: true
-                            Button { text: "Auto Detect"; onClicked: { backend.autoDetectVoiceTools(); wizard.syncVoiceFieldsFromBackend() } }
-                            Button { text: "Install Stack"; onClicked: backend.installAllTools() }
+                            Button { text: "Auto Detect"; onClicked: { settingsVm.autoDetectVoiceTools(); wizard.syncVoiceFieldsFromBackend() } }
+                            Button { text: "Install Stack"; onClicked: settingsVm.installAllTools() }
                         }
 
                         Text { text: "Whisper model"; color: "#d0e3f5"; font.pixelSize: 13 }
                         RowLayout {
                             Layout.fillWidth: true
-                            TextField { id: whisperModelPathField; Layout.fillWidth: true; text: backend.whisperModelPath }
-                            Button { text: "Open Dir"; onClicked: backend.openContainingDirectory(whisperModelPathField.text) }
+                            TextField { id: whisperModelPathField; Layout.fillWidth: true; text: settingsVm.whisperModelPath }
+                            Button { text: "Open Dir"; onClicked: settingsVm.openContainingDirectory(whisperModelPathField.text) }
                         }
                         Text { text: "Official Whisper model"; color: "#d0e3f5"; font.pixelSize: 13 }
                         RowLayout {
@@ -366,16 +366,16 @@ Window {
                             ComboBox {
                                 id: whisperModelPresetCombo
                                 Layout.fillWidth: true
-                                model: backend.whisperModelPresetNames
+                                model: settingsVm.whisperModelPresetNames
                                 Component.onCompleted: {
-                                    const index = backend.whisperModelPresetIds.indexOf(backend.selectedWhisperModelPresetId)
+                                    const index = settingsVm.whisperModelPresetIds.indexOf(settingsVm.selectedWhisperModelPresetId)
                                     currentIndex = index >= 0 ? index : 1
                                 }
                             }
                             Button {
                                 text: "Download"
                                 onClicked: {
-                                    backend.downloadWhisperModel(backend.whisperModelPresetIds[whisperModelPresetCombo.currentIndex])
+                                    settingsVm.downloadWhisperModel(settingsVm.whisperModelPresetIds[whisperModelPresetCombo.currentIndex])
                                     wizard.syncVoiceFieldsFromBackend()
                                 }
                             }
@@ -390,15 +390,15 @@ Window {
                         Text { text: "Piper executable"; color: "#d0e3f5"; font.pixelSize: 13 }
                         RowLayout {
                             Layout.fillWidth: true
-                            TextField { id: piperPathField; Layout.fillWidth: true; text: backend.piperExecutable }
-                            Button { text: "Open Dir"; onClicked: backend.openContainingDirectory(piperPathField.text) }
+                            TextField { id: piperPathField; Layout.fillWidth: true; text: settingsVm.piperExecutable }
+                            Button { text: "Open Dir"; onClicked: settingsVm.openContainingDirectory(piperPathField.text) }
                         }
 
                         Text { text: "Piper voice model"; color: "#d0e3f5"; font.pixelSize: 13 }
                         RowLayout {
                             Layout.fillWidth: true
-                            TextField { id: voicePathField; Layout.fillWidth: true; text: backend.piperVoiceModel }
-                            Button { text: "Open Dir"; onClicked: backend.openContainingDirectory(voicePathField.text) }
+                            TextField { id: voicePathField; Layout.fillWidth: true; text: settingsVm.piperVoiceModel }
+                            Button { text: "Open Dir"; onClicked: settingsVm.openContainingDirectory(voicePathField.text) }
                         }
 
                         Text { text: "Official Piper voice"; color: "#d0e3f5"; font.pixelSize: 13 }
@@ -408,15 +408,15 @@ Window {
                             ComboBox {
                                 id: voicePresetCombo
                                 Layout.fillWidth: true
-                                model: backend.voicePresetNames
-                                onActivated: backend.setSelectedVoicePresetId(backend.voicePresetIds[currentIndex])
+                                model: settingsVm.voicePresetNames
+                                onActivated: settingsVm.setSelectedVoicePresetId(settingsVm.voicePresetIds[currentIndex])
                             }
 
                             Button {
                                 text: "Download"
                                 onClicked: {
-                                    backend.setSelectedVoicePresetId(backend.voicePresetIds[voicePresetCombo.currentIndex])
-                                    backend.downloadVoiceModel(backend.voicePresetIds[voicePresetCombo.currentIndex])
+                                    settingsVm.setSelectedVoicePresetId(settingsVm.voicePresetIds[voicePresetCombo.currentIndex])
+                                    settingsVm.downloadVoiceModel(settingsVm.voicePresetIds[voicePresetCombo.currentIndex])
                                     wizard.syncVoiceFieldsFromBackend()
                                 }
                             }
@@ -432,8 +432,8 @@ Window {
                         Text { text: "ffmpeg executable"; color: "#d0e3f5"; font.pixelSize: 13 }
                         RowLayout {
                             Layout.fillWidth: true
-                            TextField { id: ffmpegPathField; Layout.fillWidth: true; text: backend.ffmpegExecutable }
-                            Button { text: "Open Dir"; onClicked: backend.openContainingDirectory(ffmpegPathField.text) }
+                            TextField { id: ffmpegPathField; Layout.fillWidth: true; text: settingsVm.ffmpegExecutable }
+                            Button { text: "Open Dir"; onClicked: settingsVm.openContainingDirectory(ffmpegPathField.text) }
                         }
 
                         RowLayout {
@@ -441,14 +441,14 @@ Window {
                             CheckBox {
                                 id: wizardAecCheck
                                 text: "AEC enabled"
-                                checked: backend.aecEnabled
-                                onToggled: backend.saveAudioProcessing(checked, wizardRnnoiseCheck.checked, wizardVadSlider.value)
+                                checked: settingsVm.aecEnabled
+                                onToggled: settingsVm.saveAudioProcessing(checked, wizardRnnoiseCheck.checked, wizardVadSlider.value)
                             }
                             CheckBox {
                                 id: wizardRnnoiseCheck
                                 text: "RNNoise enabled"
-                                checked: backend.rnnoiseEnabled
-                                onToggled: backend.saveAudioProcessing(wizardAecCheck.checked, checked, wizardVadSlider.value)
+                                checked: settingsVm.rnnoiseEnabled
+                                onToggled: settingsVm.saveAudioProcessing(wizardAecCheck.checked, checked, wizardVadSlider.value)
                             }
                         }
 
@@ -458,22 +458,22 @@ Window {
                             Layout.fillWidth: true
                             from: 0.05
                             to: 0.95
-                            value: backend.vadSensitivity
-                            onPressedChanged: if (!pressed) backend.saveAudioProcessing(wizardAecCheck.checked, wizardRnnoiseCheck.checked, value)
+                            value: settingsVm.vadSensitivity
+                            onPressedChanged: if (!pressed) settingsVm.saveAudioProcessing(wizardAecCheck.checked, wizardRnnoiseCheck.checked, value)
                         }
 
                         Text { text: "Input device (microphone)"; color: "#d0e3f5"; font.pixelSize: 13 }
                         ComboBox {
                             id: inputDeviceCombo
                             Layout.fillWidth: true
-                            model: backend.audioInputDeviceNames
+                            model: settingsVm.audioInputDeviceNames
                         }
 
                         Text { text: "Output device (speaker/headset)"; color: "#d0e3f5"; font.pixelSize: 13 }
                         ComboBox {
                             id: outputDeviceCombo
                             Layout.fillWidth: true
-                            model: backend.audioOutputDeviceNames
+                            model: settingsVm.audioOutputDeviceNames
                         }
 
                         }
@@ -494,7 +494,7 @@ Window {
 
                             Text {
                                 anchors.centerIn: parent
-                                text: backend.wakeWordPhrase
+                                text: settingsVm.wakeWordPhrase
                                 color: "#e7f7ff"
                                 font.pixelSize: 22
                                 font.weight: Font.Medium
@@ -532,8 +532,8 @@ Window {
 
                         Text {
                             Layout.fillWidth: true
-                            text: backend.toolInstallStatus.length > 0
-                                  ? backend.toolInstallStatus
+                            text: settingsVm.toolInstallStatus.length > 0
+                                  ? settingsVm.toolInstallStatus
                                   : "Use Auto Detect after installing tools so the current local paths are populated."
                             color: "#9ab0ca"
                             font.pixelSize: 12
@@ -543,7 +543,7 @@ Window {
                         CheckBox {
                             id: clickThroughCheck
                             text: "Enable click-through overlay by default"
-                            checked: backend.clickThroughEnabled
+                            checked: settingsVm.clickThroughEnabled
                         }
                         }
 
@@ -559,14 +559,14 @@ Window {
                         }
 
                         Text {
-                            text: "1. Say: \"" + backend.wakeWordPhrase + "\""
+                            text: "1. Say: \"" + settingsVm.wakeWordPhrase + "\""
                             color: "#eef7ff"
                             font.pixelSize: 18
                             wrapMode: Text.Wrap
                         }
 
                         Text {
-                            text: "2. Say: \"" + backend.wakeWordPhrase + ", what's the time now?\""
+                            text: "2. Say: \"" + settingsVm.wakeWordPhrase + ", what's the time now?\""
                             color: "#eef7ff"
                             font.pixelSize: 18
                             wrapMode: Text.Wrap
@@ -584,13 +584,13 @@ Window {
 
                             Button {
                                 text: "Start mic test"
-                                onClicked: backend.startListening()
+                                onClicked: settingsVm.startListening()
                             }
 
                             Button {
                                 text: "Test Jarvis"
                                 onClicked: {
-                                    if (!backend.runSetupScenario(
+                                    if (!settingsVm.runSetupScenario(
                                             userNameField.text,
                                             endpointField.text,
                                             modelCombo.currentText,
@@ -598,13 +598,13 @@ Window {
                                             whisperModelPathField.text,
                                             "",
                                             "",
-                                            backend.preciseTriggerThreshold,
-                                            backend.preciseTriggerCooldownMs,
+                                            settingsVm.preciseTriggerThreshold,
+                                            settingsVm.preciseTriggerCooldownMs,
                                             piperPathField.text,
                                             voicePathField.text,
                                             ffmpegPathField.text,
-                                            inputDeviceCombo.currentIndex >= 0 ? backend.audioInputDeviceIds[inputDeviceCombo.currentIndex] : "",
-                                            outputDeviceCombo.currentIndex >= 0 ? backend.audioOutputDeviceIds[outputDeviceCombo.currentIndex] : "",
+                                            inputDeviceCombo.currentIndex >= 0 ? settingsVm.audioInputDeviceIds[inputDeviceCombo.currentIndex] : "",
+                                            outputDeviceCombo.currentIndex >= 0 ? settingsVm.audioOutputDeviceIds[outputDeviceCombo.currentIndex] : "",
                                             clickThroughCheck.checked,
                                             "wakeword_ready")) {
                                         wizard.stepIndex = 3
@@ -615,7 +615,7 @@ Window {
                             Button {
                                 text: "Test time query"
                                 onClicked: {
-                                    if (!backend.runSetupScenario(
+                                    if (!settingsVm.runSetupScenario(
                                             userNameField.text,
                                             endpointField.text,
                                             modelCombo.currentText,
@@ -623,13 +623,13 @@ Window {
                                             whisperModelPathField.text,
                                             "",
                                             "",
-                                            backend.preciseTriggerThreshold,
-                                            backend.preciseTriggerCooldownMs,
+                                            settingsVm.preciseTriggerThreshold,
+                                            settingsVm.preciseTriggerCooldownMs,
                                             piperPathField.text,
                                             voicePathField.text,
                                             ffmpegPathField.text,
-                                            inputDeviceCombo.currentIndex >= 0 ? backend.audioInputDeviceIds[inputDeviceCombo.currentIndex] : "",
-                                            outputDeviceCombo.currentIndex >= 0 ? backend.audioOutputDeviceIds[outputDeviceCombo.currentIndex] : "",
+                                            inputDeviceCombo.currentIndex >= 0 ? settingsVm.audioInputDeviceIds[inputDeviceCombo.currentIndex] : "",
+                                            outputDeviceCombo.currentIndex >= 0 ? settingsVm.audioOutputDeviceIds[outputDeviceCombo.currentIndex] : "",
                                             clickThroughCheck.checked,
                                             "wakeword_time")) {
                                         wizard.stepIndex = 3
@@ -640,7 +640,7 @@ Window {
 
                         Text {
                             Layout.fillWidth: true
-                            text: backend.toolInstallStatus.length > 0 ? backend.toolInstallStatus : "Run the tests before finishing setup."
+                            text: settingsVm.toolInstallStatus.length > 0 ? settingsVm.toolInstallStatus : "Run the tests before finishing setup."
                             color: "#9ab0ca"
                             font.pixelSize: 12
                             wrapMode: Text.Wrap
@@ -654,14 +654,14 @@ Window {
 
                         RowLayout {
                             Layout.fillWidth: true
-                            Button { text: "Rescan"; onClicked: backend.rescanTools() }
-                            Button { text: "Auto Detect"; onClicked: { backend.autoDetectVoiceTools(); wizard.syncVoiceFieldsFromBackend() } }
-                            Button { text: "Install All"; onClicked: backend.installAllTools() }
+                            Button { text: "Rescan"; onClicked: settingsVm.rescanTools() }
+                            Button { text: "Auto Detect"; onClicked: { settingsVm.autoDetectVoiceTools(); wizard.syncVoiceFieldsFromBackend() } }
+                            Button { text: "Install All"; onClicked: settingsVm.installAllTools() }
                         }
 
                         Text {
                             Layout.fillWidth: true
-                            text: backend.toolInstallStatus.length > 0 ? backend.toolInstallStatus : "No active download."
+                            text: settingsVm.toolInstallStatus.length > 0 ? settingsVm.toolInstallStatus : "No active download."
                             color: "#9ab0ca"
                             font.pixelSize: 12
                             wrapMode: Text.Wrap
@@ -669,14 +669,14 @@ Window {
 
                         ProgressBar {
                             Layout.fillWidth: true
-                            visible: backend.toolDownloadPercent >= 0
+                            visible: settingsVm.toolDownloadPercent >= 0
                             from: 0
                             to: 100
-                            value: backend.toolDownloadPercent >= 0 ? backend.toolDownloadPercent : 0
+                            value: settingsVm.toolDownloadPercent >= 0 ? settingsVm.toolDownloadPercent : 0
                         }
 
                         Repeater {
-                            model: backend.toolStatuses
+                            model: settingsVm.toolStatuses
 
                             delegate: Rectangle {
                                 required property var modelData
@@ -697,7 +697,7 @@ Window {
                                     Button {
                                         visible: modelData.downloadable === true && modelData.installed !== true
                                         text: "Download"
-                                        onClicked: backend.downloadTool(modelData.name)
+                                        onClicked: settingsVm.downloadTool(modelData.name)
                                     }
                                 }
                             }
@@ -721,7 +721,7 @@ Window {
                         visible: wizard.stepIndex === 4
                         text: "Quick test"
                         onClicked: {
-                            if (!backend.runSetupScenario(
+                            if (!settingsVm.runSetupScenario(
                                     userNameField.text,
                                     endpointField.text,
                                     modelCombo.currentText,
@@ -729,13 +729,13 @@ Window {
                                     whisperModelPathField.text,
                                     "",
                                     "",
-                                    backend.preciseTriggerThreshold,
-                                    backend.preciseTriggerCooldownMs,
+                                    settingsVm.preciseTriggerThreshold,
+                                    settingsVm.preciseTriggerCooldownMs,
                                     piperPathField.text,
                                     voicePathField.text,
                                     ffmpegPathField.text,
-                                    inputDeviceCombo.currentIndex >= 0 ? backend.audioInputDeviceIds[inputDeviceCombo.currentIndex] : "",
-                                    outputDeviceCombo.currentIndex >= 0 ? backend.audioOutputDeviceIds[outputDeviceCombo.currentIndex] : "",
+                                    inputDeviceCombo.currentIndex >= 0 ? settingsVm.audioInputDeviceIds[inputDeviceCombo.currentIndex] : "",
+                                    outputDeviceCombo.currentIndex >= 0 ? settingsVm.audioOutputDeviceIds[outputDeviceCombo.currentIndex] : "",
                                     clickThroughCheck.checked,
                                     "wakeword_ready")) {
                                 wizard.stepIndex = 3
@@ -751,7 +751,7 @@ Window {
                                 return
                             }
 
-                            if (!backend.completeInitialSetup(
+                            if (!settingsVm.completeInitialSetup(
                                     userNameField.text,
                                     endpointField.text,
                                     modelCombo.currentText,
@@ -759,13 +759,13 @@ Window {
                                     whisperModelPathField.text,
                                     "",
                                     "",
-                                    backend.preciseTriggerThreshold,
-                                    backend.preciseTriggerCooldownMs,
+                                    settingsVm.preciseTriggerThreshold,
+                                    settingsVm.preciseTriggerCooldownMs,
                                     piperPathField.text,
                                     voicePathField.text,
                                     ffmpegPathField.text,
-                                    inputDeviceCombo.currentIndex >= 0 ? backend.audioInputDeviceIds[inputDeviceCombo.currentIndex] : "",
-                                    outputDeviceCombo.currentIndex >= 0 ? backend.audioOutputDeviceIds[outputDeviceCombo.currentIndex] : "",
+                                    inputDeviceCombo.currentIndex >= 0 ? settingsVm.audioInputDeviceIds[inputDeviceCombo.currentIndex] : "",
+                                    outputDeviceCombo.currentIndex >= 0 ? settingsVm.audioOutputDeviceIds[outputDeviceCombo.currentIndex] : "",
                                     clickThroughCheck.checked)) {
                                 wizard.stepIndex = 2
                             }
@@ -776,3 +776,4 @@ Window {
         }
     }
 }
+

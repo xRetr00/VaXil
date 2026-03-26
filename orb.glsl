@@ -1,25 +1,18 @@
-#version 440
-
-layout(location = 0) in vec2 qt_TexCoord0;
-layout(location = 0) out vec4 fragColor;
-
-layout(std140, binding = 0) uniform buf {
-    mat4 qt_Matrix;
-    float qt_Opacity;
-    float time;
-    float audioLevel;
-    float orbState;
-    float quality;
-    vec2 resolution;
-    float speaking;
-    float distortion;
-    float glow;
-    float pulseAmount;
-    float flicker;
-} ubuf;
+// Qt ShaderEffect-compatible reference version of the orb shader.
 
 #define MAX_DISTANCE 4.0
 #define SURFACE_DISTANCE 0.0025
+
+uniform float time;
+uniform vec2 resolution;
+uniform float audioLevel;
+uniform float orbState;
+uniform float quality;
+uniform float speaking;
+uniform float distortion;
+uniform float glow;
+uniform float pulseAmount;
+uniform float flicker;
 
 struct Hit
 {
@@ -62,32 +55,32 @@ float noise(vec3 p)
 
 float stateAmount(float target)
 {
-    return clamp(1.0 - abs(ubuf.orbState - target), 0.0, 1.0);
+    return clamp(1.0 - abs(orbState - target), 0.0, 1.0);
 }
 
 float pulseValue(float audioReactive, float thinkingAmount, float executingAmount)
 {
     float speed = 1.0 + thinkingAmount * 0.75 + executingAmount * 1.2;
-    return 0.5 + 0.5 * sin(ubuf.time * speed + audioReactive * 3.0);
+    return 0.5 + 0.5 * sin(time * speed + audioReactive * 3.0);
 }
 
 float sdf(vec3 point, float audioReactive, float listeningAmount, float thinkingAmount, float executingAmount)
 {
     float motionSpeed = 0.3 + thinkingAmount * 0.35 + executingAmount * 0.18;
-    vec3 p = vec3(point.xy, ubuf.time * motionSpeed + point.z);
+    vec3 p = vec3(point.xy, time * motionSpeed + point.z);
     p += vec3(
-        sin(ubuf.time + p.y),
-        cos(ubuf.time + p.x),
-        sin(ubuf.time * 0.5)
+        sin(time + p.y),
+        cos(time + p.x),
+        sin(time * 0.5)
     ) * 0.2;
     p.xy += vec2(
-        noise(vec3(point.yx * 1.4, ubuf.time * 0.14)),
-        noise(vec3(point.xy * 1.1 + 4.3, -ubuf.time * 0.11))
+        noise(vec3(point.yx * 1.4, time * 0.14)),
+        noise(vec3(point.xy * 1.1 + 4.3, -time * 0.11))
     ) * 0.08;
 
-    float n0 = noise(p * 1.35 + vec3(0.0, 0.0, ubuf.time * 0.12));
-    float n1 = noise((p.yzx + vec3(ubuf.time * 0.11, -ubuf.time * 0.07, ubuf.time * 0.09)) * 2.45);
-    float n2 = noise((p.zxy + vec3(-ubuf.time * 0.08, ubuf.time * 0.13, -ubuf.time * 0.05)) * 3.7);
+    float n0 = noise(p * 1.35 + vec3(0.0, 0.0, time * 0.12));
+    float n1 = noise((p.yzx + vec3(time * 0.11, -time * 0.07, time * 0.09)) * 2.45);
+    float n2 = noise((p.zxy + vec3(-time * 0.08, time * 0.13, -time * 0.05)) * 3.7);
     float n = n0 * 0.58 + n1 * 0.30 + n2 * 0.12;
 
     float audioInfluence = audioReactive * 0.3;
@@ -97,8 +90,8 @@ float sdf(vec3 point, float audioReactive, float listeningAmount, float thinking
 
     vec3 listenWarp = point;
     listenWarp.xy += vec2(
-        sin(point.y * 14.0 + ubuf.time * 22.0),
-        cos(point.x * 12.0 + ubuf.time * 18.0)
+        sin(point.y * 14.0 + time * 22.0),
+        cos(point.x * 12.0 + time * 18.0)
     ) * 0.008 * listeningAmount * (1.0 + audioReactive);
 
     return length(listenWarp) - radius - n * field;
@@ -147,39 +140,39 @@ Hit raymarch(vec3 origin, vec3 direction, int steps, float audioReactive, float 
 
 void main()
 {
-    vec2 safeResolution = max(ubuf.resolution, vec2(1.0, 1.0));
+    vec2 safeResolution = max(resolution, vec2(1.0, 1.0));
     vec2 uv = qt_TexCoord0 * 2.0 - 1.0;
     uv.x *= safeResolution.x / safeResolution.y;
 
     float radius = length(uv);
     if (radius > 1.08) {
-        fragColor = vec4(0.0);
+        gl_FragColor = vec4(0.0);
         return;
     }
 
-    float audioReactive = clamp(max(ubuf.audioLevel, ubuf.speaking * 0.9), 0.0, 1.0);
+    float audioReactive = clamp(max(audioLevel, speaking * 0.9), 0.0, 1.0);
     float listeningAmount = stateAmount(1.0);
     float thinkingAmount = stateAmount(2.0);
     float executingAmount = stateAmount(3.0);
     float idleAmount = stateAmount(0.0);
 
     vec2 distortedUv = uv;
-    distortedUv += sin(distortedUv.yx * 4.0 + ubuf.time) * 0.02 * audioReactive;
+    distortedUv += sin(distortedUv.yx * 4.0 + time) * 0.02 * audioReactive;
     distortedUv += vec2(
-        sin(ubuf.time * 42.0 + uv.y * 18.0),
-        cos(ubuf.time * 37.0 + uv.x * 16.0)
-    ) * 0.008 * listeningAmount * (0.4 + audioReactive + ubuf.distortion);
+        sin(time * 42.0 + uv.y * 18.0),
+        cos(time * 37.0 + uv.x * 16.0)
+    ) * 0.008 * listeningAmount * (0.4 + audioReactive + distortion);
 
     float pulse = pulseValue(audioReactive, thinkingAmount, executingAmount);
-    distortedUv *= 1.0 + (pulse - 0.5) * (0.05 + executingAmount * 0.06 + ubuf.pulseAmount * 0.03);
+    distortedUv *= 1.0 + (pulse - 0.5) * (0.05 + executingAmount * 0.06 + pulseAmount * 0.03);
 
     vec3 origin = vec3(0.0, 0.0, -1.25);
     vec3 direction = normalize(vec3(distortedUv, 1.15));
 
-    int steps = 20 + int(clamp(ubuf.orbState, 0.0, 3.0) * 10.0);
-    if (ubuf.quality < 0.5) {
+    int steps = 20 + int(clamp(orbState, 0.0, 3.0) * 10.0);
+    if (quality < 0.5) {
         steps = max(20, steps - 6);
-    } else if (ubuf.quality > 1.5) {
+    } else if (quality > 1.5) {
         steps = min(60, steps + 10);
     }
     steps = clamp(steps, 20, 60);
@@ -201,9 +194,9 @@ void main()
         clamp(hit.closestDist * 2.2, 0.0, 1.0)
     );
 
-    float aura = (1.0 - smoothstep(0.18, 0.98, radius)) * (0.25 + audioReactive * 0.2 + ubuf.glow * 0.2);
+    float aura = (1.0 - smoothstep(0.18, 0.98, radius)) * (0.25 + audioReactive * 0.2 + glow * 0.2);
     float core = pow(clamp(1.0 - radius / 0.62, 0.0, 1.0), 2.6);
-    float breathing = 0.5 + 0.5 * sin(ubuf.time * (0.8 + idleAmount * 0.2));
+    float breathing = 0.5 + 0.5 * sin(time * (0.8 + idleAmount * 0.2));
 
     if (hitMask > 0.0) {
         vec3 normal = getNormal(hit.p, audioReactive, listeningAmount, thinkingAmount, executingAmount);
@@ -220,25 +213,25 @@ void main()
         color += vec3(0.18, 0.32, 0.8) * fakeVolume;
         color += vec3(0.16, 0.28, 0.72) * depth * 0.5;
         color += coreEnergy * vec3(0.6, 0.8, 1.0);
-        color += vec3(0.38, 0.64, 1.0) * core * (0.85 + ubuf.speaking * 0.6);
+        color += vec3(0.38, 0.64, 1.0) * core * (0.85 + speaking * 0.6);
         color += vec3(0.45, 0.75, 1.0) * fresnel * 0.35;
         color *= lighting;
         alpha *= 0.88 + depth * 0.34 + coreEnergy * 0.18;
     }
 
     color += depthColor * aura * (0.32 + breathing * 0.2);
-    color += vec3(0.52, 0.82, 1.0) * core * (0.18 + ubuf.glow * 0.16);
+    color += vec3(0.52, 0.82, 1.0) * core * (0.18 + glow * 0.16);
 
-    float flicker = 0.94 + sin(ubuf.time * 16.0 + audioReactive * 7.0) * 0.04 * (0.35 + ubuf.flicker);
+    float localFlicker = 0.94 + sin(time * 16.0 + audioReactive * 7.0) * 0.04 * (0.35 + flicker);
     float brightness = 0.82
         + thinkingAmount * 0.14
         + executingAmount * (0.22 + pulse * 0.22)
-        + ubuf.speaking * 0.18;
-    color *= brightness * flicker;
+        + speaking * 0.18;
+    color *= brightness * localFlicker;
 
     alpha *= 0.82 + fakeVolume * 0.28 + aura * 0.34 + core * 0.22;
     alpha *= edge;
     alpha = clamp(alpha, 0.0, 1.0);
 
-    fragColor = vec4(max(color, vec3(0.0)), alpha * ubuf.qt_Opacity);
+    gl_FragColor = vec4(max(color, vec3(0.0)), alpha);
 }

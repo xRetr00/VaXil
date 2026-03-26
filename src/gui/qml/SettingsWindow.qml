@@ -12,7 +12,7 @@ Window {
     minimumWidth: 760
     minimumHeight: 720
     visible: false
-    title: backend.assistantName + " Control Surface"
+    title: settingsVm.assistantName + " Control Surface"
     color: "#050912"
 
     property real dpiScale: Math.max(1.0, Screen.devicePixelRatio)
@@ -33,7 +33,7 @@ Window {
     }
 
     function refreshRequirementStatus() {
-        requirementStatus = backend.evaluateSetupRequirements(
+        requirementStatus = settingsVm.evaluateSetupRequirements(
             endpointField.text,
             modelCombo.currentText,
             whisperPathField.text,
@@ -48,52 +48,52 @@ Window {
 
     function syncFieldsFromBackend() {
         if (userNameField) {
-            userNameField.text = backend.userName
+            userNameField.text = settingsVm.userName
         }
-        endpointField.text = backend.lmStudioEndpoint
-        whisperPathField.text = backend.whisperExecutable
-        whisperModelPathField.text = backend.whisperModelPath
-        intentModelPathField.text = backend.intentModelPath
-        piperPathField.text = backend.piperExecutable
-        voicePathField.text = backend.piperVoiceModel
-        ffmpegPathField.text = backend.ffmpegExecutable
-        speedSlider.value = backend.voiceSpeed
-        pitchSlider.value = backend.voicePitch
-        vadSlider.value = backend.vadSensitivity
-        micSlider.value = backend.micSensitivity
-        aecCheck.checked = backend.aecEnabled
-        rnnoiseCheck.checked = backend.rnnoiseEnabled
-        autoRoutingCheck.checked = backend.autoRoutingEnabled
-        streamCheck.checked = backend.streamingEnabled
-        timeoutSpin.value = backend.requestTimeoutMs
-        clickThroughCheck.checked = backend.clickThroughEnabled
-        agentEnabledCheck.checked = backend.agentEnabled
-        agentProviderField.text = backend.agentProviderMode
-        conversationTempSlider.value = backend.conversationTemperature
-        conversationTopPField.text = backend.conversationTopP > 0 ? backend.conversationTopP.toFixed(2) : ""
-        toolTempSlider.value = backend.toolUseTemperature
-        providerTopKField.text = backend.providerTopK > 0 ? String(backend.providerTopK) : ""
-        maxOutputSpin.value = backend.maxOutputTokens
-        memoryAutoWriteCheck.checked = backend.memoryAutoWrite
-        webProviderField.text = backend.webSearchProvider
-        tracePanelCheck.checked = backend.tracePanelEnabled
+        endpointField.text = settingsVm.lmStudioEndpoint
+        whisperPathField.text = settingsVm.whisperExecutable
+        whisperModelPathField.text = settingsVm.whisperModelPath
+        intentModelPathField.text = settingsVm.intentModelPath
+        piperPathField.text = settingsVm.piperExecutable
+        voicePathField.text = settingsVm.piperVoiceModel
+        ffmpegPathField.text = settingsVm.ffmpegExecutable
+        speedSlider.value = settingsVm.voiceSpeed
+        pitchSlider.value = settingsVm.voicePitch
+        vadSlider.value = settingsVm.vadSensitivity
+        micSlider.value = settingsVm.micSensitivity
+        aecCheck.checked = settingsVm.aecEnabled
+        rnnoiseCheck.checked = settingsVm.rnnoiseEnabled
+        autoRoutingCheck.checked = settingsVm.autoRoutingEnabled
+        streamCheck.checked = settingsVm.streamingEnabled
+        timeoutSpin.value = settingsVm.requestTimeoutMs
+        clickThroughCheck.checked = settingsVm.clickThroughEnabled
+        agentEnabledCheck.checked = settingsVm.agentEnabled
+        agentProviderField.text = settingsVm.agentProviderMode
+        conversationTempSlider.value = settingsVm.conversationTemperature
+        conversationTopPField.text = settingsVm.conversationTopP > 0 ? settingsVm.conversationTopP.toFixed(2) : ""
+        toolTempSlider.value = settingsVm.toolUseTemperature
+        providerTopKField.text = settingsVm.providerTopK > 0 ? String(settingsVm.providerTopK) : ""
+        maxOutputSpin.value = settingsVm.maxOutputTokens
+        memoryAutoWriteCheck.checked = settingsVm.memoryAutoWrite
+        webProviderField.text = settingsVm.webSearchProvider
+        tracePanelCheck.checked = settingsVm.tracePanelEnabled
 
-        const modelIndex = backend.models.indexOf(backend.selectedModel)
+        const modelIndex = settingsVm.models.indexOf(settingsVm.selectedModel)
         modelCombo.currentIndex = modelIndex >= 0 ? modelIndex : 0
 
-        const modeIndex = backend.defaultReasoningMode
+        const modeIndex = settingsVm.defaultReasoningMode
         modeCombo.currentIndex = modeIndex >= 0 ? modeIndex : 0
 
-        const ttsIndex = ["piper"].indexOf(backend.ttsEngineKind)
+        const ttsIndex = ["piper"].indexOf(settingsVm.ttsEngineKind)
         ttsEngineCombo.currentIndex = ttsIndex >= 0 ? ttsIndex : 0
 
-        const wakeIndex = ["sherpa-onnx"].indexOf(backend.wakeEngineKind)
+        const wakeIndex = ["sherpa-onnx"].indexOf(settingsVm.wakeEngineKind)
         wakeEngineCombo.currentIndex = wakeIndex >= 0 ? wakeIndex : 0
 
-        const whisperModelIndex = backend.whisperModelPresetIds.indexOf(backend.selectedWhisperModelPresetId)
+        const whisperModelIndex = settingsVm.whisperModelPresetIds.indexOf(settingsVm.selectedWhisperModelPresetId)
         whisperModelPresetCombo.currentIndex = whisperModelIndex >= 0 ? whisperModelIndex : 1
 
-        const intentModelIndex = backend.intentModelPresetIds.indexOf(backend.selectedIntentModelId)
+        const intentModelIndex = settingsVm.intentModelPresetIds.indexOf(settingsVm.selectedIntentModelId)
         intentModelCombo.currentIndex = intentModelIndex >= 0 ? intentModelIndex : 0
     }
 
@@ -102,17 +102,17 @@ Window {
             return
         }
 
-        backend.refreshAudioDevices()
+        settingsVm.refreshAudioDevices()
         syncFieldsFromBackend()
-        const inputIndex = backend.audioInputDeviceIds.indexOf(backend.selectedAudioInputDeviceId)
+        const inputIndex = settingsVm.audioInputDeviceIds.indexOf(settingsVm.selectedAudioInputDeviceId)
         inputDeviceCombo.currentIndex = inputIndex >= 0 ? inputIndex : 0
-        const outputIndex = backend.audioOutputDeviceIds.indexOf(backend.selectedAudioOutputDeviceId)
+        const outputIndex = settingsVm.audioOutputDeviceIds.indexOf(settingsVm.selectedAudioOutputDeviceId)
         outputDeviceCombo.currentIndex = outputIndex >= 0 ? outputIndex : 0
         refreshRequirementStatus()
     }
 
     Connections {
-        target: backend
+        target: settingsVm
 
         function onSettingsChanged() {
             if (!settingsWindow.visible) {
@@ -203,7 +203,7 @@ Window {
                     spacing: 10
 
                     Text {
-                        text: backend.assistantName
+                        text: settingsVm.assistantName
                         color: "#eff7ff"
                         font.pixelSize: 34
                         font.weight: Font.Medium
@@ -229,7 +229,7 @@ Window {
 
                             Text {
                                 anchors.centerIn: parent
-                                text: backend.selectedModel.length > 0 ? backend.selectedModel : "No model"
+                                text: settingsVm.selectedModel.length > 0 ? settingsVm.selectedModel : "No model"
                                 color: "#d9ecff"
                                 font.pixelSize: 12
                             }
@@ -245,7 +245,7 @@ Window {
 
                             Text {
                                 anchors.centerIn: parent
-                                text: backend.autoRoutingEnabled ? "Auto routing" : "Manual routing"
+                                text: settingsVm.autoRoutingEnabled ? "Auto routing" : "Manual routing"
                                 color: "#d9ecff"
                                 font.pixelSize: 12
                             }
@@ -253,7 +253,7 @@ Window {
 
                         Button {
                             text: "Tools & Stores"
-                            onClicked: backend.openToolsHub()
+                            onClicked: settingsVm.openToolsHub()
                         }
                     }
                 }
@@ -290,7 +290,7 @@ Window {
                     TextField {
                         id: userNameField
                         Layout.fillWidth: true
-                        text: backend.userName
+                        text: settingsVm.userName
                     }
 
                     RowLayout {
@@ -298,7 +298,7 @@ Window {
                         Item { Layout.fillWidth: true }
                         Button {
                             text: "Save username"
-                            onClicked: backend.setUserName(userNameField.text)
+                            onClicked: settingsVm.setUserName(userNameField.text)
                         }
                     }
                 }
@@ -332,7 +332,7 @@ Window {
                     }
 
                     Text { text: "Local AI backend endpoint"; color: "#c9def3"; font.pixelSize: 13 }
-                    TextField { id: endpointField; Layout.fillWidth: true; text: backend.lmStudioEndpoint }
+                    TextField { id: endpointField; Layout.fillWidth: true; text: settingsVm.lmStudioEndpoint }
                     RowLayout {
                         Layout.fillWidth: true
                         Rectangle { width: 10; height: 10; radius: 5; color: settingsWindow.statusColor(requirementStatus.endpointOk === true) }
@@ -343,14 +343,14 @@ Window {
                     ComboBox {
                         id: modelCombo
                         Layout.fillWidth: true
-                        model: backend.models
+                        model: settingsVm.models
                         Component.onCompleted: {
-                            const index = backend.models.indexOf(backend.selectedModel)
+                            const index = settingsVm.models.indexOf(settingsVm.selectedModel)
                             if (index >= 0) {
                                 currentIndex = index
                             }
                         }
-                        onActivated: backend.setSelectedModel(currentText)
+                        onActivated: settingsVm.setSelectedModel(currentText)
                     }
                     RowLayout {
                         Layout.fillWidth: true
@@ -365,22 +365,22 @@ Window {
                         ComboBox {
                             id: intentModelCombo
                             Layout.fillWidth: true
-                            model: backend.intentModelPresetNames
+                            model: settingsVm.intentModelPresetNames
                             onActivated: {
-                                backend.setSelectedIntentModelId(backend.intentModelPresetIds[currentIndex])
-                                intentModelPathField.text = backend.intentModelPath
+                                settingsVm.setSelectedIntentModelId(settingsVm.intentModelPresetIds[currentIndex])
+                                intentModelPathField.text = settingsVm.intentModelPath
                             }
                         }
 
                         Button {
                             text: "Download"
-                            onClicked: backend.downloadModel(backend.intentModelPresetIds[intentModelCombo.currentIndex])
+                            onClicked: settingsVm.downloadModel(settingsVm.intentModelPresetIds[intentModelCombo.currentIndex])
                         }
                     }
 
                     Text {
                         Layout.fillWidth: true
-                        text: "Recommended: " + backend.recommendedIntentModelLabel + "\n" + backend.intentHardwareSummary
+                        text: "Recommended: " + settingsVm.recommendedIntentModelLabel + "\n" + settingsVm.intentHardwareSummary
                         color: "#9ab0ca"
                         font.pixelSize: 12
                         wrapMode: Text.Wrap
@@ -399,11 +399,11 @@ Window {
                     Text { text: "Intent model path"; color: "#c9def3"; font.pixelSize: 13 }
                     RowLayout {
                         Layout.fillWidth: true
-                        TextField { id: intentModelPathField; Layout.fillWidth: true; text: backend.intentModelPath; readOnly: true }
+                        TextField { id: intentModelPathField; Layout.fillWidth: true; text: settingsVm.intentModelPath; readOnly: true }
                         Button {
                             text: "Open Dir"
                             enabled: intentModelPathField.text.length > 0
-                            onClicked: backend.openContainingDirectory(intentModelPathField.text)
+                            onClicked: settingsVm.openContainingDirectory(intentModelPathField.text)
                         }
                     }
 
@@ -417,7 +417,7 @@ Window {
                                 id: modeCombo
                                 Layout.fillWidth: true
                                 model: ["Fast", "Balanced", "Deep"]
-                                currentIndex: backend.defaultReasoningMode
+                                currentIndex: settingsVm.defaultReasoningMode
                             }
                         }
 
@@ -429,15 +429,15 @@ Window {
                                 Layout.fillWidth: true
                                 from: 10000
                                 to: 15000
-                                value: backend.requestTimeoutMs
+                                value: settingsVm.requestTimeoutMs
                             }
                         }
                     }
 
                     RowLayout {
                         Layout.fillWidth: true
-                        CheckBox { id: autoRoutingCheck; text: "Enable auto routing"; checked: backend.autoRoutingEnabled }
-                        CheckBox { id: streamCheck; text: "Enable streaming"; checked: backend.streamingEnabled }
+                        CheckBox { id: autoRoutingCheck; text: "Enable auto routing"; checked: settingsVm.autoRoutingEnabled }
+                        CheckBox { id: streamCheck; text: "Enable streaming"; checked: settingsVm.streamingEnabled }
                     }
                 }
             }
@@ -464,17 +464,17 @@ Window {
                     }
 
                     Text {
-                        text: backend.agentStatus
-                        color: backend.agentAvailable ? "#87d7a2" : "#d8a17a"
+                        text: settingsVm.agentStatus
+                        color: settingsVm.agentAvailable ? "#87d7a2" : "#d8a17a"
                         font.pixelSize: 13
                         wrapMode: Text.Wrap
                     }
 
                     RowLayout {
                         Layout.fillWidth: true
-                        CheckBox { id: agentEnabledCheck; text: "Enable agent mode"; checked: backend.agentEnabled }
-                        CheckBox { id: memoryAutoWriteCheck; text: "Auto-write memory"; checked: backend.memoryAutoWrite }
-                        CheckBox { id: tracePanelCheck; text: "Trace panel"; checked: backend.tracePanelEnabled }
+                        CheckBox { id: agentEnabledCheck; text: "Enable agent mode"; checked: settingsVm.agentEnabled }
+                        CheckBox { id: memoryAutoWriteCheck; text: "Auto-write memory"; checked: settingsVm.memoryAutoWrite }
+                        CheckBox { id: tracePanelCheck; text: "Trace panel"; checked: settingsVm.tracePanelEnabled }
                     }
 
                     RowLayout {
@@ -482,12 +482,12 @@ Window {
                         ColumnLayout {
                             Layout.fillWidth: true
                             Text { text: "Provider mode"; color: "#c9def3"; font.pixelSize: 13 }
-                            TextField { id: agentProviderField; Layout.fillWidth: true; text: backend.agentProviderMode }
+                            TextField { id: agentProviderField; Layout.fillWidth: true; text: settingsVm.agentProviderMode }
                         }
                         ColumnLayout {
                             Layout.fillWidth: true
                             Text { text: "Web provider"; color: "#c9def3"; font.pixelSize: 13 }
-                            TextField { id: webProviderField; Layout.fillWidth: true; text: backend.webSearchProvider }
+                            TextField { id: webProviderField; Layout.fillWidth: true; text: settingsVm.webSearchProvider }
                         }
                     }
 
@@ -496,12 +496,12 @@ Window {
                         ColumnLayout {
                             Layout.fillWidth: true
                             Text { text: "Conversation temperature"; color: "#c9def3"; font.pixelSize: 13 }
-                            Slider { id: conversationTempSlider; Layout.fillWidth: true; from: 0.0; to: 1.5; value: backend.conversationTemperature }
+                            Slider { id: conversationTempSlider; Layout.fillWidth: true; from: 0.0; to: 1.5; value: settingsVm.conversationTemperature }
                         }
                         ColumnLayout {
                             Layout.fillWidth: true
                             Text { text: "Tool temperature"; color: "#c9def3"; font.pixelSize: 13 }
-                            Slider { id: toolTempSlider; Layout.fillWidth: true; from: 0.0; to: 1.0; value: backend.toolUseTemperature }
+                            Slider { id: toolTempSlider; Layout.fillWidth: true; from: 0.0; to: 1.0; value: settingsVm.toolUseTemperature }
                         }
                     }
 
@@ -510,23 +510,23 @@ Window {
                         ColumnLayout {
                             Layout.fillWidth: true
                             Text { text: "Top P"; color: "#c9def3"; font.pixelSize: 13 }
-                            TextField { id: conversationTopPField; Layout.fillWidth: true; text: backend.conversationTopP > 0 ? backend.conversationTopP.toFixed(2) : "" }
+                            TextField { id: conversationTopPField; Layout.fillWidth: true; text: settingsVm.conversationTopP > 0 ? settingsVm.conversationTopP.toFixed(2) : "" }
                         }
                         ColumnLayout {
                             Layout.fillWidth: true
                             Text { text: "Provider Top K"; color: "#c9def3"; font.pixelSize: 13 }
-                            TextField { id: providerTopKField; Layout.fillWidth: true; text: backend.providerTopK > 0 ? String(backend.providerTopK) : "" }
+                            TextField { id: providerTopKField; Layout.fillWidth: true; text: settingsVm.providerTopK > 0 ? String(settingsVm.providerTopK) : "" }
                         }
                         ColumnLayout {
                             Layout.fillWidth: true
                             Text { text: "Max output tokens"; color: "#c9def3"; font.pixelSize: 13 }
-                            SpinBox { id: maxOutputSpin; Layout.fillWidth: true; from: 64; to: 8192; value: backend.maxOutputTokens }
+                            SpinBox { id: maxOutputSpin; Layout.fillWidth: true; from: 64; to: 8192; value: settingsVm.maxOutputTokens }
                         }
                     }
 
                     Button {
                         text: "Save agent settings"
-                        onClicked: backend.saveAgentSettings(
+                        onClicked: settingsVm.saveAgentSettings(
                             agentEnabledCheck.checked,
                             agentProviderField.text,
                             conversationTempSlider.value,
@@ -574,12 +574,12 @@ Window {
                         id: ttsEngineCombo
                         Layout.fillWidth: true
                         model: ["piper"]
-                        currentIndex: Math.max(0, model.indexOf(backend.ttsEngineKind))
-                        onActivated: backend.setTtsEngineKind(currentText)
+                        currentIndex: Math.max(0, model.indexOf(settingsVm.ttsEngineKind))
+                        onActivated: settingsVm.setTtsEngineKind(currentText)
                     }
 
                     Text { text: "whisper.cpp executable"; color: "#c9def3"; font.pixelSize: 13 }
-                    TextField { id: whisperPathField; Layout.fillWidth: true; text: backend.whisperExecutable }
+                    TextField { id: whisperPathField; Layout.fillWidth: true; text: settingsVm.whisperExecutable }
                     RowLayout {
                         Layout.fillWidth: true
                         Rectangle { width: 10; height: 10; radius: 5; color: settingsWindow.statusColor(requirementStatus.whisperOk === true) }
@@ -592,7 +592,7 @@ Window {
                     }
 
                     Text { text: "Whisper model"; color: "#c9def3"; font.pixelSize: 13 }
-                    TextField { id: whisperModelPathField; Layout.fillWidth: true; text: backend.whisperModelPath }
+                    TextField { id: whisperModelPathField; Layout.fillWidth: true; text: settingsVm.whisperModelPath }
                     RowLayout {
                         Layout.fillWidth: true
                         Rectangle { width: 10; height: 10; radius: 5; color: settingsWindow.statusColor(requirementStatus.whisperModelOk === true) }
@@ -608,16 +608,16 @@ Window {
                         ComboBox {
                             id: whisperModelPresetCombo
                             Layout.fillWidth: true
-                            model: backend.whisperModelPresetNames
+                            model: settingsVm.whisperModelPresetNames
                             Component.onCompleted: {
-                                const index = backend.whisperModelPresetIds.indexOf(backend.selectedWhisperModelPresetId)
+                                const index = settingsVm.whisperModelPresetIds.indexOf(settingsVm.selectedWhisperModelPresetId)
                                 currentIndex = index >= 0 ? index : 1
                             }
                         }
                         Button {
                             text: "Download"
                             onClicked: {
-                                backend.downloadWhisperModel(backend.whisperModelPresetIds[whisperModelPresetCombo.currentIndex])
+                                settingsVm.downloadWhisperModel(settingsVm.whisperModelPresetIds[whisperModelPresetCombo.currentIndex])
                                 settingsWindow.syncFieldsFromBackend()
                                 settingsWindow.refreshRequirementStatus()
                             }
@@ -625,7 +625,7 @@ Window {
                         Button {
                             text: "Auto Detect"
                             onClicked: {
-                                backend.autoDetectVoiceTools()
+                                settingsVm.autoDetectVoiceTools()
                                 settingsWindow.syncFieldsFromBackend()
                                 settingsWindow.refreshRequirementStatus()
                             }
@@ -643,7 +643,7 @@ Window {
                     }
 
                     Text { text: "Piper executable"; color: "#c9def3"; font.pixelSize: 13 }
-                    TextField { id: piperPathField; Layout.fillWidth: true; text: backend.piperExecutable }
+                    TextField { id: piperPathField; Layout.fillWidth: true; text: settingsVm.piperExecutable }
                     RowLayout {
                         Layout.fillWidth: true
                         Rectangle { width: 10; height: 10; radius: 5; color: settingsWindow.statusColor(requirementStatus.piperOk === true) }
@@ -666,7 +666,7 @@ Window {
                     }
 
                     Text { text: "Piper voice model"; color: "#c9def3"; font.pixelSize: 13 }
-                    TextField { id: voicePathField; Layout.fillWidth: true; text: backend.piperVoiceModel }
+                    TextField { id: voicePathField; Layout.fillWidth: true; text: settingsVm.piperVoiceModel }
                     RowLayout {
                         Layout.fillWidth: true
                         Rectangle { width: 10; height: 10; radius: 5; color: settingsWindow.statusColor(requirementStatus.voiceOk === true) }
@@ -674,7 +674,7 @@ Window {
                     }
 
                     Text { text: "ffmpeg executable"; color: "#c9def3"; font.pixelSize: 13 }
-                    TextField { id: ffmpegPathField; Layout.fillWidth: true; text: backend.ffmpegExecutable }
+                    TextField { id: ffmpegPathField; Layout.fillWidth: true; text: settingsVm.ffmpegExecutable }
                     RowLayout {
                         Layout.fillWidth: true
                         Rectangle { width: 10; height: 10; radius: 5; color: settingsWindow.statusColor(requirementStatus.ffmpegOk === true) }
@@ -702,13 +702,13 @@ Window {
                         ColumnLayout {
                             Layout.fillWidth: true
                             Text { text: "Voice speed"; color: "#c9def3"; font.pixelSize: 13 }
-                            Slider { id: speedSlider; Layout.fillWidth: true; from: 0.7; to: 1.5; value: backend.voiceSpeed }
+                            Slider { id: speedSlider; Layout.fillWidth: true; from: 0.7; to: 1.5; value: settingsVm.voiceSpeed }
                         }
 
                         ColumnLayout {
                             Layout.fillWidth: true
                             Text { text: "Voice pitch"; color: "#c9def3"; font.pixelSize: 13 }
-                            Slider { id: pitchSlider; Layout.fillWidth: true; from: 0.8; to: 1.2; value: backend.voicePitch }
+                            Slider { id: pitchSlider; Layout.fillWidth: true; from: 0.8; to: 1.2; value: settingsVm.voicePitch }
                         }
                     }
                 }
@@ -746,14 +746,14 @@ Window {
                         CheckBox {
                             id: aecCheck
                             text: "AEC enabled"
-                            checked: backend.aecEnabled
-                            onToggled: backend.saveAudioProcessing(checked, rnnoiseCheck.checked, vadSlider.value)
+                            checked: settingsVm.aecEnabled
+                            onToggled: settingsVm.saveAudioProcessing(checked, rnnoiseCheck.checked, vadSlider.value)
                         }
                         CheckBox {
                             id: rnnoiseCheck
                             text: "RNNoise enabled"
-                            checked: backend.rnnoiseEnabled
-                            onToggled: backend.saveAudioProcessing(aecCheck.checked, checked, vadSlider.value)
+                            checked: settingsVm.rnnoiseEnabled
+                            onToggled: settingsVm.saveAudioProcessing(aecCheck.checked, checked, vadSlider.value)
                         }
                     }
 
@@ -763,20 +763,20 @@ Window {
                         Layout.fillWidth: true
                         from: 0.05
                         to: 0.95
-                        value: backend.vadSensitivity
-                        onPressedChanged: if (!pressed) backend.saveAudioProcessing(aecCheck.checked, rnnoiseCheck.checked, value)
+                        value: settingsVm.vadSensitivity
+                        onPressedChanged: if (!pressed) settingsVm.saveAudioProcessing(aecCheck.checked, rnnoiseCheck.checked, value)
                     }
 
                     Text { text: "Mic sensitivity"; color: "#c9def3"; font.pixelSize: 13 }
-                    Slider { id: micSlider; Layout.fillWidth: true; from: 0.01; to: 0.10; value: backend.micSensitivity }
+                    Slider { id: micSlider; Layout.fillWidth: true; from: 0.01; to: 0.10; value: settingsVm.micSensitivity }
 
                     Text { text: "Wake engine"; color: "#c9def3"; font.pixelSize: 13 }
                     ComboBox {
                         id: wakeEngineCombo
                         Layout.fillWidth: true
                         model: ["sherpa-onnx"]
-                        currentIndex: Math.max(0, model.indexOf(backend.wakeEngineKind))
-                        onActivated: backend.setWakeEngineKind(currentText)
+                        currentIndex: Math.max(0, model.indexOf(settingsVm.wakeEngineKind))
+                        onActivated: settingsVm.setWakeEngineKind(currentText)
                     }
 
                     Text {
@@ -790,9 +790,9 @@ Window {
                     ComboBox {
                         id: inputDeviceCombo
                         Layout.fillWidth: true
-                        model: backend.audioInputDeviceNames
+                        model: settingsVm.audioInputDeviceNames
                         Component.onCompleted: {
-                            const index = backend.audioInputDeviceIds.indexOf(backend.selectedAudioInputDeviceId)
+                            const index = settingsVm.audioInputDeviceIds.indexOf(settingsVm.selectedAudioInputDeviceId)
                             currentIndex = index >= 0 ? index : 0
                         }
                     }
@@ -801,14 +801,14 @@ Window {
                     ComboBox {
                         id: outputDeviceCombo
                         Layout.fillWidth: true
-                        model: backend.audioOutputDeviceNames
+                        model: settingsVm.audioOutputDeviceNames
                         Component.onCompleted: {
-                            const index = backend.audioOutputDeviceIds.indexOf(backend.selectedAudioOutputDeviceId)
+                            const index = settingsVm.audioOutputDeviceIds.indexOf(settingsVm.selectedAudioOutputDeviceId)
                             currentIndex = index >= 0 ? index : 0
                         }
                     }
 
-                    CheckBox { id: clickThroughCheck; text: "Click-through overlay"; checked: backend.clickThroughEnabled }
+                    CheckBox { id: clickThroughCheck; text: "Click-through overlay"; checked: settingsVm.clickThroughEnabled }
 
                     RowLayout {
                         Layout.fillWidth: true
@@ -832,12 +832,12 @@ Window {
                                 anchors.fill: parent
                                 cursorShape: Qt.PointingHandCursor
                                 onClicked: {
-                                    backend.refreshModels()
-                                    backend.refreshAudioDevices()
+                                    settingsVm.refreshModels()
+                                    settingsVm.refreshAudioDevices()
                                     settingsWindow.refreshRequirementStatus()
-                                    const inputIndex = backend.audioInputDeviceIds.indexOf(backend.selectedAudioInputDeviceId)
+                                    const inputIndex = settingsVm.audioInputDeviceIds.indexOf(settingsVm.selectedAudioInputDeviceId)
                                     inputDeviceCombo.currentIndex = inputIndex >= 0 ? inputIndex : 0
-                                    const outputIndex = backend.audioOutputDeviceIds.indexOf(backend.selectedAudioOutputDeviceId)
+                                    const outputIndex = settingsVm.audioOutputDeviceIds.indexOf(settingsVm.selectedAudioOutputDeviceId)
                                     outputDeviceCombo.currentIndex = outputIndex >= 0 ? outputIndex : 0
                                 }
                             }
@@ -863,7 +863,7 @@ Window {
                                 anchors.fill: parent
                                 cursorShape: Qt.PointingHandCursor
                                 onClicked: {
-                                    backend.autoDetectVoiceTools()
+                                    settingsVm.autoDetectVoiceTools()
                                     settingsWindow.syncFieldsFromBackend()
                                     settingsWindow.refreshRequirementStatus()
                                 }
@@ -890,7 +890,7 @@ Window {
                                 anchors.fill: parent
                                 cursorShape: Qt.PointingHandCursor
                                 onClicked: {
-                                    backend.saveSettings(
+                                    settingsVm.saveSettings(
                                         endpointField.text,
                                         modelCombo.currentText,
                                         modeCombo.currentIndex,
@@ -905,8 +905,8 @@ Window {
                                         whisperModelPathField.text,
                                         "",
                                         "",
-                                        backend.preciseTriggerThreshold,
-                                        backend.preciseTriggerCooldownMs,
+                                        settingsVm.preciseTriggerThreshold,
+                                        settingsVm.preciseTriggerCooldownMs,
                                         ttsEngineCombo.currentText,
                                         piperPathField.text,
                                         voicePathField.text,
@@ -914,8 +914,8 @@ Window {
                                         speedSlider.value,
                                         pitchSlider.value,
                                         micSlider.value,
-                                        inputDeviceCombo.currentIndex >= 0 ? backend.audioInputDeviceIds[inputDeviceCombo.currentIndex] : "",
-                                        outputDeviceCombo.currentIndex >= 0 ? backend.audioOutputDeviceIds[outputDeviceCombo.currentIndex] : "",
+                                        inputDeviceCombo.currentIndex >= 0 ? settingsVm.audioInputDeviceIds[inputDeviceCombo.currentIndex] : "",
+                                        outputDeviceCombo.currentIndex >= 0 ? settingsVm.audioOutputDeviceIds[outputDeviceCombo.currentIndex] : "",
                                         clickThroughCheck.checked
                                     )
                                 }
@@ -954,23 +954,23 @@ Window {
 
                     RowLayout {
                         Layout.fillWidth: true
-                        Button { text: "Rescan"; onClicked: backend.rescanTools() }
+                        Button { text: "Rescan"; onClicked: settingsVm.rescanTools() }
                         Button {
                             text: "Auto Detect"
                             onClicked: {
-                                backend.autoDetectVoiceTools()
+                                settingsVm.autoDetectVoiceTools()
                                 settingsWindow.syncFieldsFromBackend()
                                 settingsWindow.refreshRequirementStatus()
                             }
                         }
-                        Button { text: "Install All"; onClicked: backend.installAllTools() }
+                        Button { text: "Install All"; onClicked: settingsVm.installAllTools() }
                         Item { Layout.fillWidth: true }
-                        Text { text: backend.toolsRoot; color: "#7f97b7"; font.pixelSize: 11; Layout.fillWidth: true; horizontalAlignment: Text.AlignRight }
+                        Text { text: settingsVm.toolsRoot; color: "#7f97b7"; font.pixelSize: 11; Layout.fillWidth: true; horizontalAlignment: Text.AlignRight }
                     }
 
                     Text {
                         Layout.fillWidth: true
-                        text: backend.toolInstallStatus.length > 0 ? backend.toolInstallStatus : "No active download."
+                        text: settingsVm.toolInstallStatus.length > 0 ? settingsVm.toolInstallStatus : "No active download."
                         color: "#9ab0ca"
                         font.pixelSize: 12
                         wrapMode: Text.Wrap
@@ -978,14 +978,14 @@ Window {
 
                     ProgressBar {
                         Layout.fillWidth: true
-                        visible: backend.toolDownloadPercent >= 0
+                        visible: settingsVm.toolDownloadPercent >= 0
                         from: 0
                         to: 100
-                        value: backend.toolDownloadPercent >= 0 ? backend.toolDownloadPercent : 0
+                        value: settingsVm.toolDownloadPercent >= 0 ? settingsVm.toolDownloadPercent : 0
                     }
 
                     Repeater {
-                        model: backend.toolStatuses
+                        model: settingsVm.toolStatuses
 
                         delegate: Rectangle {
                             required property var modelData
@@ -1009,7 +1009,7 @@ Window {
                                 Button {
                                     visible: modelData.downloadable === true && modelData.installed !== true
                                     text: "Download"
-                                    onClicked: backend.downloadTool(modelData.name)
+                                    onClicked: settingsVm.downloadTool(modelData.name)
                                 }
                             }
                         }
@@ -1024,7 +1024,7 @@ Window {
                 color: "#9208111d"
                 border.width: 1
                 border.color: "#1d2f4d"
-                visible: backend.tracePanelEnabled
+                visible: settingsVm.tracePanelEnabled
 
                 ColumnLayout {
                     id: agentTraceColumn
@@ -1046,7 +1046,7 @@ Window {
                     }
 
                     Repeater {
-                        model: backend.agentTraceEntries
+                        model: settingsVm.agentTraceEntries
 
                         delegate: Rectangle {
                             required property var modelData
@@ -1085,3 +1085,4 @@ Window {
         }
     }
 }
+

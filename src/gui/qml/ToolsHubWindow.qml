@@ -10,14 +10,14 @@ Window {
     width: 920
     height: 860
     visible: false
-    title: backend.assistantName + " Tools & Stores"
+    title: settingsVm.assistantName + " Tools & Stores"
     color: "#050912"
 
     function syncFields() {
-        webProviderField.text = backend.webSearchProvider
-        mcpEnabledCheck.checked = backend.mcpEnabled
-        mcpCatalogField.text = backend.mcpCatalogUrl
-        mcpServerField.text = backend.mcpServerUrl
+        webProviderField.text = settingsVm.webSearchProvider
+        mcpEnabledCheck.checked = settingsVm.mcpEnabled
+        mcpCatalogField.text = settingsVm.mcpCatalogUrl
+        mcpServerField.text = settingsVm.mcpServerUrl
     }
 
     onClosing: function(close) {
@@ -30,11 +30,11 @@ Window {
             return
         }
         syncFields()
-        backend.rescanTools()
+        settingsVm.rescanTools()
     }
 
     Connections {
-        target: backend
+        target: settingsVm
 
         function onSettingsChanged() {
             if (toolsWindow.visible) {
@@ -111,22 +111,22 @@ Window {
 
                             Button {
                                 text: "Rescan Tools"
-                                onClicked: backend.rescanTools()
+                                onClicked: settingsVm.rescanTools()
                             }
 
                             Button {
                                 text: "Open Tools Root"
-                                onClicked: backend.openContainingDirectory(backend.toolsRoot)
+                                onClicked: settingsVm.openContainingDirectory(settingsVm.toolsRoot)
                             }
 
                             Button {
                                 text: "Open Skills Root"
-                                onClicked: backend.openContainingDirectory(backend.skillsRoot)
+                                onClicked: settingsVm.openContainingDirectory(settingsVm.skillsRoot)
                             }
                         }
 
                         Text {
-                            text: backend.toolInstallStatus
+                            text: settingsVm.toolInstallStatus
                             color: "#b7c7dd"
                             font.pixelSize: 12
                             wrapMode: Text.WordWrap
@@ -166,7 +166,7 @@ Window {
                     }
 
                     Repeater {
-                        model: backend.toolStatuses
+                        model: settingsVm.toolStatuses
 
                         Rectangle {
                             Layout.fillWidth: true
@@ -213,9 +213,9 @@ Window {
                                         visible: modelData.downloadable
                                         onClicked: {
                                             if (modelData.category === "intent")
-                                                backend.downloadModel(modelData.name)
+                                                settingsVm.downloadModel(modelData.name)
                                             else
-                                                backend.downloadTool(modelData.name)
+                                                settingsVm.downloadTool(modelData.name)
                                         }
                                     }
                                 }
@@ -282,7 +282,7 @@ Window {
 
                         Button {
                             text: "Install Skill"
-                            onClicked: backend.installSkill(skillUrlField.text)
+                            onClicked: settingsVm.installSkill(skillUrlField.text)
                         }
                     }
 
@@ -310,12 +310,12 @@ Window {
 
                         Button {
                             text: "Create"
-                            onClicked: backend.createSkill(skillIdField.text, skillNameField.text, skillDescriptionField.text)
+                            onClicked: settingsVm.createSkill(skillIdField.text, skillNameField.text, skillDescriptionField.text)
                         }
                     }
 
                     Repeater {
-                        model: backend.installedSkills
+                        model: settingsVm.installedSkills
 
                         Rectangle {
                             width: skillsColumn.width
@@ -439,7 +439,7 @@ Window {
 
                         Button {
                             text: "Save Tool Settings"
-                            onClicked: backend.saveToolsStoreSettings(
+                            onClicked: settingsVm.saveToolsStoreSettings(
                                 webProviderField.text,
                                 mcpEnabledCheck.checked,
                                 mcpCatalogField.text,
@@ -478,7 +478,7 @@ Window {
                     }
 
                     Repeater {
-                        model: backend.availableAgentTools
+                        model: settingsVm.availableAgentTools
 
                         Rectangle {
                             width: agentToolsColumn.width
@@ -532,3 +532,4 @@ Window {
         }
     }
 }
+
