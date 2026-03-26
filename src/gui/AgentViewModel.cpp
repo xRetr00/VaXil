@@ -25,7 +25,7 @@ AgentViewModel::AgentViewModel(BackendFacade *backend, QObject *parent)
 
 QString AgentViewModel::stateName() const
 {
-    return m_backend ? m_backend->stateName() : QStringLiteral("IDLE");
+    return normalizeStateName(m_backend ? m_backend->stateName() : QStringLiteral("IDLE"));
 }
 
 int AgentViewModel::uiState() const
@@ -108,15 +108,30 @@ void AgentViewModel::cancelRequest()
 
 int AgentViewModel::mapUiState(const QString &stateName) const
 {
-    const QString normalized = stateName.trimmed().toUpper();
+    const QString normalized = normalizeStateName(stateName);
     if (normalized == QStringLiteral("LISTENING")) {
         return LISTENING;
     }
-    if (normalized == QStringLiteral("PROCESSING")) {
+    if (normalized == QStringLiteral("THINKING")) {
         return THINKING;
     }
-    if (normalized == QStringLiteral("SPEAKING")) {
+    if (normalized == QStringLiteral("EXECUTING")) {
         return EXECUTING;
     }
     return IDLE;
+}
+
+QString AgentViewModel::normalizeStateName(const QString &stateName) const
+{
+    const QString normalized = stateName.trimmed().toUpper();
+    if (normalized == QStringLiteral("PROCESSING")) {
+        return QStringLiteral("THINKING");
+    }
+    if (normalized == QStringLiteral("SPEAKING")) {
+        return QStringLiteral("EXECUTING");
+    }
+    if (normalized.isEmpty()) {
+        return QStringLiteral("IDLE");
+    }
+    return normalized;
 }

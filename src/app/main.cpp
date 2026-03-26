@@ -62,6 +62,7 @@ void qtMessageLogger(QtMsgType type, const QMessageLogContext &, const QString &
 
 int main(int argc, char *argv[])
 {
+    QApplication::setHighDpiScaleFactorRoundingPolicy(Qt::HighDpiScaleFactorRoundingPolicy::PassThrough);
     QApplication app(argc, argv);
     Q_INIT_RESOURCE(resources);
     QQuickStyle::setStyle(QStringLiteral("Basic"));

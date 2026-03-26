@@ -61,6 +61,7 @@ signals:
 
 private:
     int mapUiState(const QString &stateName) const;
+    QString normalizeStateName(const QString &stateName) const;
 
     BackendFacade *m_backend = nullptr;
 };
