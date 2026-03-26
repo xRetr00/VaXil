@@ -1,5 +1,10 @@
 # J.A.R.V.I.S
 
+<p align="center">
+  <img src="assets/logo.png" alt="J.A.R.V.I.S logo" width="300" />
+</p>
+
+
 Local-first desktop voice assistant built with Qt 6 and modern C++.
 
 Jarvis runs in the system tray, listens for a wake phrase, transcribes speech locally, routes requests to a local OpenAI-compatible backend, and speaks replies through local TTS.
@@ -51,6 +56,7 @@ Jarvis runs in the system tray, listens for a wake phrase, transcribes speech lo
 - src/skills: local skill manifest store
 - tests: Qt unit tests
 - docs: build and architecture documentation
+
 
 ## Requirements
 
