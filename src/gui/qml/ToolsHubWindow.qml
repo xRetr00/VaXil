@@ -429,14 +429,40 @@ Window {
                                         color: "#6f88a8"
                                         font.pixelSize: 11
                                     }
+
+                                    Text {
+                                        text: "Status: " + modelData.statusLabel
+                                        color: modelData.status === "working"
+                                            ? "#77e1b5"
+                                            : (modelData.status === "installed" ? "#a7d0ff" : "#ffb09a")
+                                        font.pixelSize: 11
+                                        font.weight: Font.Medium
+                                    }
+
+                                    Text {
+                                        visible: modelData.installedVersion && modelData.installedVersion.length > 0
+                                        text: "Installed version: " + modelData.installedVersion
+                                        color: "#9ab0ca"
+                                        font.pixelSize: 11
+                                    }
                                 }
 
                                 Button {
-                                    text: "Install"
+                                    text: modelData.installed ? "Reinstall" : "Install"
+                                    enabled: modelData.canInstall
                                     onClicked: settingsVm.installMcpQuickServer(modelData.id)
                                 }
                             }
                         }
+                    }
+
+                    Text {
+                        visible: settingsVm.mcpQuickServers.length > 0 && !settingsVm.mcpQuickServers[0].npmAvailable
+                        text: "npm not detected. Install Node.js LTS to enable MCP downloads."
+                        color: "#ffb09a"
+                        wrapMode: Text.WordWrap
+                        Layout.fillWidth: true
+                        font.pixelSize: 12
                     }
 
                     Text {

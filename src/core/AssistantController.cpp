@@ -448,7 +448,7 @@ QString sanitizeSimpleFileName(QString fileName)
 {
     fileName = fileName.trimmed();
     fileName.remove(QRegularExpression(QStringLiteral("[\\\\/:*?\"<>|]")));
-    fileName.remove(QRegularExpression(QStringLiteral("\\s+")));
+    fileName.remove(QRegularExpression(QStringLiteral("\s+")));
     if (fileName.isEmpty()) {
         return QStringLiteral("jarvis_note.txt");
     }
@@ -478,51 +478,6 @@ int parseTimerDurationSeconds(const QString &input)
     return value;
 }
 
-int parseAlarmTimeDurationSeconds(const QString &input)
-{
-    const QRegularExpression pattern(
-        QStringLiteral("(?:set|create|start)?\\s*(?:an\\s*)?alarm(?:\\s*(?:for|at))?\\s*(\\d{1,2})(?::(\\d{2}))?\\s*(am|pm)?"),
-        QRegularExpression::CaseInsensitiveOption);
-    const QRegularExpressionMatch match = pattern.match(input);
-    if (!match.hasMatch()) {
-        return 0;
-    }
-
-    int hour = match.captured(1).toInt();
-    const int minute = match.captured(2).isEmpty() ? 0 : match.captured(2).toInt();
-    const QString meridiem = match.captured(3).toLower();
-
-    if (minute < 0 || minute > 59 || hour < 0 || hour > 23) {
-        return 0;
-    }
-
-    if (!meridiem.isEmpty()) {
-        if (hour < 1 || hour > 12) {
-            return 0;
-        }
-        if (meridiem == QStringLiteral("pm") && hour != 12) {
-            hour += 12;
-        }
-        if (meridiem == QStringLiteral("am") && hour == 12) {
-            hour = 0;
-        }
-    }
-
-    const QTime targetTime(hour, minute);
-    if (!targetTime.isValid()) {
-        return 0;
-    }
-
-    QDateTime target = QDateTime::currentDateTime();
-    target.setTime(targetTime);
-    if (target <= QDateTime::currentDateTime()) {
-        target = target.addDays(1);
-    }
-
-    const qint64 seconds = QDateTime::currentDateTime().secsTo(target);
-    return seconds > 0 ? static_cast<int>(seconds) : 0;
-}
-
 bool buildDeterministicComputerTask(const QString &input, AgentTask *task, QString *spoken)
 {
     if (task == nullptr || spoken == nullptr) {
@@ -532,7 +487,7 @@ bool buildDeterministicComputerTask(const QString &input, AgentTask *task, QStri
     const QString lowered = input.toLower().trimmed();
 
     QRegularExpression ytSearchPattern(
-        QStringLiteral("(?:search\\s+(?:on\\s+)?youtube\\s+for|youtube\\s+search\\s+for|find\\s+on\\s+youtube|open\\s+youtube\\s+and\\s+search\\s+for|search\\s+youtube\\s+for)\\s+(.+)"),
+        QStringLiteral("(?:search\\s+(?:on\\s+)?youtube\\s+for|youtube\\s+search\\s+for|find\\s+on\\s+youtube|open\\s+youtube\\s+and\\s+search\\s+for)\\s+(.+)"),
         QRegularExpression::CaseInsensitiveOption);
     QRegularExpressionMatch ytMatch = ytSearchPattern.match(input);
     if (ytMatch.hasMatch()) {
@@ -565,19 +520,6 @@ bool buildDeterministicComputerTask(const QString &input, AgentTask *task, QStri
         };
         task->priority = 88;
         *spoken = QStringLiteral("Timer set.");
-        return true;
-    }
-
-    const int alarmSeconds = parseAlarmTimeDurationSeconds(input);
-    if (alarmSeconds > 0) {
-        task->type = QStringLiteral("computer_set_timer");
-        task->args = QJsonObject{
-            {QStringLiteral("duration_seconds"), alarmSeconds},
-            {QStringLiteral("title"), QStringLiteral("JARVIS Alarm")},
-            {QStringLiteral("message"), QStringLiteral("Alarm time reached.")}
-        };
-        task->priority = 88;
-        *spoken = QStringLiteral("Alarm set.");
         return true;
     }
 

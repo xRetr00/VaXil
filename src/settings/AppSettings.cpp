@@ -289,8 +289,9 @@ void AppSettings::setChatBackendApiKey(const QString &apiKey)
 QString AppSettings::chatBackendModel() const { return m_chatBackendModel; }
 void AppSettings::setChatBackendModel(const QString &modelId)
 {
-    m_chatBackendModel = modelId;
-    m_selectedModel = modelId;
+    const QString normalizedModel = modelId.trimmed();
+    m_chatBackendModel = normalizedModel;
+    m_selectedModel = normalizedModel;
     emit settingsChanged();
 }
 QString AppSettings::lmStudioEndpoint() const { return m_lmStudioEndpoint; }

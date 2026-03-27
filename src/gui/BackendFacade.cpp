@@ -7,6 +7,7 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QJsonDocument>
+#include <QJsonObject>
 #include <QMediaDevices>
 #include <QProcess>
 #include <QRegularExpression>
@@ -305,6 +306,81 @@ const McpQuickServerPreset *findMcpQuickServerPreset(const QString &presetId)
     return nullptr;
 }
 
+QString mcpToolsRootPath()
+{
+    const QString appDataRoot = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+    if (appDataRoot.isEmpty()) {
+        return {};
+    }
+    return appDataRoot + QStringLiteral("/tools/mcp");
+}
+
+QString mcpPackageManifestPath(const QString &rootPath, const QString &packageName)
+{
+    const QString normalized = packageName.trimmed();
+    if (rootPath.isEmpty() || normalized.isEmpty()) {
+        return {};
+    }
+
+    const QStringList parts = normalized.split(QStringLiteral("/"), Qt::SkipEmptyParts);
+    if (parts.isEmpty()) {
+        return {};
+    }
+
+    if (normalized.startsWith(QStringLiteral("@")) && parts.size() >= 2) {
+        return rootPath + QStringLiteral("/node_modules/") + parts[0] + QStringLiteral("/") + parts[1] + QStringLiteral("/package.json");
+    }
+
+    return rootPath + QStringLiteral("/node_modules/") + parts[0] + QStringLiteral("/package.json");
+}
+
+QVariantMap probeMcpPackageStatus(const QString &mcpRootPath, const QString &packageName)
+{
+    QVariantMap status;
+    status.insert(QStringLiteral("installed"), false);
+    status.insert(QStringLiteral("status"), QStringLiteral("missing"));
+    status.insert(QStringLiteral("statusLabel"), QStringLiteral("Not installed"));
+    status.insert(QStringLiteral("installedVersion"), QString());
+
+    const QString manifestPath = mcpPackageManifestPath(mcpRootPath, packageName);
+    QFile manifestFile(manifestPath);
+    if (!manifestFile.exists()) {
+        return status;
+    }
+
+    if (!manifestFile.open(QIODevice::ReadOnly)) {
+        status.insert(QStringLiteral("status"), QStringLiteral("broken"));
+        status.insert(QStringLiteral("statusLabel"), QStringLiteral("Installed (unreadable)"));
+        return status;
+    }
+
+    const QJsonDocument doc = QJsonDocument::fromJson(manifestFile.readAll());
+    manifestFile.close();
+    if (!doc.isObject()) {
+        status.insert(QStringLiteral("status"), QStringLiteral("broken"));
+        status.insert(QStringLiteral("statusLabel"), QStringLiteral("Installed (invalid manifest)"));
+        return status;
+    }
+
+    const QJsonObject obj = doc.object();
+    const QString installedVersion = obj.value(QStringLiteral("version")).toString();
+    const QJsonValue binValue = obj.value(QStringLiteral("bin"));
+    const bool hasRunnableEntry = (binValue.isString() && !binValue.toString().trimmed().isEmpty())
+        || (binValue.isObject() && !binValue.toObject().isEmpty());
+
+    status.insert(QStringLiteral("installed"), true);
+    status.insert(QStringLiteral("installedVersion"), installedVersion);
+    if (hasRunnableEntry) {
+        status.insert(QStringLiteral("status"), QStringLiteral("working"));
+        status.insert(QStringLiteral("statusLabel"), QStringLiteral("Working"));
+    } else {
+        status.insert(QStringLiteral("status"), QStringLiteral("installed"));
+        status.insert(QStringLiteral("statusLabel"), QStringLiteral("Installed (entrypoint unknown)"));
+    }
+
+    return status;
+}
+
 quint64 totalMemoryBytes()
 {
 #ifdef Q_OS_WIN
@@ -319,7 +395,7 @@ quint64 totalMemoryBytes()
 
 QString detectHardwareTier()
 {
-    const int logicalCores = std::max(1, QThread::idealThreadCount());
+    const int logicalCores = QThread::idealThreadCount() > 1 ? QThread::idealThreadCount() : 1;
     const double memoryGb = static_cast<double>(totalMemoryBytes()) / (1024.0 * 1024.0 * 1024.0);
     if (memoryGb > 0.0 && (memoryGb <= 8.5 || logicalCores <= 4)) {
         return QStringLiteral("entry");
@@ -344,7 +420,7 @@ QString recommendedIntentModelId()
 
 QString intentHardwareSummary()
 {
-    const int logicalCores = std::max(1, QThread::idealThreadCount());
+    const int logicalCores = QThread::idealThreadCount() > 1 ? QThread::idealThreadCount() : 1;
     const double memoryGb = static_cast<double>(totalMemoryBytes()) / (1024.0 * 1024.0 * 1024.0);
     const QString tier = detectHardwareTier();
     const QString ramLabel = memoryGb > 0.0
@@ -982,6 +1058,15 @@ QString BackendFacade::mcpCatalogUrl() const { return m_settings->mcpCatalogUrl(
 QString BackendFacade::mcpServerUrl() const { return m_settings->mcpServerUrl(); }
 QVariantList BackendFacade::mcpQuickServers() const
 {
+    const QString npmExecutable = resolveExecutable(
+        {
+            QStringLiteral("npm"),
+            QStringLiteral("npm.cmd")
+        },
+        {});
+    const bool canInstall = !npmExecutable.isEmpty();
+    const QString mcpRootPath = mcpToolsRootPath();
+
     QVariantList list;
     for (const McpQuickServerPreset &preset : mcpQuickServerPresets()) {
         QVariantMap row;
@@ -990,6 +1075,14 @@ QVariantList BackendFacade::mcpQuickServers() const
         row.insert(QStringLiteral("description"), preset.description);
         row.insert(QStringLiteral("package"), preset.packageName);
         row.insert(QStringLiteral("version"), preset.packageVersion);
+        row.insert(QStringLiteral("canInstall"), canInstall);
+        row.insert(QStringLiteral("npmAvailable"), canInstall);
+
+        const QVariantMap probe = probeMcpPackageStatus(mcpRootPath, preset.packageName);
+        row.insert(QStringLiteral("installed"), probe.value(QStringLiteral("installed"), false));
+        row.insert(QStringLiteral("status"), probe.value(QStringLiteral("status"), QStringLiteral("missing")));
+        row.insert(QStringLiteral("statusLabel"), probe.value(QStringLiteral("statusLabel"), QStringLiteral("Not installed")));
+        row.insert(QStringLiteral("installedVersion"), probe.value(QStringLiteral("installedVersion"), QString()));
         list.push_back(row);
     }
     return list;
@@ -1551,7 +1644,7 @@ QVariantMap BackendFacade::evaluateSetupRequirements(
     QVariantMap result;
 
     const bool endpointOk = !endpoint.trimmed().isEmpty();
-    const bool modelOk = !modelId.trimmed().isEmpty() && m_assistantController->availableModelIds().contains(modelId);
+    const bool modelOk = !modelId.trimmed().isEmpty();
 
     const QString resolvedWhisper = resolveExecutableSelection(
         whisperPath,
@@ -1830,6 +1923,81 @@ bool BackendFacade::createSkill(const QString &id, const QString &name, const QS
     return ok;
 }
 
+QVariantMap BackendFacade::validateBraveSearchConnection(const QString &apiKey)
+{
+    QString effectiveKey = apiKey.trimmed();
+    if (effectiveKey.isEmpty()) {
+        effectiveKey = m_settings->braveSearchApiKey().trimmed();
+    }
+    if (effectiveKey.isEmpty()) {
+        effectiveKey = qEnvironmentVariable("BRAVE_SEARCH_API_KEY").trimmed();
+    }
+
+    if (effectiveKey.isEmpty()) {
+        return {
+            {QStringLiteral("ok"), false},
+            {QStringLiteral("connected"), false},
+            {QStringLiteral("message"), QStringLiteral("No Brave API key found. Add one in settings or BRAVE_SEARCH_API_KEY.")}
+        };
+    }
+
+    QString escapedKey = effectiveKey;
+    escapedKey.replace(QStringLiteral("'"), QStringLiteral("''"));
+
+    const QString command = QStringLiteral(
+        "$headers=@{'Accept'='application/json';'X-Subscription-Token'='%1'}; "
+        "try { "
+        "  $resp=Invoke-RestMethod -Headers $headers -Uri 'https://api.search.brave.com/res/v1/web/search?q=connectivity+test&count=1' -Method Get -TimeoutSec 12; "
+        "  $count=0; "
+        "  if ($resp.web -and $resp.web.results) { $count=$resp.web.results.Count }; "
+        "  @{ok=$true;connected=$true;message='Connected to Brave Search API.';resultCount=$count} | ConvertTo-Json -Compress "
+        "} catch { "
+        "  $code=''; "
+        "  if ($_.Exception.Response -and $_.Exception.Response.StatusCode) { $code=[int]$_.Exception.Response.StatusCode }; "
+        "  @{ok=$false;connected=$false;message=$_.Exception.Message;statusCode=$code} | ConvertTo-Json -Compress "
+        "}")
+        .arg(escapedKey);
+
+    QProcess process;
+    process.start(QStringLiteral("powershell"),
+                  {QStringLiteral("-NoProfile"),
+                   QStringLiteral("-ExecutionPolicy"), QStringLiteral("Bypass"),
+                   QStringLiteral("-Command"),
+                   command});
+
+    if (!process.waitForFinished(18000)) {
+        process.kill();
+        process.waitForFinished(2000);
+        return {
+            {QStringLiteral("ok"), false},
+            {QStringLiteral("connected"), false},
+            {QStringLiteral("message"), QStringLiteral("Validation timed out while contacting Brave Search API.")}
+        };
+    }
+
+    const QString stdoutText = QString::fromUtf8(process.readAllStandardOutput()).trimmed();
+    const auto parsed = QJsonDocument::fromJson(stdoutText.toUtf8());
+    if (parsed.isObject()) {
+        return parsed.object().toVariantMap();
+    }
+
+    const bool processOk = process.exitStatus() == QProcess::NormalExit && process.exitCode() == 0;
+    if (processOk) {
+        return {
+            {QStringLiteral("ok"), true},
+            {QStringLiteral("connected"), true},
+            {QStringLiteral("message"), QStringLiteral("Connected to Brave Search API.")}
+        };
+    }
+
+    const QString stderrText = QString::fromUtf8(process.readAllStandardError()).trimmed();
+    return {
+        {QStringLiteral("ok"), false},
+        {QStringLiteral("connected"), false},
+        {QStringLiteral("message"), stderrText.isEmpty() ? QStringLiteral("Brave Search API validation failed.") : stderrText}
+    };
+}
+
 bool BackendFacade::saveToolsStoreSettings(const QString &webSearchProviderValue,
                                            bool mcpEnabledValue,
                                            const QString &mcpCatalogUrlValue,
@@ -1857,19 +2025,32 @@ bool BackendFacade::installMcpQuickServer(const QString &presetId)
         return false;
     }
 
-    const QString appDataRoot = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
-    if (appDataRoot.isEmpty()) {
+    const QString mcpToolsRoot = mcpToolsRootPath();
+    if (mcpToolsRoot.isEmpty()) {
         setToolInstallStatus(QStringLiteral("Failed to resolve app data directory for MCP packages."));
         return false;
     }
 
-    const QString mcpToolsRoot = appDataRoot + QStringLiteral("/tools/mcp");
     QDir().mkpath(mcpToolsRoot);
+
+    const QString npmExecutable = resolveExecutable(
+        {
+            QStringLiteral("npm"),
+            QStringLiteral("npm.cmd")
+        },
+        {});
+    if (npmExecutable.isEmpty()) {
+        setToolInstallStatus(QStringLiteral("npm is not available. Install Node.js LTS, then retry MCP install."));
+        emit settingsChanged();
+        return false;
+    }
 
     QProcess process;
     process.setWorkingDirectory(mcpToolsRoot);
+    setToolInstallStatus(QStringLiteral("Installing %1...").arg(preset->name));
+    emit settingsChanged();
     process.start(
-        QStringLiteral("npm"),
+        npmExecutable,
         {
             QStringLiteral("install"),
             QStringLiteral("--no-audit"),
@@ -1921,20 +2102,32 @@ bool BackendFacade::installMcpPackage(const QString &packageSpec, const QString 
         return false;
     }
 
-    const QString appDataRoot = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
-    if (appDataRoot.isEmpty()) {
+    const QString mcpToolsRoot = mcpToolsRootPath();
+    if (mcpToolsRoot.isEmpty()) {
         setToolInstallStatus(QStringLiteral("Failed to resolve app data directory for MCP packages."));
         return false;
     }
 
-    const QString mcpToolsRoot = appDataRoot + QStringLiteral("/tools/mcp");
     QDir().mkpath(mcpToolsRoot);
+
+    const QString npmExecutable = resolveExecutable(
+        {
+            QStringLiteral("npm"),
+            QStringLiteral("npm.cmd")
+        },
+        {});
+    if (npmExecutable.isEmpty()) {
+        setToolInstallStatus(QStringLiteral("npm is not available. Install Node.js LTS, then retry MCP install."));
+        emit settingsChanged();
+        return false;
+    }
 
     QProcess process;
     process.setWorkingDirectory(mcpToolsRoot);
     setToolInstallStatus(QStringLiteral("Installing MCP package %1...").arg(normalizedSpec));
+    emit settingsChanged();
     process.start(
-        QStringLiteral("npm"),
+        npmExecutable,
         {
             QStringLiteral("install"),
             QStringLiteral("--no-audit"),

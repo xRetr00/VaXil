@@ -16,6 +16,9 @@ Window {
     color: "#050912"
 
     property real dpiScale: Math.max(1.0, Screen.devicePixelRatio)
+    property string braveValidationMessage: ""
+    property bool braveValidationOk: false
+    property bool openRouterSelected: providerCombo.currentText === "openrouter"
 
     onClosing: function(close) {
         close.accepted = false
@@ -32,10 +35,19 @@ Window {
         return ok ? "OK" : "Missing"
     }
 
+    function effectiveModelText() {
+        const typed = (modelCombo.editText || "").trim()
+        return typed.length > 0 ? typed : (modelCombo.currentText || "").trim()
+    }
+
+    function effectiveEndpointText() {
+        return openRouterSelected ? "https://openrouter.ai/api" : endpointField.text
+    }
+
     function refreshRequirementStatus() {
         requirementStatus = settingsVm.evaluateSetupRequirements(
-            endpointField.text,
-            modelCombo.currentText,
+            effectiveEndpointText(),
+            effectiveModelText(),
             whisperPathField.text,
             whisperModelPathField.text,
             piperPathField.text,
@@ -78,6 +90,7 @@ Window {
         memoryAutoWriteCheck.checked = settingsVm.memoryAutoWrite
         webProviderField.text = settingsVm.webSearchProvider
         braveApiKeyField.text = settingsVm.braveSearchApiKey
+        braveValidationMessage = ""
         tracePanelCheck.checked = settingsVm.tracePanelEnabled
 
         const modelIndex = settingsVm.models.indexOf(settingsVm.selectedModel)
@@ -355,8 +368,20 @@ Window {
                         echoMode: TextInput.Password
                     }
 
-                    Text { text: "Local AI backend endpoint"; color: "#c9def3"; font.pixelSize: 13 }
-                    TextField { id: endpointField; Layout.fillWidth: true; text: settingsVm.lmStudioEndpoint }
+                    Text {
+                        visible: openRouterSelected
+                        text: "OpenRouter endpoint (preview)"
+                        color: "#c9def3"
+                        font.pixelSize: 13
+                    }
+                    TextField {
+                        visible: openRouterSelected
+                        Layout.fillWidth: true
+                        readOnly: true
+                        text: "https://openrouter.ai/api"
+                    }
+                    Text { visible: !openRouterSelected; text: "Local AI backend endpoint"; color: "#c9def3"; font.pixelSize: 13 }
+                    TextField { id: endpointField; visible: !openRouterSelected; Layout.fillWidth: true; text: settingsVm.lmStudioEndpoint }
                     RowLayout {
                         Layout.fillWidth: true
                         Rectangle { width: 10; height: 10; radius: 5; color: settingsWindow.statusColor(requirementStatus.endpointOk === true) }
@@ -380,7 +405,7 @@ Window {
                                 editText = settingsVm.selectedModel
                             }
                         }
-                        onActivated: settingsVm.setSelectedModel(currentText)
+                        onActivated: settingsVm.setSelectedModel(effectiveModelText())
                     }
                     RowLayout {
                         Layout.fillWidth: true
@@ -530,6 +555,37 @@ Window {
                             text: settingsVm.braveSearchApiKey
                             placeholderText: "Optional if BRAVE_SEARCH_API_KEY env var is set"
                             echoMode: TextInput.Password
+                        }
+                    }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 10
+
+                        Button {
+                            text: "Validate Brave Key"
+                            onClicked: {
+                                const result = settingsVm.validateBraveSearchConnection(braveApiKeyField.text)
+                                braveValidationOk = !!result.ok
+                                braveValidationMessage = result.message ? String(result.message) : (braveValidationOk ? "Connected." : "Validation failed.")
+                            }
+                        }
+
+                        Rectangle {
+                            width: 10
+                            height: 10
+                            radius: 5
+                            color: braveValidationMessage.length === 0 ? "#6c7f99" : (braveValidationOk ? "#1ecb6b" : "#f04d5d")
+                        }
+
+                        Text {
+                            Layout.fillWidth: true
+                            text: braveValidationMessage.length === 0
+                                  ? "Run validation to confirm Brave key and connectivity."
+                                  : braveValidationMessage
+                            color: braveValidationMessage.length === 0 ? "#9ab0ca" : (braveValidationOk ? "#87d7a2" : "#f3a1a1")
+                            font.pixelSize: 12
+                            wrapMode: Text.Wrap
                         }
                     }
 
@@ -972,10 +1028,10 @@ Window {
                                 cursorShape: Qt.PointingHandCursor
                                 onClicked: {
                                     settingsVm.saveSettings(
-                                        endpointField.text,
+                                        effectiveEndpointText(),
                                         providerCombo.currentText,
                                         providerApiKeyField.text,
-                                        modelCombo.currentText,
+                                        effectiveModelText(),
                                         modeCombo.currentIndex,
                                         autoRoutingCheck.checked,
                                         streamCheck.checked,

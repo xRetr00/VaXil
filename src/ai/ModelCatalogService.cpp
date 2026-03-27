@@ -16,9 +16,16 @@ ModelCatalogService::ModelCatalogService(AppSettings *settings, AiBackendClient 
         }
         m_availability.online = true;
         m_availability.modelAvailable = selectedModelValid();
-        m_availability.status = m_models.isEmpty()
-            ? QStringLiteral("No models exposed by the local AI backend")
-            : (m_availability.modelAvailable ? QStringLiteral("Ready") : QStringLiteral("Selected model unavailable"));
+        const bool hasConfiguredModel = !m_settings->chatBackendModel().trimmed().isEmpty();
+        if (m_models.isEmpty()) {
+            m_availability.status = hasConfiguredModel
+                ? QStringLiteral("Ready (using configured model)")
+                : QStringLiteral("No models exposed by the provider");
+        } else {
+            m_availability.status = m_availability.modelAvailable
+                ? QStringLiteral("Ready")
+                : QStringLiteral("Selected model unavailable");
+        }
         emit modelsChanged();
         emit availabilityChanged();
     });
@@ -50,15 +57,21 @@ void ModelCatalogService::refresh()
 
 bool ModelCatalogService::selectedModelValid() const
 {
-    if (m_settings->chatBackendModel().isEmpty()) {
+    const QString configuredModel = m_settings->chatBackendModel().trimmed();
+    if (configuredModel.isEmpty()) {
         return !m_models.isEmpty();
     }
 
+    if (m_models.isEmpty()) {
+        return true;
+    }
+
     for (const auto &model : m_models) {
-        if (model.id == m_settings->chatBackendModel()) {
+        if (model.id == configuredModel) {
             return true;
         }
     }
 
-    return false;
+    // Keep manual model entries valid even when providers do not list every compatible model.
+    return true;
 }

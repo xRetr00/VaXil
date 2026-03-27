@@ -20,6 +20,11 @@ Window {
     property int stepIndex: 0
     property bool openRouterSelected: providerCombo.currentText === "openrouter"
 
+    function effectiveModelText() {
+        const typed = (modelCombo.editText || "").trim()
+        return typed.length > 0 ? typed : (modelCombo.currentText || "").trim()
+    }
+
     function syncVoiceFieldsFromBackend() {
         const providerIndex = ["openai_compatible_local", "openrouter", "ollama"].indexOf(settingsVm.chatProviderKind)
         providerCombo.currentIndex = providerIndex >= 0 ? providerIndex : 0
@@ -330,6 +335,7 @@ Window {
                                 editable: true
                                 currentIndex: -1
                                 editText: settingsVm.selectedModel
+                                onActivated: settingsVm.setSelectedModel(effectiveModelText())
                             }
                         }
 
@@ -642,7 +648,7 @@ Window {
                                             providerCombo.currentText,
                                             providerApiKeyField.text,
                                             wizard.openRouterSelected ? "https://openrouter.ai/api" : endpointField.text,
-                                            modelCombo.currentText,
+                                            effectiveModelText(),
                                             whisperPathField.text,
                                             whisperModelPathField.text,
                                             settingsVm.wakeTriggerThreshold,
@@ -667,7 +673,7 @@ Window {
                                             providerCombo.currentText,
                                             providerApiKeyField.text,
                                             wizard.openRouterSelected ? "https://openrouter.ai/api" : endpointField.text,
-                                            modelCombo.currentText,
+                                            effectiveModelText(),
                                             whisperPathField.text,
                                             whisperModelPathField.text,
                                             settingsVm.wakeTriggerThreshold,
@@ -773,7 +779,7 @@ Window {
                                     providerCombo.currentText,
                                     providerApiKeyField.text,
                                     wizard.openRouterSelected ? "https://openrouter.ai/api" : endpointField.text,
-                                    modelCombo.currentText,
+                                    effectiveModelText(),
                                     whisperPathField.text,
                                     whisperModelPathField.text,
                                     settingsVm.wakeTriggerThreshold,
@@ -803,7 +809,7 @@ Window {
                                     providerCombo.currentText,
                                     providerApiKeyField.text,
                                     wizard.openRouterSelected ? "https://openrouter.ai/api" : endpointField.text,
-                                    modelCombo.currentText,
+                                    effectiveModelText(),
                                     whisperPathField.text,
                                     whisperModelPathField.text,
                                     settingsVm.wakeTriggerThreshold,

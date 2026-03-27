@@ -221,6 +221,7 @@ public:
     Q_INVOKABLE void openToolsHub();
     Q_INVOKABLE bool installSkill(const QString &url);
     Q_INVOKABLE bool createSkill(const QString &id, const QString &name, const QString &description);
+    Q_INVOKABLE QVariantMap validateBraveSearchConnection(const QString &apiKey);
     Q_INVOKABLE bool saveToolsStoreSettings(const QString &webSearchProvider,
                                             bool mcpEnabled,
                                             const QString &mcpCatalogUrl,

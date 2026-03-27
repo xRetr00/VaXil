@@ -608,6 +608,18 @@ bool SettingsViewModel::createSkill(const QString &id, const QString &name, cons
     return m_backend && m_backend->createSkill(id, name, description);
 }
 
+QVariantMap SettingsViewModel::validateBraveSearchConnection(const QString &apiKey)
+{
+    if (!m_backend) {
+        return {
+            {QStringLiteral("ok"), false},
+            {QStringLiteral("connected"), false},
+            {QStringLiteral("message"), QStringLiteral("Backend is unavailable.")}
+        };
+    }
+    return m_backend->validateBraveSearchConnection(apiKey);
+}
+
 bool SettingsViewModel::saveToolsStoreSettings(const QString &webSearchProvider,
                                                bool mcpEnabled,
                                                const QString &mcpCatalogUrl,
