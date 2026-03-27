@@ -13,6 +13,7 @@
 #include <QStandardPaths>
 #include <QTimer>
 #include <QTime>
+#include <QUrl>
 #include <QVector>
 
 #include <nlohmann/json.hpp>
@@ -443,6 +444,199 @@ bool isExplicitComputerControlQuery(const QString &input)
     });
 }
 
+QString sanitizeSimpleFileName(QString fileName)
+{
+    fileName = fileName.trimmed();
+    fileName.remove(QRegularExpression(QStringLiteral("[\\\\/:*?\"<>|]")));
+    fileName.remove(QRegularExpression(QStringLiteral("\\s+")));
+    if (fileName.isEmpty()) {
+        return QStringLiteral("jarvis_note.txt");
+    }
+    if (!fileName.contains(QChar::fromLatin1('.'))) {
+        fileName += QStringLiteral(".txt");
+    }
+    return fileName;
+}
+
+int parseTimerDurationSeconds(const QString &input)
+{
+    const QRegularExpression pattern(
+        QStringLiteral("(?:set|start)?\\s*(?:a\\s*)?timer(?:\\s*for)?\\s*(\\d+)\\s*(seconds?|secs?|minutes?|mins?|hours?|hrs?)"),
+        QRegularExpression::CaseInsensitiveOption);
+    const QRegularExpressionMatch match = pattern.match(input);
+    if (!match.hasMatch()) {
+        return 0;
+    }
+
+    int value = match.captured(1).toInt();
+    const QString unit = match.captured(2).toLower();
+    if (unit.startsWith(QStringLiteral("hour")) || unit.startsWith(QStringLiteral("hr"))) {
+        value *= 3600;
+    } else if (unit.startsWith(QStringLiteral("minute")) || unit.startsWith(QStringLiteral("min"))) {
+        value *= 60;
+    }
+    return value;
+}
+
+int parseAlarmTimeDurationSeconds(const QString &input)
+{
+    const QRegularExpression pattern(
+        QStringLiteral("(?:set|create|start)?\\s*(?:an\\s*)?alarm(?:\\s*(?:for|at))?\\s*(\\d{1,2})(?::(\\d{2}))?\\s*(am|pm)?"),
+        QRegularExpression::CaseInsensitiveOption);
+    const QRegularExpressionMatch match = pattern.match(input);
+    if (!match.hasMatch()) {
+        return 0;
+    }
+
+    int hour = match.captured(1).toInt();
+    const int minute = match.captured(2).isEmpty() ? 0 : match.captured(2).toInt();
+    const QString meridiem = match.captured(3).toLower();
+
+    if (minute < 0 || minute > 59 || hour < 0 || hour > 23) {
+        return 0;
+    }
+
+    if (!meridiem.isEmpty()) {
+        if (hour < 1 || hour > 12) {
+            return 0;
+        }
+        if (meridiem == QStringLiteral("pm") && hour != 12) {
+            hour += 12;
+        }
+        if (meridiem == QStringLiteral("am") && hour == 12) {
+            hour = 0;
+        }
+    }
+
+    const QTime targetTime(hour, minute);
+    if (!targetTime.isValid()) {
+        return 0;
+    }
+
+    QDateTime target = QDateTime::currentDateTime();
+    target.setTime(targetTime);
+    if (target <= QDateTime::currentDateTime()) {
+        target = target.addDays(1);
+    }
+
+    const qint64 seconds = QDateTime::currentDateTime().secsTo(target);
+    return seconds > 0 ? static_cast<int>(seconds) : 0;
+}
+
+bool buildDeterministicComputerTask(const QString &input, AgentTask *task, QString *spoken)
+{
+    if (task == nullptr || spoken == nullptr) {
+        return false;
+    }
+
+    const QString lowered = input.toLower().trimmed();
+
+    QRegularExpression ytSearchPattern(
+        QStringLiteral("(?:search\\s+(?:on\\s+)?youtube\\s+for|youtube\\s+search\\s+for|find\\s+on\\s+youtube|open\\s+youtube\\s+and\\s+search\\s+for|search\\s+youtube\\s+for)\\s+(.+)"),
+        QRegularExpression::CaseInsensitiveOption);
+    QRegularExpressionMatch ytMatch = ytSearchPattern.match(input);
+    if (ytMatch.hasMatch()) {
+        const QString query = ytMatch.captured(1).trimmed();
+        if (!query.isEmpty()) {
+            const QString encoded = QString::fromUtf8(QUrl::toPercentEncoding(query)).replace(QStringLiteral("%20"), QStringLiteral("+"));
+            task->type = QStringLiteral("computer_open_url");
+            task->args = QJsonObject{{QStringLiteral("url"), QStringLiteral("https://www.youtube.com/results?search_query=%1").arg(encoded)}};
+            task->priority = 90;
+            *spoken = QStringLiteral("Opening YouTube search results.");
+            return true;
+        }
+    }
+
+    if (lowered.contains(QStringLiteral("open youtube")) || lowered == QStringLiteral("youtube")) {
+        task->type = QStringLiteral("computer_open_url");
+        task->args = QJsonObject{{QStringLiteral("url"), QStringLiteral("https://www.youtube.com")}};
+        task->priority = 85;
+        *spoken = QStringLiteral("Opening YouTube.");
+        return true;
+    }
+
+    const int timerSeconds = parseTimerDurationSeconds(input);
+    if (timerSeconds > 0) {
+        task->type = QStringLiteral("computer_set_timer");
+        task->args = QJsonObject{
+            {QStringLiteral("duration_seconds"), timerSeconds},
+            {QStringLiteral("title"), QStringLiteral("JARVIS Timer")},
+            {QStringLiteral("message"), QStringLiteral("Time is up.")}
+        };
+        task->priority = 88;
+        *spoken = QStringLiteral("Timer set.");
+        return true;
+    }
+
+    const int alarmSeconds = parseAlarmTimeDurationSeconds(input);
+    if (alarmSeconds > 0) {
+        task->type = QStringLiteral("computer_set_timer");
+        task->args = QJsonObject{
+            {QStringLiteral("duration_seconds"), alarmSeconds},
+            {QStringLiteral("title"), QStringLiteral("JARVIS Alarm")},
+            {QStringLiteral("message"), QStringLiteral("Alarm time reached.")}
+        };
+        task->priority = 88;
+        *spoken = QStringLiteral("Alarm set.");
+        return true;
+    }
+
+    QRegularExpression filePattern(
+        QStringLiteral("(?:create|write|make)\\s+(?:a\\s+)?file\\s+(?:on|in)\\s+(desktop|documents|downloads)(?:\\s+(?:called|named))?(?:\\s+([^\\s]+))?(?:.*?(?:with\\s+content|saying)\\s+(.+))?"),
+        QRegularExpression::CaseInsensitiveOption);
+    const QRegularExpressionMatch fileMatch = filePattern.match(input);
+    if (fileMatch.hasMatch()) {
+        const QString baseDir = fileMatch.captured(1).toLower();
+        const QString fileName = sanitizeSimpleFileName(fileMatch.captured(2));
+        QString content = fileMatch.captured(3).trimmed();
+        if (content.isEmpty()) {
+            content = QStringLiteral("Created by JARVIS.");
+        }
+
+        task->type = QStringLiteral("computer_write_file");
+        task->args = QJsonObject{
+            {QStringLiteral("path"), fileName},
+            {QStringLiteral("content"), content},
+            {QStringLiteral("overwrite"), false},
+            {QStringLiteral("base_dir"), baseDir}
+        };
+        task->priority = 87;
+        *spoken = QStringLiteral("Creating the file now.");
+        return true;
+    }
+
+    QRegularExpression openAppPattern(
+        QStringLiteral("^(?:open|launch|start)\\s+(?:the\\s+)?(.+)$"),
+        QRegularExpression::CaseInsensitiveOption);
+    const QRegularExpressionMatch appMatch = openAppPattern.match(input.trimmed());
+    if (appMatch.hasMatch()) {
+        const QString target = appMatch.captured(1).trimmed();
+        const QString targetLower = target.toLower();
+        if (!target.isEmpty()
+            && !targetLower.contains(QStringLiteral("youtube"))
+            && !targetLower.contains(QStringLiteral("website"))
+            && !targetLower.contains(QStringLiteral("url"))
+            && !targetLower.contains(QStringLiteral("timer"))
+            && !targetLower.contains(QStringLiteral("file"))) {
+            task->type = QStringLiteral("computer_open_app");
+            task->args = QJsonObject{{QStringLiteral("target"), target}};
+            task->priority = 86;
+            *spoken = QStringLiteral("Opening %1.").arg(target);
+            return true;
+        }
+    }
+
+    if (lowered.contains(QStringLiteral("open browser")) || lowered.contains(QStringLiteral("launch browser"))) {
+        task->type = QStringLiteral("computer_open_url");
+        task->args = QJsonObject{{QStringLiteral("url"), QStringLiteral("https://www.google.com")}};
+        task->priority = 84;
+        *spoken = QStringLiteral("Opening your browser.");
+        return true;
+    }
+
+    return false;
+}
+
 bool isExplicitWebSearchQuery(const QString &input)
 {
     return containsAnyNormalized(input, {
@@ -454,6 +648,49 @@ bool isExplicitWebSearchQuery(const QString &input)
         QStringLiteral("latest model"),
         QStringLiteral("reach the web")
     });
+}
+
+bool isFreshnessSensitiveQuery(const QString &input)
+{
+    return containsAnyNormalized(input, {
+        QStringLiteral("latest"),
+        QStringLiteral("newest"),
+        QStringLiteral("recent"),
+        QStringLiteral("just released"),
+        QStringLiteral("release"),
+        QStringLiteral("today"),
+        QStringLiteral("this week"),
+        QStringLiteral("this month"),
+        QStringLiteral("breaking"),
+        QStringLiteral("news"),
+        QStringLiteral("as of")
+    });
+}
+
+QString freshnessCodeForQuery(const QString &input)
+{
+    const QString normalized = input.toLower();
+    if (normalized.contains(QStringLiteral("today"))
+        || normalized.contains(QStringLiteral("last 24"))
+        || normalized.contains(QStringLiteral("past 24"))) {
+        return QStringLiteral("pd");
+    }
+    if (normalized.contains(QStringLiteral("this week"))
+        || normalized.contains(QStringLiteral("last week"))
+        || normalized.contains(QStringLiteral("past week"))) {
+        return QStringLiteral("pw");
+    }
+    if (normalized.contains(QStringLiteral("this month"))
+        || normalized.contains(QStringLiteral("last month"))
+        || normalized.contains(QStringLiteral("past month"))) {
+        return QStringLiteral("pm");
+    }
+    if (normalized.contains(QStringLiteral("this year"))
+        || normalized.contains(QStringLiteral("last year"))
+        || normalized.contains(QStringLiteral("past year"))) {
+        return QStringLiteral("py");
+    }
+    return QStringLiteral("pw");
 }
 
 QString extractWebSearchQuery(QString input)
@@ -535,7 +772,7 @@ AssistantController::AssistantController(
     m_intentRouter = new IntentRouter(this);
     m_localResponseEngine = new LocalResponseEngine(this);
     m_taskDispatcher = new TaskDispatcher(m_loggingService, this);
-    m_toolWorker = new ToolWorker(backgroundAllowedRoots(), m_loggingService);
+    m_toolWorker = new ToolWorker(backgroundAllowedRoots(), m_loggingService, m_settings);
     m_whisperSttEngine = new RuntimeSpeechRecognizer(m_voicePipelineRuntime, this);
     m_ttsEngine = new WorkerTtsEngine(m_voicePipelineRuntime, this);
     m_toolWorkerThread.setObjectName(QStringLiteral("BackgroundToolWorkerThread"));
@@ -569,6 +806,7 @@ void AssistantController::initialize()
         m_toolWorkerThread.start();
     }
     m_voicePipelineRuntime->start();
+    m_aiBackendClient->setProviderConfig(m_settings->chatBackendKind(), m_settings->chatBackendApiKey());
     m_aiBackendClient->setEndpoint(m_settings->chatBackendEndpoint());
     m_deviceManager->registerDefaults();
     m_localResponseEngine->initialize();
@@ -927,6 +1165,7 @@ void AssistantController::refreshModels()
 {
     m_modelCatalogResolved = false;
     updateStartupState();
+    m_aiBackendClient->setProviderConfig(m_settings->chatBackendKind(), m_settings->chatBackendApiKey());
     m_aiBackendClient->setEndpoint(m_settings->chatBackendEndpoint());
     m_modelCatalogService->refresh();
 }
@@ -999,6 +1238,17 @@ void AssistantController::submitText(const QString &text)
         deliverLocalResponse(
             m_localResponseEngine->currentDateResponse(buildLocalResponseContext()),
             QStringLiteral("Local date response"),
+            true);
+        return;
+    }
+
+    AgentTask deterministicTask;
+    QString deterministicSpoken;
+    if (buildDeterministicComputerTask(routedInput, &deterministicTask, &deterministicSpoken)) {
+        dispatchBackgroundTasks({deterministicTask});
+        deliverLocalResponse(
+            deterministicSpoken,
+            QStringLiteral("Background task queued"),
             true);
         return;
     }
@@ -1077,6 +1327,23 @@ void AssistantController::submitText(const QString &text)
         dispatchBackgroundTasks({task});
         deliverLocalResponse(
             QStringLiteral("All right, I'm searching the web now. The result will show up in the panel."),
+            QStringLiteral("Background task queued"),
+            true);
+        return;
+    }
+
+    if (m_settings->agentEnabled() && isFreshnessSensitiveQuery(routedInput)) {
+        AgentTask task;
+        task.type = QStringLiteral("web_search");
+        task.args = QJsonObject{
+            {QStringLiteral("query"), routedInput},
+            {QStringLiteral("freshness"), freshnessCodeForQuery(routedInput)},
+            {QStringLiteral("prefer_fresh"), true}
+        };
+        task.priority = 84;
+        dispatchBackgroundTasks({task});
+        deliverLocalResponse(
+            QStringLiteral("All right, I'll check the web for the latest information and summarize it for you next."),
             QStringLiteral("Background task queued"),
             true);
         return;
@@ -1259,6 +1526,7 @@ void AssistantController::saveAgentSettings(bool enabled,
                                             int maxOutputTokens,
                                             bool memoryAutoWrite,
                                             const QString &webSearchProvider,
+                                            const QString &braveSearchApiKey,
                                             bool tracePanelEnabled)
 {
     m_settings->setAgentEnabled(enabled);
@@ -1270,12 +1538,15 @@ void AssistantController::saveAgentSettings(bool enabled,
     m_settings->setMaxOutputTokens(maxOutputTokens);
     m_settings->setMemoryAutoWrite(memoryAutoWrite);
     m_settings->setWebSearchProvider(webSearchProvider);
+    m_settings->setBraveSearchApiKey(braveSearchApiKey);
     m_settings->setTracePanelEnabled(tracePanelEnabled);
     m_settings->save();
     emit agentStateChanged();
 }
 
 void AssistantController::saveSettings(
+    const QString &providerKind,
+    const QString &apiKey,
     const QString &endpoint,
     const QString &modelId,
     int defaultMode,
@@ -1302,6 +1573,8 @@ void AssistantController::saveSettings(
     bool clickThrough)
 {
     const QString previousWakeEngineKind = m_settings->wakeEngineKind();
+    m_settings->setChatBackendKind(providerKind);
+    m_settings->setChatBackendApiKey(apiKey);
     m_settings->setChatBackendEndpoint(endpoint);
     m_settings->setChatBackendModel(modelId);
     m_settings->setDefaultReasoningMode(static_cast<ReasoningMode>(defaultMode));
@@ -2456,6 +2729,32 @@ void AssistantController::recordTaskResult(const QJsonObject &resultObject)
                      result.type,
                      result.detail.left(600),
                      result.success);
+
+    if (result.type == QStringLiteral("web_search") && result.success) {
+        startWebSearchSummaryRequest(result);
+    }
+}
+
+void AssistantController::startWebSearchSummaryRequest(const BackgroundTaskResult &result)
+{
+    const QString query = result.payload.value(QStringLiteral("query")).toString().trimmed();
+    const QString provider = result.payload.value(QStringLiteral("provider")).toString().trimmed();
+    const QString content = result.payload.value(QStringLiteral("content")).toString();
+    if (query.isEmpty() || content.trimmed().isEmpty()) {
+        return;
+    }
+
+    const QString clippedContent = content.left(12000);
+    const QString synthesisInput = QStringLiteral(
+        "You previously asked me to search the web. "
+        "Please provide the final answer now using only the fetched search payload below. "
+        "Be concise, mention uncertainty when needed, and do not claim hidden browsing beyond this data.\n\n"
+        "User query: %1\n"
+        "Search provider: %2\n"
+        "Fetched payload (JSON/text):\n%3")
+            .arg(query, provider.isEmpty() ? QStringLiteral("unknown") : provider, clippedContent);
+
+    startConversationRequest(synthesisInput);
 }
 
 QStringList AssistantController::backgroundAllowedRoots() const

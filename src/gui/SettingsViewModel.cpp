@@ -47,6 +47,16 @@ QString SettingsViewModel::lmStudioEndpoint() const
     return m_backend ? m_backend->lmStudioEndpoint() : QString();
 }
 
+QString SettingsViewModel::chatProviderKind() const
+{
+    return m_backend ? m_backend->chatProviderKind() : QStringLiteral("openai_compatible_local");
+}
+
+QString SettingsViewModel::chatProviderApiKey() const
+{
+    return m_backend ? m_backend->chatProviderApiKey() : QString();
+}
+
 int SettingsViewModel::defaultReasoningMode() const
 {
     return m_backend ? m_backend->defaultReasoningMode() : 1;
@@ -307,6 +317,11 @@ QString SettingsViewModel::webSearchProvider() const
     return m_backend ? m_backend->webSearchProvider() : QString();
 }
 
+QString SettingsViewModel::braveSearchApiKey() const
+{
+    return m_backend ? m_backend->braveSearchApiKey() : QString();
+}
+
 bool SettingsViewModel::mcpEnabled() const
 {
     return m_backend && m_backend->mcpEnabled();
@@ -320,6 +335,11 @@ QString SettingsViewModel::mcpCatalogUrl() const
 QString SettingsViewModel::mcpServerUrl() const
 {
     return m_backend ? m_backend->mcpServerUrl() : QString();
+}
+
+QVariantList SettingsViewModel::mcpQuickServers() const
+{
+    return m_backend ? m_backend->mcpQuickServers() : QVariantList();
 }
 
 bool SettingsViewModel::tracePanelEnabled() const
@@ -448,6 +468,7 @@ void SettingsViewModel::saveAgentSettings(bool enabled,
                                           int maxOutputTokens,
                                           bool memoryAutoWrite,
                                           const QString &webSearchProvider,
+                                          const QString &braveSearchApiKey,
                                           bool tracePanelEnabled)
 {
     if (m_backend) {
@@ -460,11 +481,14 @@ void SettingsViewModel::saveAgentSettings(bool enabled,
                                      maxOutputTokens,
                                      memoryAutoWrite,
                                      webSearchProvider,
+                                     braveSearchApiKey,
                                      tracePanelEnabled);
     }
 }
 
 void SettingsViewModel::saveSettings(const QString &endpoint,
+                                     const QString &providerKind,
+                                     const QString &apiKey,
                                      const QString &modelId,
                                      int defaultMode,
                                      bool autoRouting,
@@ -491,6 +515,8 @@ void SettingsViewModel::saveSettings(const QString &endpoint,
 {
     if (m_backend) {
         m_backend->saveSettings(endpoint,
+                                providerKind,
+                                apiKey,
                                 modelId,
                                 defaultMode,
                                 autoRouting,
@@ -590,6 +616,16 @@ bool SettingsViewModel::saveToolsStoreSettings(const QString &webSearchProvider,
     return m_backend && m_backend->saveToolsStoreSettings(webSearchProvider, mcpEnabled, mcpCatalogUrl, mcpServerUrl);
 }
 
+bool SettingsViewModel::installMcpQuickServer(const QString &presetId)
+{
+    return m_backend && m_backend->installMcpQuickServer(presetId);
+}
+
+bool SettingsViewModel::installMcpPackage(const QString &packageSpec, const QString &serverIdHint)
+{
+    return m_backend && m_backend->installMcpPackage(packageSpec, serverIdHint);
+}
+
 void SettingsViewModel::startListening()
 {
     if (m_backend) {
@@ -598,6 +634,8 @@ void SettingsViewModel::startListening()
 }
 
 bool SettingsViewModel::runSetupScenario(const QString &userName,
+                                         const QString &providerKind,
+                                         const QString &apiKey,
                                          const QString &endpoint,
                                          const QString &modelId,
                                          const QString &whisperPath,
@@ -613,6 +651,8 @@ bool SettingsViewModel::runSetupScenario(const QString &userName,
                                          const QString &scenarioId)
 {
     return m_backend && m_backend->runSetupScenario(userName,
+                                                    providerKind,
+                                                    apiKey,
                                                     endpoint,
                                                     modelId,
                                                     whisperPath,
@@ -629,6 +669,8 @@ bool SettingsViewModel::runSetupScenario(const QString &userName,
 }
 
 bool SettingsViewModel::completeInitialSetup(const QString &userName,
+                                             const QString &providerKind,
+                                             const QString &apiKey,
                                              const QString &endpoint,
                                              const QString &modelId,
                                              const QString &whisperPath,
@@ -643,6 +685,8 @@ bool SettingsViewModel::completeInitialSetup(const QString &userName,
                                              bool clickThrough)
 {
     return m_backend && m_backend->completeInitialSetup(userName,
+                                                        providerKind,
+                                                        apiKey,
                                                         endpoint,
                                                         modelId,
                                                         whisperPath,

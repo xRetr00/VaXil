@@ -9,10 +9,16 @@
 #include <QUrl>
 
 namespace {
-QString normalizeEndpoint(QString endpoint)
+QString normalizeEndpoint(QString endpoint, const QString &providerKind)
 {
     endpoint = endpoint.trimmed();
     if (endpoint.isEmpty()) {
+        if (providerKind == QStringLiteral("openrouter")) {
+            return QStringLiteral("https://openrouter.ai/api");
+        }
+        if (providerKind == QStringLiteral("ollama")) {
+            return QStringLiteral("http://localhost:11434");
+        }
         return QStringLiteral("http://localhost:1234");
     }
 
@@ -57,13 +63,21 @@ OpenAiCompatibleClient::OpenAiCompatibleClient(QObject *parent)
         m_activeReply = nullptr;
         m_streamBuffer.clear();
         m_streamedContent.clear();
-        finishWithFailure(expiredRequestId, QStringLiteral("Local AI backend request timed out"));
+        finishWithFailure(expiredRequestId, QStringLiteral("%1 request timed out").arg(providerDisplayName()));
     });
 }
 
 void OpenAiCompatibleClient::setEndpoint(const QString &endpoint)
 {
-    m_endpoint = normalizeEndpoint(endpoint);
+    m_endpoint = normalizeEndpoint(endpoint, m_providerKind);
+}
+
+void OpenAiCompatibleClient::setProviderConfig(const QString &providerKind, const QString &apiKey)
+{
+    const QString normalizedProvider = providerKind.trimmed().toLower();
+    m_providerKind = normalizedProvider.isEmpty() ? QStringLiteral("openai_compatible_local") : normalizedProvider;
+    m_apiKey = apiKey.trimmed();
+    m_endpoint = normalizeEndpoint(m_endpoint, m_providerKind);
 }
 
 QString OpenAiCompatibleClient::endpoint() const
@@ -78,7 +92,7 @@ void OpenAiCompatibleClient::fetchModels()
         const auto cleanup = qScopeGuard([reply]() { reply->deleteLater(); });
 
         if (reply->error() != QNetworkReply::NoError) {
-            emit availabilityChanged({false, false, QStringLiteral("Local AI backend offline")});
+            emit availabilityChanged({false, false, QStringLiteral("%1 offline").arg(providerDisplayName())});
             emit modelsReady({});
             return;
         }
@@ -93,7 +107,7 @@ void OpenAiCompatibleClient::fetchModels()
             });
         }
 
-        emit availabilityChanged({true, !models.isEmpty(), QStringLiteral("Local AI backend connected")});
+        emit availabilityChanged({true, !models.isEmpty(), QStringLiteral("%1 connected").arg(providerDisplayName())});
         emit modelsReady(models);
         probeCapabilities();
     });
@@ -307,7 +321,25 @@ QNetworkRequest OpenAiCompatibleClient::buildJsonRequest(const QString &path) co
 {
     QNetworkRequest request(QUrl(m_endpoint + path));
     request.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/json"));
+    if (!m_apiKey.isEmpty()) {
+        request.setRawHeader("Authorization", QStringLiteral("Bearer %1").arg(m_apiKey).toUtf8());
+    }
+    if (m_providerKind == QStringLiteral("openrouter")) {
+        request.setRawHeader("HTTP-Referer", "https://github.com/xRetr00/J.A.R.V.I.S");
+        request.setRawHeader("X-Title", "J.A.R.V.I.S");
+    }
     return request;
+}
+
+QString OpenAiCompatibleClient::providerDisplayName() const
+{
+    if (m_providerKind == QStringLiteral("openrouter")) {
+        return QStringLiteral("OpenRouter");
+    }
+    if (m_providerKind == QStringLiteral("ollama")) {
+        return QStringLiteral("Ollama");
+    }
+    return QStringLiteral("Local AI backend");
 }
 
 void OpenAiCompatibleClient::probeCapabilities()
@@ -424,7 +456,7 @@ QString OpenAiCompatibleClient::parseErrorMessage(QNetworkReply *reply) const
         return QString::fromUtf8(body).trimmed();
     }
 
-    return reply != nullptr ? reply->errorString() : QStringLiteral("Local AI backend request failed");
+    return reply != nullptr ? reply->errorString() : QStringLiteral("%1 request failed").arg(providerDisplayName());
 }
 
 void OpenAiCompatibleClient::handleStreamingReply(quint64 requestId, QNetworkReply *reply)

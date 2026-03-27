@@ -45,6 +45,12 @@ void RuntimeAiBackendClient::setEndpoint(const QString &endpoint)
     m_runtime->setBackendEndpoint(endpoint);
 }
 
+void RuntimeAiBackendClient::setProviderConfig(const QString &providerKind, const QString &apiKey)
+{
+    m_providerKind = providerKind;
+    m_runtime->setBackendProviderConfig(providerKind, apiKey);
+}
+
 QString RuntimeAiBackendClient::endpoint() const
 {
     return m_endpoint;

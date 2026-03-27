@@ -4,6 +4,7 @@ bin/
 CMakeFiles/
 cmake/
 config/
+.github/
 cmake_install.cmake
 Makefile
 CMakeCache.txt

@@ -21,6 +21,9 @@ public:
     QString chatBackendEndpoint() const;
     void setChatBackendEndpoint(const QString &endpoint);
 
+    QString chatBackendApiKey() const;
+    void setChatBackendApiKey(const QString &apiKey);
+
     QString chatBackendModel() const;
     void setChatBackendModel(const QString &modelId);
 
@@ -68,6 +71,9 @@ public:
 
     QString webSearchProvider() const;
     void setWebSearchProvider(const QString &provider);
+
+    QString braveSearchApiKey() const;
+    void setBraveSearchApiKey(const QString &apiKey);
 
     bool mcpEnabled() const;
     void setMcpEnabled(bool enabled);
@@ -158,6 +164,7 @@ signals:
 private:
     QString m_chatBackendKind = QStringLiteral("openai_compatible_local");
     QString m_chatBackendEndpoint;
+    QString m_chatBackendApiKey;
     QString m_chatBackendModel;
     QString m_lmStudioEndpoint;
     QString m_selectedModel;
@@ -174,6 +181,7 @@ private:
     int m_maxOutputTokens = 1024;
     bool m_memoryAutoWrite = true;
     QString m_webSearchProvider = QStringLiteral("brave");
+    QString m_braveSearchApiKey;
     bool m_mcpEnabled = false;
     QString m_mcpCatalogUrl;
     QString m_mcpServerUrl;

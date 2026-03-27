@@ -114,8 +114,12 @@ bool AppSettings::load()
         return false;
     }
 
-    m_chatBackendKind = QString::fromStdString(parsed.value("chatBackendKind", m_chatBackendKind.toStdString()));
+    m_chatBackendKind = QString::fromStdString(parsed.value("chatBackendKind", m_chatBackendKind.toStdString())).trimmed().toLower();
+    if (m_chatBackendKind.isEmpty()) {
+        m_chatBackendKind = QStringLiteral("openai_compatible_local");
+    }
     m_chatBackendEndpoint = QString::fromStdString(parsed.value("chatBackendEndpoint", std::string{}));
+    m_chatBackendApiKey = QString::fromStdString(parsed.value("chatBackendApiKey", std::string{}));
     if (m_chatBackendEndpoint.isEmpty()) {
         m_chatBackendEndpoint = QString::fromStdString(parsed.value("lmStudioEndpoint", m_chatBackendEndpoint.toStdString()));
     }
@@ -146,6 +150,7 @@ bool AppSettings::load()
     m_maxOutputTokens = clampMaxOutputTokens(parsed.value("maxOutputTokens", 1024));
     m_memoryAutoWrite = parsed.value("memoryAutoWrite", true);
     m_webSearchProvider = QString::fromStdString(parsed.value("webSearchProvider", m_webSearchProvider.toStdString()));
+    m_braveSearchApiKey = QString::fromStdString(parsed.value("braveSearchApiKey", std::string{}));
     m_mcpEnabled = parsed.value("mcpEnabled", false);
     m_mcpCatalogUrl = QString::fromStdString(parsed.value("mcpCatalogUrl", std::string{}));
     m_mcpServerUrl = QString::fromStdString(parsed.value("mcpServerUrl", std::string{}));
@@ -205,6 +210,7 @@ bool AppSettings::save() const
     nlohmann::json json = {
         {"chatBackendKind", m_chatBackendKind.toStdString()},
         {"chatBackendEndpoint", m_chatBackendEndpoint.toStdString()},
+        {"chatBackendApiKey", m_chatBackendApiKey.toStdString()},
         {"chatBackendModel", m_chatBackendModel.toStdString()},
         {"lmStudioEndpoint", m_lmStudioEndpoint.toStdString()},
         {"selectedModel", m_selectedModel.toStdString()},
@@ -221,6 +227,7 @@ bool AppSettings::save() const
         {"maxOutputTokens", m_maxOutputTokens},
         {"memoryAutoWrite", m_memoryAutoWrite},
         {"webSearchProvider", m_webSearchProvider.toStdString()},
+        {"braveSearchApiKey", m_braveSearchApiKey.toStdString()},
         {"mcpEnabled", m_mcpEnabled},
         {"mcpCatalogUrl", m_mcpCatalogUrl.toStdString()},
         {"mcpServerUrl", m_mcpServerUrl.toStdString()},
@@ -262,7 +269,8 @@ bool AppSettings::save() const
 QString AppSettings::chatBackendKind() const { return m_chatBackendKind; }
 void AppSettings::setChatBackendKind(const QString &kind)
 {
-    m_chatBackendKind = kind.trimmed().isEmpty() ? QStringLiteral("openai_compatible_local") : kind.trimmed();
+    const QString normalized = kind.trimmed().toLower();
+    m_chatBackendKind = normalized.isEmpty() ? QStringLiteral("openai_compatible_local") : normalized;
     emit settingsChanged();
 }
 QString AppSettings::chatBackendEndpoint() const { return m_chatBackendEndpoint; }
@@ -270,6 +278,12 @@ void AppSettings::setChatBackendEndpoint(const QString &endpoint)
 {
     m_chatBackendEndpoint = endpoint;
     m_lmStudioEndpoint = endpoint;
+    emit settingsChanged();
+}
+QString AppSettings::chatBackendApiKey() const { return m_chatBackendApiKey; }
+void AppSettings::setChatBackendApiKey(const QString &apiKey)
+{
+    m_chatBackendApiKey = apiKey.trimmed();
     emit settingsChanged();
 }
 QString AppSettings::chatBackendModel() const { return m_chatBackendModel; }
@@ -345,6 +359,12 @@ QString AppSettings::webSearchProvider() const { return m_webSearchProvider; }
 void AppSettings::setWebSearchProvider(const QString &provider)
 {
     m_webSearchProvider = provider.trimmed().isEmpty() ? QStringLiteral("brave") : provider.trimmed();
+    emit settingsChanged();
+}
+QString AppSettings::braveSearchApiKey() const { return m_braveSearchApiKey; }
+void AppSettings::setBraveSearchApiKey(const QString &apiKey)
+{
+    m_braveSearchApiKey = apiKey.trimmed();
     emit settingsChanged();
 }
 bool AppSettings::mcpEnabled() const { return m_mcpEnabled; }

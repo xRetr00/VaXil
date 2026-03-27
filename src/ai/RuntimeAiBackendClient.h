@@ -12,6 +12,7 @@ public:
     explicit RuntimeAiBackendClient(VoicePipelineRuntime *runtime, QObject *parent = nullptr);
 
     void setEndpoint(const QString &endpoint) override;
+    void setProviderConfig(const QString &providerKind, const QString &apiKey) override;
     QString endpoint() const override;
     void fetchModels() override;
     AgentCapabilitySet capabilities() const override;
@@ -22,6 +23,7 @@ public:
 private:
     VoicePipelineRuntime *m_runtime = nullptr;
     QString m_endpoint;
+    QString m_providerKind;
     quint64 m_requestCounter = 0;
     quint64 m_activeRequestId = 0;
     AgentCapabilitySet m_capabilities;

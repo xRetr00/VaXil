@@ -374,10 +374,98 @@ Window {
                     }
 
                     Text {
-                        text: "Persist MCP connection settings now. Runtime discovery and install flows can build on this page later."
+                        text: "Enable MCP settings and install curated MCP servers in one click."
                         color: "#8da6c7"
                         font.pixelSize: 13
                         wrapMode: Text.WordWrap
+                    }
+
+                    Text {
+                        text: "Quick MCP Downloads"
+                        color: "#d9e9fa"
+                        font.pixelSize: 16
+                        font.weight: Font.Medium
+                    }
+
+                    Repeater {
+                        model: settingsVm.mcpQuickServers
+
+                        Rectangle {
+                            Layout.fillWidth: true
+                            width: mcpColumn.width
+                            implicitHeight: mcpPresetLayout.implicitHeight + 16
+                            radius: 14
+                            color: "#101c31"
+                            border.width: 1
+                            border.color: "#22395c"
+
+                            RowLayout {
+                                id: mcpPresetLayout
+                                anchors.fill: parent
+                                anchors.margins: 10
+                                spacing: 10
+
+                                ColumnLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 4
+
+                                    Text {
+                                        text: modelData.name
+                                        color: "#eef7ff"
+                                        font.pixelSize: 14
+                                        font.weight: Font.Medium
+                                    }
+
+                                    Text {
+                                        text: modelData.description
+                                        color: "#9ab0ca"
+                                        font.pixelSize: 12
+                                        wrapMode: Text.WordWrap
+                                        Layout.fillWidth: true
+                                    }
+
+                                    Text {
+                                        text: modelData.package + "@" + modelData.version
+                                        color: "#6f88a8"
+                                        font.pixelSize: 11
+                                    }
+                                }
+
+                                Button {
+                                    text: "Install"
+                                    onClicked: settingsVm.installMcpQuickServer(modelData.id)
+                                }
+                            }
+                        }
+                    }
+
+                    Text {
+                        text: "Custom MCP Package"
+                        color: "#d9e9fa"
+                        font.pixelSize: 16
+                        font.weight: Font.Medium
+                    }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 10
+
+                        TextField {
+                            id: mcpPackageField
+                            Layout.fillWidth: true
+                            placeholderText: "npm package spec (e.g. @scope/server@latest)"
+                        }
+
+                        TextField {
+                            id: mcpServerIdField
+                            Layout.preferredWidth: 210
+                            placeholderText: "Server id hint (optional)"
+                        }
+
+                        Button {
+                            text: "Install"
+                            onClicked: settingsVm.installMcpPackage(mcpPackageField.text, mcpServerIdField.text)
+                        }
                     }
 
                     CheckBox {

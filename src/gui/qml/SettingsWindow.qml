@@ -49,6 +49,9 @@ Window {
             userNameField.text = settingsVm.userName
         }
         endpointField.text = settingsVm.lmStudioEndpoint
+        const providerIndex = ["openai_compatible_local", "openrouter", "ollama"].indexOf(settingsVm.chatProviderKind)
+        providerCombo.currentIndex = providerIndex >= 0 ? providerIndex : 0
+        providerApiKeyField.text = settingsVm.chatProviderApiKey
         whisperPathField.text = settingsVm.whisperExecutable
         whisperModelPathField.text = settingsVm.whisperModelPath
         intentModelPathField.text = settingsVm.intentModelPath
@@ -74,10 +77,16 @@ Window {
         maxOutputSpin.value = settingsVm.maxOutputTokens
         memoryAutoWriteCheck.checked = settingsVm.memoryAutoWrite
         webProviderField.text = settingsVm.webSearchProvider
+        braveApiKeyField.text = settingsVm.braveSearchApiKey
         tracePanelCheck.checked = settingsVm.tracePanelEnabled
 
         const modelIndex = settingsVm.models.indexOf(settingsVm.selectedModel)
-        modelCombo.currentIndex = modelIndex >= 0 ? modelIndex : 0
+        if (modelIndex >= 0) {
+            modelCombo.currentIndex = modelIndex
+        } else {
+            modelCombo.currentIndex = -1
+            modelCombo.editText = settingsVm.selectedModel
+        }
 
         const modeIndex = settingsVm.defaultReasoningMode
         modeCombo.currentIndex = modeIndex >= 0 ? modeIndex : 0
@@ -90,6 +99,9 @@ Window {
 
         const whisperModelIndex = settingsVm.whisperModelPresetIds.indexOf(settingsVm.selectedWhisperModelPresetId)
         whisperModelPresetCombo.currentIndex = whisperModelIndex >= 0 ? whisperModelIndex : 1
+
+        const voicePresetIndex = settingsVm.voicePresetIds.indexOf(settingsVm.selectedVoicePresetId)
+        voicePresetCombo.currentIndex = voicePresetIndex >= 0 ? voicePresetIndex : 0
 
         const intentModelIndex = settingsVm.intentModelPresetIds.indexOf(settingsVm.selectedIntentModelId)
         intentModelCombo.currentIndex = intentModelIndex >= 0 ? intentModelIndex : 0
@@ -329,6 +341,20 @@ Window {
                         font.pixelSize: 14
                     }
 
+                    Text { text: "Provider"; color: "#c9def3"; font.pixelSize: 13 }
+                    ComboBox {
+                        id: providerCombo
+                        Layout.fillWidth: true
+                        model: ["openai_compatible_local", "openrouter", "ollama"]
+                    }
+
+                    Text { text: "Provider API key (optional for local backends)"; color: "#c9def3"; font.pixelSize: 13 }
+                    TextField {
+                        id: providerApiKeyField
+                        Layout.fillWidth: true
+                        echoMode: TextInput.Password
+                    }
+
                     Text { text: "Local AI backend endpoint"; color: "#c9def3"; font.pixelSize: 13 }
                     TextField { id: endpointField; Layout.fillWidth: true; text: settingsVm.lmStudioEndpoint }
                     RowLayout {
@@ -342,10 +368,16 @@ Window {
                         id: modelCombo
                         Layout.fillWidth: true
                         model: settingsVm.models
+                        editable: true
+                        currentIndex: -1
+                        editText: settingsVm.selectedModel
                         Component.onCompleted: {
                             const index = settingsVm.models.indexOf(settingsVm.selectedModel)
                             if (index >= 0) {
                                 currentIndex = index
+                            } else {
+                                currentIndex = -1
+                                editText = settingsVm.selectedModel
                             }
                         }
                         onActivated: settingsVm.setSelectedModel(currentText)
@@ -489,6 +521,18 @@ Window {
                         }
                     }
 
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        Text { text: "Brave Search API key (X-Subscription-Token)"; color: "#c9def3"; font.pixelSize: 13 }
+                        TextField {
+                            id: braveApiKeyField
+                            Layout.fillWidth: true
+                            text: settingsVm.braveSearchApiKey
+                            placeholderText: "Optional if BRAVE_SEARCH_API_KEY env var is set"
+                            echoMode: TextInput.Password
+                        }
+                    }
+
                     RowLayout {
                         Layout.fillWidth: true
                         ColumnLayout {
@@ -534,6 +578,7 @@ Window {
                             maxOutputSpin.value,
                             memoryAutoWriteCheck.checked,
                             webProviderField.text,
+                            braveApiKeyField.text,
                             tracePanelCheck.checked
                         )
                     }
@@ -669,6 +714,44 @@ Window {
                         Layout.fillWidth: true
                         Rectangle { width: 10; height: 10; radius: 5; color: settingsWindow.statusColor(requirementStatus.voiceOk === true) }
                         Text { text: "Voice model: " + settingsWindow.statusText(requirementStatus.voiceOk === true); color: "#9ab0ca"; font.pixelSize: 12 }
+                    }
+
+                    Text { text: "Official Piper voice"; color: "#c9def3"; font.pixelSize: 13 }
+                    RowLayout {
+                        Layout.fillWidth: true
+
+                        ComboBox {
+                            id: voicePresetCombo
+                            Layout.fillWidth: true
+                            model: settingsVm.voicePresetNames
+                            onActivated: {
+                                if (currentIndex >= 0 && currentIndex < settingsVm.voicePresetIds.length) {
+                                    settingsVm.setSelectedVoicePresetId(settingsVm.voicePresetIds[currentIndex])
+                                    settingsWindow.syncFieldsFromBackend()
+                                    settingsWindow.refreshRequirementStatus()
+                                }
+                            }
+                        }
+
+                        Button {
+                            text: "Download"
+                            onClicked: {
+                                if (voicePresetCombo.currentIndex >= 0 && voicePresetCombo.currentIndex < settingsVm.voicePresetIds.length) {
+                                    const voiceId = settingsVm.voicePresetIds[voicePresetCombo.currentIndex]
+                                    settingsVm.setSelectedVoicePresetId(voiceId)
+                                    settingsVm.downloadVoiceModel(voiceId)
+                                    settingsWindow.syncFieldsFromBackend()
+                                    settingsWindow.refreshRequirementStatus()
+                                }
+                            }
+                        }
+                    }
+
+                    Text {
+                        text: "Select from official Piper voices, then download to switch instantly."
+                        color: "#9ab0ca"
+                        font.pixelSize: 12
+                        wrapMode: Text.Wrap
                     }
 
                     Text { text: "ffmpeg executable"; color: "#c9def3"; font.pixelSize: 13 }
@@ -890,6 +973,8 @@ Window {
                                 onClicked: {
                                     settingsVm.saveSettings(
                                         endpointField.text,
+                                        providerCombo.currentText,
+                                        providerApiKeyField.text,
                                         modelCombo.currentText,
                                         modeCombo.currentIndex,
                                         autoRoutingCheck.checked,

@@ -15,6 +15,8 @@ class SettingsViewModel : public QObject
     Q_PROPERTY(QStringList models READ models NOTIFY modelsChanged)
     Q_PROPERTY(QString selectedModel READ selectedModel NOTIFY selectedModelChanged)
     Q_PROPERTY(QString lmStudioEndpoint READ lmStudioEndpoint NOTIFY settingsChanged)
+    Q_PROPERTY(QString chatProviderKind READ chatProviderKind NOTIFY settingsChanged)
+    Q_PROPERTY(QString chatProviderApiKey READ chatProviderApiKey NOTIFY settingsChanged)
     Q_PROPERTY(int defaultReasoningMode READ defaultReasoningMode NOTIFY settingsChanged)
     Q_PROPERTY(bool autoRoutingEnabled READ autoRoutingEnabled NOTIFY settingsChanged)
     Q_PROPERTY(bool streamingEnabled READ streamingEnabled NOTIFY settingsChanged)
@@ -67,9 +69,11 @@ class SettingsViewModel : public QObject
     Q_PROPERTY(int maxOutputTokens READ maxOutputTokens NOTIFY agentStateChanged)
     Q_PROPERTY(bool memoryAutoWrite READ memoryAutoWrite NOTIFY agentStateChanged)
     Q_PROPERTY(QString webSearchProvider READ webSearchProvider NOTIFY agentStateChanged)
+    Q_PROPERTY(QString braveSearchApiKey READ braveSearchApiKey NOTIFY agentStateChanged)
     Q_PROPERTY(bool mcpEnabled READ mcpEnabled NOTIFY settingsChanged)
     Q_PROPERTY(QString mcpCatalogUrl READ mcpCatalogUrl NOTIFY settingsChanged)
     Q_PROPERTY(QString mcpServerUrl READ mcpServerUrl NOTIFY settingsChanged)
+    Q_PROPERTY(QVariantList mcpQuickServers READ mcpQuickServers NOTIFY settingsChanged)
     Q_PROPERTY(bool tracePanelEnabled READ tracePanelEnabled NOTIFY agentStateChanged)
     Q_PROPERTY(QString agentStatus READ agentStatus NOTIFY agentStateChanged)
     Q_PROPERTY(bool agentAvailable READ agentAvailable NOTIFY agentStateChanged)
@@ -86,6 +90,8 @@ public:
     QStringList models() const;
     QString selectedModel() const;
     QString lmStudioEndpoint() const;
+    QString chatProviderKind() const;
+    QString chatProviderApiKey() const;
     int defaultReasoningMode() const;
     bool autoRoutingEnabled() const;
     bool streamingEnabled() const;
@@ -138,9 +144,11 @@ public:
     int maxOutputTokens() const;
     bool memoryAutoWrite() const;
     QString webSearchProvider() const;
+    QString braveSearchApiKey() const;
     bool mcpEnabled() const;
     QString mcpCatalogUrl() const;
     QString mcpServerUrl() const;
+    QVariantList mcpQuickServers() const;
     bool tracePanelEnabled() const;
     QString agentStatus() const;
     bool agentAvailable() const;
@@ -174,8 +182,11 @@ public:
                                        int maxOutputTokens,
                                        bool memoryAutoWrite,
                                        const QString &webSearchProvider,
+                                       const QString &braveSearchApiKey,
                                        bool tracePanelEnabled);
     Q_INVOKABLE void saveSettings(const QString &endpoint,
+                                  const QString &providerKind,
+                                  const QString &apiKey,
                                   const QString &modelId,
                                   int defaultMode,
                                   bool autoRouting,
@@ -214,8 +225,12 @@ public:
                                             bool mcpEnabled,
                                             const QString &mcpCatalogUrl,
                                             const QString &mcpServerUrl);
+    Q_INVOKABLE bool installMcpQuickServer(const QString &presetId);
+    Q_INVOKABLE bool installMcpPackage(const QString &packageSpec, const QString &serverIdHint);
     Q_INVOKABLE void startListening();
     Q_INVOKABLE bool runSetupScenario(const QString &userName,
+                                      const QString &providerKind,
+                                      const QString &apiKey,
                                       const QString &endpoint,
                                       const QString &modelId,
                                       const QString &whisperPath,
@@ -230,6 +245,8 @@ public:
                                       bool clickThrough,
                                       const QString &scenarioId);
     Q_INVOKABLE bool completeInitialSetup(const QString &userName,
+                                          const QString &providerKind,
+                                          const QString &apiKey,
                                           const QString &endpoint,
                                           const QString &modelId,
                                           const QString &whisperPath,

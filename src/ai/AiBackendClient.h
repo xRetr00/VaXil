@@ -17,6 +17,7 @@ public:
     ~AiBackendClient() override = default;
 
     virtual void setEndpoint(const QString &endpoint) = 0;
+    virtual void setProviderConfig(const QString &providerKind, const QString &apiKey) = 0;
     virtual QString endpoint() const = 0;
     virtual void fetchModels() = 0;
     virtual AgentCapabilitySet capabilities() const = 0;

@@ -47,6 +47,15 @@ struct IntentModelPreset {
     QString recommendation;
 };
 
+struct McpQuickServerPreset {
+    QString id;
+    QString name;
+    QString description;
+    QString packageName;
+    QString packageVersion;
+    QString defaultCatalogUrl;
+};
+
 QVariantMap toVariantMap(const SkillManifest &skill)
 {
     QVariantMap map;
@@ -246,6 +255,49 @@ const IntentModelPreset *findIntentModelPreset(const QString &modelId)
 {
     for (const IntentModelPreset &preset : intentModelPresets()) {
         if (preset.id == modelId || preset.toolName == modelId) {
+            return &preset;
+        }
+    }
+
+    return nullptr;
+}
+
+const QList<McpQuickServerPreset> &mcpQuickServerPresets()
+{
+    static const QList<McpQuickServerPreset> presets{
+        {
+            QStringLiteral("playwright"),
+            QStringLiteral("Playwright Browser Automation"),
+            QStringLiteral("Official Playwright MCP server for browser automation tasks."),
+            QStringLiteral("@playwright/mcp"),
+            QStringLiteral("latest"),
+            QStringLiteral("https://registry.modelcontextprotocol.io/")
+        },
+        {
+            QStringLiteral("filesystem"),
+            QStringLiteral("Filesystem Tools"),
+            QStringLiteral("Official MCP filesystem server for safe local file operations."),
+            QStringLiteral("@modelcontextprotocol/server-filesystem"),
+            QStringLiteral("latest"),
+            QStringLiteral("https://registry.modelcontextprotocol.io/")
+        },
+        {
+            QStringLiteral("memory"),
+            QStringLiteral("Persistent Memory"),
+            QStringLiteral("Official MCP memory server for persistent knowledge storage."),
+            QStringLiteral("@modelcontextprotocol/server-memory"),
+            QStringLiteral("latest"),
+            QStringLiteral("https://registry.modelcontextprotocol.io/")
+        }
+    };
+
+    return presets;
+}
+
+const McpQuickServerPreset *findMcpQuickServerPreset(const QString &presetId)
+{
+    for (const McpQuickServerPreset &preset : mcpQuickServerPresets()) {
+        if (preset.id == presetId) {
             return &preset;
         }
     }
@@ -843,6 +895,8 @@ bool BackendFacade::overlayVisible() const { return m_overlayController->isVisib
 double BackendFacade::presenceOffsetX() const { return m_overlayController->presenceOffsetX(); }
 double BackendFacade::presenceOffsetY() const { return m_overlayController->presenceOffsetY(); }
 QString BackendFacade::lmStudioEndpoint() const { return m_settings->lmStudioEndpoint(); }
+QString BackendFacade::chatProviderKind() const { return m_settings->chatBackendKind(); }
+QString BackendFacade::chatProviderApiKey() const { return m_settings->chatBackendApiKey(); }
 int BackendFacade::defaultReasoningMode() const { return static_cast<int>(m_settings->defaultReasoningMode()); }
 bool BackendFacade::autoRoutingEnabled() const { return m_settings->autoRoutingEnabled(); }
 bool BackendFacade::streamingEnabled() const { return m_settings->streamingEnabled(); }
@@ -922,9 +976,24 @@ int BackendFacade::providerTopK() const { return m_settings->providerTopK().valu
 int BackendFacade::maxOutputTokens() const { return m_settings->maxOutputTokens(); }
 bool BackendFacade::memoryAutoWrite() const { return m_settings->memoryAutoWrite(); }
 QString BackendFacade::webSearchProvider() const { return m_settings->webSearchProvider(); }
+QString BackendFacade::braveSearchApiKey() const { return m_settings->braveSearchApiKey(); }
 bool BackendFacade::mcpEnabled() const { return m_settings->mcpEnabled(); }
 QString BackendFacade::mcpCatalogUrl() const { return m_settings->mcpCatalogUrl(); }
 QString BackendFacade::mcpServerUrl() const { return m_settings->mcpServerUrl(); }
+QVariantList BackendFacade::mcpQuickServers() const
+{
+    QVariantList list;
+    for (const McpQuickServerPreset &preset : mcpQuickServerPresets()) {
+        QVariantMap row;
+        row.insert(QStringLiteral("id"), preset.id);
+        row.insert(QStringLiteral("name"), preset.name);
+        row.insert(QStringLiteral("description"), preset.description);
+        row.insert(QStringLiteral("package"), preset.packageName);
+        row.insert(QStringLiteral("version"), preset.packageVersion);
+        list.push_back(row);
+    }
+    return list;
+}
 bool BackendFacade::tracePanelEnabled() const { return m_settings->tracePanelEnabled(); }
 QString BackendFacade::agentStatus() const { return m_assistantController->agentCapabilities().status; }
 bool BackendFacade::agentAvailable() const { return m_settings->agentEnabled(); }
@@ -1010,6 +1079,7 @@ void BackendFacade::saveAgentSettings(bool enabled,
                                       int maxOutputTokens,
                                       bool memoryAutoWrite,
                                       const QString &webSearchProvider,
+                                      const QString &braveSearchApiKey,
                                       bool tracePanelEnabled)
 {
     m_assistantController->saveAgentSettings(enabled,
@@ -1021,6 +1091,7 @@ void BackendFacade::saveAgentSettings(bool enabled,
                                              maxOutputTokens,
                                              memoryAutoWrite,
                                              webSearchProvider,
+                                             braveSearchApiKey,
                                              tracePanelEnabled);
 }
 void BackendFacade::setWakeEngineKind(const QString &kind)
@@ -1047,11 +1118,19 @@ void BackendFacade::saveAudioProcessing(bool aecEnabled, bool rnnoiseEnabled, do
 }
 void BackendFacade::setSelectedVoicePresetId(const QString &voiceId)
 {
-    if (findVoicePreset(voiceId) == nullptr) {
+    const PiperVoicePreset *preset = findVoicePreset(voiceId);
+    if (preset == nullptr) {
         return;
     }
 
     m_settings->setSelectedVoicePresetId(voiceId);
+
+    const QString appDataRoot = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+    const QString modelPath = piperVoicesRoot(appDataRoot) + QStringLiteral("/") + preset->id + QStringLiteral(".onnx");
+    if (QFileInfo::exists(modelPath)) {
+        m_settings->setPiperVoiceModel(modelPath);
+    }
+
     m_settings->save();
     emit settingsChanged();
 }
@@ -1064,6 +1143,8 @@ void BackendFacade::refreshAudioDevices()
 
 void BackendFacade::saveSettings(
     const QString &endpoint,
+    const QString &providerKind,
+    const QString &apiKey,
     const QString &modelId,
     int defaultMode,
     bool autoRouting,
@@ -1096,6 +1177,8 @@ void BackendFacade::saveSettings(
     }
 
     m_assistantController->saveSettings(
+        providerKind,
+        apiKey,
         endpoint, modelId, defaultMode, autoRouting, streaming, timeoutMs,
         aecEnabled,
         rnnoiseEnabled,
@@ -1185,6 +1268,8 @@ bool BackendFacade::downloadWhisperModel(const QString &modelId)
 
 bool BackendFacade::completeInitialSetup(
     const QString &userName,
+    const QString &providerKind,
+    const QString &apiKey,
     const QString &endpoint,
     const QString &modelId,
     const QString &whisperPath,
@@ -1198,15 +1283,20 @@ bool BackendFacade::completeInitialSetup(
     const QString &audioOutputDeviceId,
     bool clickThrough)
 {
-    const QString normalizedEndpoint = endpoint.trimmed();
+    const QString normalizedProviderKind = providerKind.trimmed().toLower().isEmpty()
+        ? QStringLiteral("openai_compatible_local")
+        : providerKind.trimmed().toLower();
+    QString normalizedEndpoint = endpoint.trimmed();
+    if (normalizedProviderKind == QStringLiteral("openrouter") && normalizedEndpoint.isEmpty()) {
+        normalizedEndpoint = QStringLiteral("https://openrouter.ai/api");
+    }
     if (normalizedEndpoint.isEmpty()) {
-        setToolInstallStatus(QStringLiteral("Local AI backend endpoint is required."));
+        setToolInstallStatus(QStringLiteral("Provider endpoint is required."));
         return false;
     }
 
-    const QStringList modelIds = m_assistantController->availableModelIds();
-    if (modelIds.isEmpty() || !modelIds.contains(modelId)) {
-        setToolInstallStatus(QStringLiteral("Selected AI model is invalid. Refresh models and choose a valid one."));
+    if (modelId.trimmed().isEmpty()) {
+        setToolInstallStatus(QStringLiteral("Model name is required."));
         return false;
     }
 
@@ -1272,6 +1362,8 @@ bool BackendFacade::completeInitialSetup(
     }
 
     m_assistantController->saveSettings(
+        normalizedProviderKind,
+        apiKey,
         normalizedEndpoint,
         modelId,
         static_cast<int>(ReasoningMode::Balanced),
@@ -1309,6 +1401,8 @@ bool BackendFacade::completeInitialSetup(
 
 bool BackendFacade::runSetupScenario(
     const QString &userName,
+    const QString &providerKind,
+    const QString &apiKey,
     const QString &endpoint,
     const QString &modelId,
     const QString &whisperPath,
@@ -1323,15 +1417,20 @@ bool BackendFacade::runSetupScenario(
     bool clickThrough,
     const QString &scenarioId)
 {
-    const QString normalizedEndpoint = endpoint.trimmed();
+    const QString normalizedProviderKind = providerKind.trimmed().toLower().isEmpty()
+        ? QStringLiteral("openai_compatible_local")
+        : providerKind.trimmed().toLower();
+    QString normalizedEndpoint = endpoint.trimmed();
+    if (normalizedProviderKind == QStringLiteral("openrouter") && normalizedEndpoint.isEmpty()) {
+        normalizedEndpoint = QStringLiteral("https://openrouter.ai/api");
+    }
     if (normalizedEndpoint.isEmpty()) {
-        setToolInstallStatus(QStringLiteral("Local AI backend endpoint is required before running a setup scenario."));
+        setToolInstallStatus(QStringLiteral("Provider endpoint is required before running a setup scenario."));
         return false;
     }
 
-    const QStringList modelIds = m_assistantController->availableModelIds();
-    if (modelIds.isEmpty() || !modelIds.contains(modelId)) {
-        setToolInstallStatus(QStringLiteral("Selected AI model is invalid. Refresh models and choose a valid one."));
+    if (modelId.trimmed().isEmpty()) {
+        setToolInstallStatus(QStringLiteral("Model name is required."));
         return false;
     }
 
@@ -1397,6 +1496,8 @@ bool BackendFacade::runSetupScenario(
     }
 
     m_assistantController->saveSettings(
+        normalizedProviderKind,
+        apiKey,
         normalizedEndpoint,
         modelId,
         static_cast<int>(ReasoningMode::Balanced),
@@ -1744,6 +1845,140 @@ bool BackendFacade::saveToolsStoreSettings(const QString &webSearchProviderValue
         return false;
     }
     setToolInstallStatus(QStringLiteral("Tools and store settings saved."));
+    emit settingsChanged();
+    return true;
+}
+
+bool BackendFacade::installMcpQuickServer(const QString &presetId)
+{
+    const McpQuickServerPreset *preset = findMcpQuickServerPreset(presetId);
+    if (preset == nullptr) {
+        setToolInstallStatus(QStringLiteral("Unknown MCP quick install preset."));
+        return false;
+    }
+
+    const QString appDataRoot = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+    if (appDataRoot.isEmpty()) {
+        setToolInstallStatus(QStringLiteral("Failed to resolve app data directory for MCP packages."));
+        return false;
+    }
+
+    const QString mcpToolsRoot = appDataRoot + QStringLiteral("/tools/mcp");
+    QDir().mkpath(mcpToolsRoot);
+
+    QProcess process;
+    process.setWorkingDirectory(mcpToolsRoot);
+    process.start(
+        QStringLiteral("npm"),
+        {
+            QStringLiteral("install"),
+            QStringLiteral("--no-audit"),
+            QStringLiteral("--no-fund"),
+            QStringLiteral("--silent"),
+            QStringLiteral("--save-exact"),
+            QStringLiteral("%1@%2").arg(preset->packageName, preset->packageVersion)
+        });
+
+    if (!process.waitForFinished(120000)) {
+        process.kill();
+        process.waitForFinished(2000);
+        setToolInstallStatus(QStringLiteral("MCP install timed out for %1.").arg(preset->name));
+        return false;
+    }
+
+    if (process.exitStatus() != QProcess::NormalExit || process.exitCode() != 0) {
+        QString detail = QString::fromUtf8(process.readAllStandardError()).trimmed();
+        if (detail.isEmpty()) {
+            detail = QString::fromUtf8(process.readAllStandardOutput()).trimmed();
+        }
+        if (detail.isEmpty()) {
+            detail = QStringLiteral("npm install failed");
+        }
+        setToolInstallStatus(QStringLiteral("%1 install failed: %2").arg(preset->name, detail));
+        return false;
+    }
+
+    m_settings->setMcpEnabled(true);
+    if (m_settings->mcpCatalogUrl().trimmed().isEmpty()) {
+        m_settings->setMcpCatalogUrl(preset->defaultCatalogUrl);
+    }
+    m_settings->setMcpServerUrl(preset->packageName);
+    if (!m_settings->save()) {
+        setToolInstallStatus(QStringLiteral("Installed %1 but failed to save MCP settings.").arg(preset->name));
+        return false;
+    }
+
+    setToolInstallStatus(QStringLiteral("Installed %1 (%2). MCP is enabled.").arg(preset->name, preset->packageName));
+    emit settingsChanged();
+    return true;
+}
+
+bool BackendFacade::installMcpPackage(const QString &packageSpec, const QString &serverIdHint)
+{
+    const QString normalizedSpec = packageSpec.trimmed();
+    if (normalizedSpec.isEmpty()) {
+        setToolInstallStatus(QStringLiteral("MCP package name is required."));
+        return false;
+    }
+
+    const QString appDataRoot = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+    if (appDataRoot.isEmpty()) {
+        setToolInstallStatus(QStringLiteral("Failed to resolve app data directory for MCP packages."));
+        return false;
+    }
+
+    const QString mcpToolsRoot = appDataRoot + QStringLiteral("/tools/mcp");
+    QDir().mkpath(mcpToolsRoot);
+
+    QProcess process;
+    process.setWorkingDirectory(mcpToolsRoot);
+    setToolInstallStatus(QStringLiteral("Installing MCP package %1...").arg(normalizedSpec));
+    process.start(
+        QStringLiteral("npm"),
+        {
+            QStringLiteral("install"),
+            QStringLiteral("--no-audit"),
+            QStringLiteral("--no-fund"),
+            QStringLiteral("--silent"),
+            QStringLiteral("--save-exact"),
+            normalizedSpec
+        });
+
+    if (!process.waitForFinished(120000)) {
+        process.kill();
+        process.waitForFinished(2000);
+        setToolInstallStatus(QStringLiteral("MCP install timed out for %1.").arg(normalizedSpec));
+        return false;
+    }
+
+    if (process.exitStatus() != QProcess::NormalExit || process.exitCode() != 0) {
+        QString detail = QString::fromUtf8(process.readAllStandardError()).trimmed();
+        if (detail.isEmpty()) {
+            detail = QString::fromUtf8(process.readAllStandardOutput()).trimmed();
+        }
+        if (detail.isEmpty()) {
+            detail = QStringLiteral("npm install failed");
+        }
+        setToolInstallStatus(QStringLiteral("Custom MCP install failed: %1").arg(detail));
+        return false;
+    }
+
+    m_settings->setMcpEnabled(true);
+    if (m_settings->mcpCatalogUrl().trimmed().isEmpty()) {
+        m_settings->setMcpCatalogUrl(QStringLiteral("https://registry.modelcontextprotocol.io/"));
+    }
+
+    QString serverId = serverIdHint.trimmed();
+    if (serverId.isEmpty()) {
+        serverId = normalizedSpec;
+    }
+    m_settings->setMcpServerUrl(serverId);
+    if (!m_settings->save()) {
+        setToolInstallStatus(QStringLiteral("Installed %1 but failed to save MCP settings.").arg(normalizedSpec));
+        return false;
+    }
+
+    setToolInstallStatus(QStringLiteral("Installed custom MCP package %1.").arg(normalizedSpec));
     emit settingsChanged();
     return true;
 }

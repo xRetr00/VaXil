@@ -18,17 +18,27 @@ Window {
     property real dpiScale: Math.max(1.0, Screen.devicePixelRatio)
 
     property int stepIndex: 0
+    property bool openRouterSelected: providerCombo.currentText === "openrouter"
 
     function syncVoiceFieldsFromBackend() {
+        const providerIndex = ["openai_compatible_local", "openrouter", "ollama"].indexOf(settingsVm.chatProviderKind)
+        providerCombo.currentIndex = providerIndex >= 0 ? providerIndex : 0
+        providerApiKeyField.text = settingsVm.chatProviderApiKey
         whisperPathField.text = settingsVm.whisperExecutable
         whisperModelPathField.text = settingsVm.whisperModelPath
         intentModelPathField.text = settingsVm.intentModelPath
         piperPathField.text = settingsVm.piperExecutable
         voicePathField.text = settingsVm.piperVoiceModel
         ffmpegPathField.text = settingsVm.ffmpegExecutable
+        endpointField.text = settingsVm.lmStudioEndpoint
 
         const modelIndex = settingsVm.models.indexOf(settingsVm.selectedModel)
-        modelCombo.currentIndex = modelIndex >= 0 ? modelIndex : 0
+        if (modelIndex >= 0) {
+            modelCombo.currentIndex = modelIndex
+        } else {
+            modelCombo.currentIndex = -1
+            modelCombo.editText = settingsVm.selectedModel
+        }
 
         const voiceIndex = settingsVm.voicePresetIds.indexOf(settingsVm.selectedVoicePresetId)
         voicePresetCombo.currentIndex = voiceIndex >= 0 ? voiceIndex : 0
@@ -212,7 +222,7 @@ Window {
 
                 Text {
                     text: wizard.stepIndex === 0 ? "Define how the assistant should address you."
-                        : wizard.stepIndex === 1 ? "Point JARVIS at the local AI backend and choose the active model."
+                        : wizard.stepIndex === 1 ? "Choose provider settings and set the active model."
                         : wizard.stepIndex === 2 ? "Connect whisper.cpp, Piper, FFmpeg, and the local speech models you want."
                         : wizard.stepIndex === 3 ? "Review the local sherpa wake engine and microphone behavior."
                         : "Run final checks, trigger tests, and confirm the real startup behavior."
@@ -264,9 +274,43 @@ Window {
                         width: stepStack.width
                         spacing: 14
 
-                        Text { text: "Local AI backend endpoint"; color: "#d0e3f5"; font.pixelSize: 13 }
+                        Text { text: "Provider"; color: "#d0e3f5"; font.pixelSize: 13 }
+                        ComboBox {
+                            id: providerCombo
+                            Layout.fillWidth: true
+                            model: ["openai_compatible_local", "openrouter", "ollama"]
+                        }
+
+                        Text { text: "Provider API key"; color: "#d0e3f5"; font.pixelSize: 13 }
+                        TextField {
+                            id: providerApiKeyField
+                            Layout.fillWidth: true
+                            echoMode: TextInput.Password
+                            placeholderText: "Required for OpenRouter"
+                        }
+
+                        Text {
+                            visible: wizard.openRouterSelected
+                            text: "OpenRouter endpoint (preview)"
+                            color: "#d0e3f5"
+                            font.pixelSize: 13
+                        }
+                        TextField {
+                            visible: wizard.openRouterSelected
+                            Layout.fillWidth: true
+                            readOnly: true
+                            text: "https://openrouter.ai/api"
+                        }
+
+                        Text {
+                            visible: !wizard.openRouterSelected
+                            text: "Local AI backend endpoint"
+                            color: "#d0e3f5"
+                            font.pixelSize: 13
+                        }
                         TextField {
                             id: endpointField
+                            visible: !wizard.openRouterSelected
                             Layout.fillWidth: true
                             text: settingsVm.lmStudioEndpoint
                         }
@@ -283,11 +327,14 @@ Window {
                                 id: modelCombo
                                 Layout.fillWidth: true
                                 model: settingsVm.models
+                                editable: true
+                                currentIndex: -1
+                                editText: settingsVm.selectedModel
                             }
                         }
 
                         Text {
-                            text: "The selected model is stored in settings and used for all local AI backend requests."
+                            text: "You can type any model name manually; it does not need to be in the dropdown list."
                             color: "#9ab0ca"
                             font.pixelSize: 12
                             wrapMode: Text.Wrap
@@ -592,7 +639,9 @@ Window {
                                 onClicked: {
                                     if (!settingsVm.runSetupScenario(
                                             userNameField.text,
-                                            endpointField.text,
+                                            providerCombo.currentText,
+                                            providerApiKeyField.text,
+                                            wizard.openRouterSelected ? "https://openrouter.ai/api" : endpointField.text,
                                             modelCombo.currentText,
                                             whisperPathField.text,
                                             whisperModelPathField.text,
@@ -615,7 +664,9 @@ Window {
                                 onClicked: {
                                     if (!settingsVm.runSetupScenario(
                                             userNameField.text,
-                                            endpointField.text,
+                                            providerCombo.currentText,
+                                            providerApiKeyField.text,
+                                            wizard.openRouterSelected ? "https://openrouter.ai/api" : endpointField.text,
                                             modelCombo.currentText,
                                             whisperPathField.text,
                                             whisperModelPathField.text,
@@ -719,7 +770,9 @@ Window {
                         onClicked: {
                             if (!settingsVm.runSetupScenario(
                                     userNameField.text,
-                                    endpointField.text,
+                                    providerCombo.currentText,
+                                    providerApiKeyField.text,
+                                    wizard.openRouterSelected ? "https://openrouter.ai/api" : endpointField.text,
                                     modelCombo.currentText,
                                     whisperPathField.text,
                                     whisperModelPathField.text,
@@ -747,7 +800,9 @@ Window {
 
                             if (!settingsVm.completeInitialSetup(
                                     userNameField.text,
-                                    endpointField.text,
+                                    providerCombo.currentText,
+                                    providerApiKeyField.text,
+                                    wizard.openRouterSelected ? "https://openrouter.ai/api" : endpointField.text,
                                     modelCombo.currentText,
                                     whisperPathField.text,
                                     whisperModelPathField.text,

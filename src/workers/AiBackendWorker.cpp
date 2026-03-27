@@ -34,6 +34,11 @@ void AiBackendWorker::setEndpoint(const QString &endpoint)
     m_client->setEndpoint(endpoint);
 }
 
+void AiBackendWorker::setProviderConfig(const QString &providerKind, const QString &apiKey)
+{
+    m_client->setProviderConfig(providerKind, apiKey);
+}
+
 void AiBackendWorker::refreshModels()
 {
     m_client->fetchModels();

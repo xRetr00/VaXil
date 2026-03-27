@@ -95,8 +95,11 @@ public slots:
                            int maxOutputTokens,
                            bool memoryAutoWrite,
                            const QString &webSearchProvider,
+                           const QString &braveSearchApiKey,
                            bool tracePanelEnabled);
     void saveSettings(
+        const QString &providerKind,
+        const QString &apiKey,
         const QString &endpoint,
         const QString &modelId,
         int defaultMode,
@@ -203,6 +206,7 @@ private:
     void handleCommandFinished(const QString &text);
     void dispatchBackgroundTasks(const QList<AgentTask> &tasks);
     void recordTaskResult(const QJsonObject &resultObject);
+    void startWebSearchSummaryRequest(const BackgroundTaskResult &result);
     QStringList backgroundAllowedRoots() const;
     void logPromptResponsePair(const QString &response, const QString &source, const QString &status = QString());
     void appendAgentTrace(const QString &kind, const QString &title, const QString &detail, bool success = true);

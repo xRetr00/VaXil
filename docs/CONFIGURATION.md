@@ -47,7 +47,10 @@ Agent and tool-calling controls:
 - maxOutputTokens
 - memoryAutoWrite
 - webSearchProvider
+- braveSearchApiKey
 - tracePanelEnabled
+
+`braveSearchApiKey` should be a Brave Search API subscription token (sent as the `X-Subscription-Token` header).
 
 MCP integration controls:
 

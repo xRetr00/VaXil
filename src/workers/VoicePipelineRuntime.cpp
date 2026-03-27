@@ -203,6 +203,16 @@ void VoicePipelineRuntime::setBackendEndpoint(const QString &endpoint)
         Qt::QueuedConnection);
 }
 
+void VoicePipelineRuntime::setBackendProviderConfig(const QString &providerKind, const QString &apiKey)
+{
+    QMetaObject::invokeMethod(
+        m_backendWorker,
+        [worker = m_backendWorker, providerKind, apiKey]() {
+            worker->setProviderConfig(providerKind, apiKey);
+        },
+        Qt::QueuedConnection);
+}
+
 void VoicePipelineRuntime::refreshModels()
 {
     QMetaObject::invokeMethod(m_backendWorker, &AiBackendWorker::refreshModels, Qt::QueuedConnection);

@@ -39,6 +39,7 @@ public slots:
     void speak(quint64 generationId, const QString &text);
     void cancelSpeechIo();
     void setBackendEndpoint(const QString &endpoint);
+    void setBackendProviderConfig(const QString &providerKind, const QString &apiKey);
     void refreshModels();
     void sendAiRequest(quint64 generationId, const QList<AiMessage> &messages, const QString &model, const AiRequestOptions &options);
     void sendAgentRequest(quint64 generationId, const AgentRequest &request);

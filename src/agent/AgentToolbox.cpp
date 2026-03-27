@@ -391,7 +391,10 @@ AgentToolResult AgentToolbox::executeWebSearch(const AgentToolCall &call, const 
     const QString query = extractString(args, "query");
     const QString provider = m_settings->webSearchProvider().toLower();
     if (provider == QStringLiteral("brave")) {
-        const QString apiKey = qEnvironmentVariable("BRAVE_SEARCH_API_KEY");
+        QString apiKey = m_settings->braveSearchApiKey().trimmed();
+        if (apiKey.isEmpty()) {
+            apiKey = qEnvironmentVariable("BRAVE_SEARCH_API_KEY");
+        }
         if (!apiKey.isEmpty()) {
             QProcess process;
             process.start(QStringLiteral("powershell"),

@@ -13,6 +13,7 @@
 #include "core/ComputerControl.h"
 #include "logging/LoggingService.h"
 #include "memory/MemoryManager.h"
+#include "settings/AppSettings.h"
 
 namespace {
 constexpr qint64 kDirListCooldownMs = 2000;
@@ -72,10 +73,14 @@ QString latestAiLogPath()
 }
 }
 
-ToolWorker::ToolWorker(const QStringList &allowedRoots, LoggingService *loggingService, QObject *parent)
+ToolWorker::ToolWorker(const QStringList &allowedRoots,
+                       LoggingService *loggingService,
+                       AppSettings *settings,
+                       QObject *parent)
     : QObject(parent)
     , m_allowedRoots(allowedRoots)
     , m_loggingService(loggingService)
+    , m_settings(settings)
     , m_memoryManager(std::make_unique<MemoryManager>())
 {
 }
@@ -536,13 +541,68 @@ QJsonObject ToolWorker::processWebSearch(const AgentTask &task)
                            QStringLiteral("Missing query argument."));
     }
 
+    QString provider = m_settings ? m_settings->webSearchProvider().trimmed().toLower() : QStringLiteral("duckduckgo");
+    if (provider.isEmpty()) {
+        provider = QStringLiteral("duckduckgo");
+    }
+
+    QString freshness = task.args.value(QStringLiteral("freshness")).toString().trimmed().toLower();
+    if (freshness.isEmpty() && task.args.value(QStringLiteral("prefer_fresh")).toBool(false)) {
+        freshness = QStringLiteral("pw");
+    }
+    if (!freshness.isEmpty()) {
+        const QSet<QString> allowedFreshness = {
+            QStringLiteral("pd"),
+            QStringLiteral("pw"),
+            QStringLiteral("pm"),
+            QStringLiteral("py")
+        };
+        if (!allowedFreshness.contains(freshness)) {
+            freshness.clear();
+        }
+    }
+
+    QString output;
     bool ok = false;
-    const QString output = runPowerShell(
-        QStringLiteral("(Invoke-RestMethod -Uri %1) | ConvertTo-Json -Depth 6")
-            .arg(quotePowerShell(QStringLiteral("https://api.duckduckgo.com/?q=%1&format=json&no_html=1&skip_disambig=1")
-                                     .arg(QString::fromUtf8(QUrl::toPercentEncoding(query))))),
-        20000,
-        &ok);
+    QString providerUsed = provider;
+    QString detailSuffix;
+
+    if (provider == QStringLiteral("brave")) {
+        QString apiKey = m_settings ? m_settings->braveSearchApiKey().trimmed() : QString();
+        if (apiKey.isEmpty()) {
+            apiKey = qEnvironmentVariable("BRAVE_SEARCH_API_KEY");
+        }
+
+        if (!apiKey.isEmpty()) {
+            QString uri = QStringLiteral("https://api.search.brave.com/res/v1/web/search?q=%1")
+                              .arg(QString::fromUtf8(QUrl::toPercentEncoding(query)));
+            if (!freshness.isEmpty()) {
+                uri += QStringLiteral("&freshness=%1").arg(QString::fromUtf8(QUrl::toPercentEncoding(freshness)));
+            }
+
+            output = runPowerShell(
+                QStringLiteral("$headers=@{'Accept'='application/json';'X-Subscription-Token'=%1}; "
+                               "(Invoke-RestMethod -Headers $headers -Uri %2) | ConvertTo-Json -Depth 8")
+                    .arg(quotePowerShell(apiKey), quotePowerShell(uri)),
+                20000,
+                &ok);
+        }
+
+        if (!ok) {
+            providerUsed = QStringLiteral("duckduckgo");
+            detailSuffix = QStringLiteral(" Brave search was unavailable; fell back to DuckDuckGo instant results.");
+        }
+    }
+
+    if (!ok) {
+        output = runPowerShell(
+            QStringLiteral("(Invoke-RestMethod -Uri %1) | ConvertTo-Json -Depth 8")
+                .arg(quotePowerShell(QStringLiteral("https://api.duckduckgo.com/?q=%1&format=json&no_html=1&skip_disambig=1")
+                                         .arg(QString::fromUtf8(QUrl::toPercentEncoding(query))))),
+            20000,
+            &ok);
+    }
+
     if (!ok) {
         return buildResult(task,
                            false,
@@ -552,14 +612,24 @@ QJsonObject ToolWorker::processWebSearch(const AgentTask &task)
                            QStringLiteral("Search query failed: %1").arg(query));
     }
 
+    QString summary = QStringLiteral("Searched the web for \"%1\"").arg(query);
+    if (providerUsed == QStringLiteral("brave")) {
+        summary += QStringLiteral(" via Brave");
+    } else if (provider == QStringLiteral("brave")) {
+        summary += QStringLiteral(" via DuckDuckGo fallback");
+    }
+
     return buildResult(task,
                        true,
                        TaskState::Finished,
                        QStringLiteral("Web search ready"),
-                       QStringLiteral("Searched the web for \"%1\"").arg(query),
-                       QStringLiteral("Web search completed for %1").arg(query),
+                       summary,
+                       QStringLiteral("Web search completed for %1 using %2.%3")
+                           .arg(query, providerUsed, detailSuffix),
                        QJsonObject{
                            {QStringLiteral("query"), query},
+                           {QStringLiteral("provider"), providerUsed},
+                           {QStringLiteral("freshness"), freshness},
                            {QStringLiteral("content"), output}
                        });
 }

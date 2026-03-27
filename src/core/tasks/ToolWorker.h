@@ -13,13 +13,17 @@
 #include "memory/MemoryManager.h"
 
 class LoggingService;
+class AppSettings;
 
 class ToolWorker : public QObject
 {
     Q_OBJECT
 
 public:
-    explicit ToolWorker(const QStringList &allowedRoots, LoggingService *loggingService = nullptr, QObject *parent = nullptr);
+    explicit ToolWorker(const QStringList &allowedRoots,
+                        LoggingService *loggingService = nullptr,
+                        AppSettings *settings = nullptr,
+                        QObject *parent = nullptr);
 
 public slots:
     void processTask(const AgentTask &task);
@@ -64,6 +68,7 @@ private:
 
     QStringList m_allowedRoots;
     LoggingService *m_loggingService = nullptr;
+    AppSettings *m_settings = nullptr;
     std::unique_ptr<MemoryManager> m_memoryManager;
     QHash<QString, QElapsedTimer> m_lastExecution;
     QHash<QString, CachedResult> m_cache;

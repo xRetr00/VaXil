@@ -16,6 +16,7 @@ public:
 
 public slots:
     void setEndpoint(const QString &endpoint);
+    void setProviderConfig(const QString &providerKind, const QString &apiKey);
     void refreshModels();
     void sendRequest(quint64 generationId, const QList<AiMessage> &messages, const QString &model, const AiRequestOptions &options);
     void sendAgentRequest(quint64 generationId, const AgentRequest &request);
