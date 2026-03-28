@@ -26,7 +26,7 @@ signals:
     void transcriptionFailed(quint64 requestId, const QString &errorText);
 
 private:
-    void stopActiveProcesses(const QString &reason);
+    void stopActiveProcesses(const QString &reason, bool waitForExit = false);
     QString writeWaveFile(const QByteArray &pcmData) const;
 
     AppSettings *m_settings = nullptr;

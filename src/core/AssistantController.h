@@ -15,6 +15,7 @@ class IntentRouter;
 class AiBackendClient;
 class GestureActionRouter;
 class GestureInterpreter;
+class GestureStateMachine;
 class LocalResponseEngine;
 class LoggingService;
 class MemoryStore;
@@ -209,6 +210,7 @@ private:
     void continueAgentConversation(const QList<AgentToolResult> &results);
     void startCommandRequest(const QString &input);
     void handleVisionSnapshot(const VisionSnapshot &snapshot);
+    QString buildDirectVisionResponse(const QString &input) const;
     QString buildVisionPromptContext(const QString &input, IntentType intent) const;
     bool shouldUseVisionContext(const QString &input, IntentType intent) const;
     void applyVisionGestureTriggers(const VisionSnapshot &snapshot);
@@ -254,6 +256,7 @@ private:
     VoicePipelineRuntime *m_voicePipelineRuntime = nullptr;
     WorldStateCache *m_worldStateCache = nullptr;
     GestureInterpreter *m_gestureInterpreter = nullptr;
+    GestureStateMachine *m_gestureStateMachine = nullptr;
     GestureActionRouter *m_gestureActionRouter = nullptr;
     AssistantState m_currentState = AssistantState::Idle;
     DuplexState m_duplexState = DuplexState::Open;
@@ -275,6 +278,7 @@ private:
     QList<BackgroundTaskResult> m_backgroundTaskResults;
     qint64 m_lastVisionGestureTriggerMs = 0;
     QString m_lastVisionGestureAction;
+    qint64 m_lastVisionQueryMs = 0;
     bool m_backgroundPanelVisible = false;
     QString m_latestTaskToast;
     QString m_latestTaskToastTone = QStringLiteral("status");

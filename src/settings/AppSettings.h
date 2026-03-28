@@ -108,6 +108,9 @@ public:
     bool gestureEnabled() const;
     void setGestureEnabled(bool enabled);
 
+    int gestureStabilityMs() const;
+    void setGestureStabilityMs(int stabilityMs);
+
     int gestureCooldownMs() const;
     void setGestureCooldownMs(int cooldownMs);
 
@@ -220,6 +223,7 @@ private:
     double m_visionObjectsMinConfidence = 0.60;
     double m_visionGesturesMinConfidence = 0.70;
     bool m_gestureEnabled = false;
+    int m_gestureStabilityMs = 180;
     int m_gestureCooldownMs = 500;
     bool m_tracePanelEnabled = true;
     QString m_whisperExecutable;

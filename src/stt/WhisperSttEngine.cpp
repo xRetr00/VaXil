@@ -49,7 +49,7 @@ WhisperSttEngine::WhisperSttEngine(AppSettings *settings, LoggingService *loggin
 
 WhisperSttEngine::~WhisperSttEngine()
 {
-    stopActiveProcesses(QStringLiteral("shutdown"));
+    stopActiveProcesses(QStringLiteral("shutdown"), true);
 }
 
 quint64 WhisperSttEngine::transcribePcm(const QByteArray &pcmData, const QString &initialPrompt, bool suppressNonSpeechTokens)
@@ -215,7 +215,7 @@ quint64 WhisperSttEngine::transcribePcm(const QByteArray &pcmData, const QString
     return requestId;
 }
 
-void WhisperSttEngine::stopActiveProcesses(const QString &reason)
+void WhisperSttEngine::stopActiveProcesses(const QString &reason, bool waitForExit)
 {
     const auto activeProcesses = m_activeProcesses;
     for (QProcess *process : activeProcesses) {
@@ -228,11 +228,18 @@ void WhisperSttEngine::stopActiveProcesses(const QString &reason)
             m_loggingService->info(QStringLiteral("Stopping prior whisper.cpp transcription. reason=\"%1\"").arg(reason));
         }
         process->terminate();
-        QTimer::singleShot(400, process, [process]() {
-            if (process->state() != QProcess::NotRunning) {
+        if (waitForExit) {
+            if (!process->waitForFinished(400)) {
                 process->kill();
+                process->waitForFinished(1000);
             }
-        });
+        } else {
+            QTimer::singleShot(400, process, [process]() {
+                if (process->state() != QProcess::NotRunning) {
+                    process->kill();
+                }
+            });
+        }
     }
 }
 

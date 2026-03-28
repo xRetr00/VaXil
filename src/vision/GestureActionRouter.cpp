@@ -1,14 +1,6 @@
 #include "vision/GestureActionRouter.h"
 
-#include <algorithm>
-
-#include <QDateTime>
-
 #include "logging/LoggingService.h"
-
-namespace {
-constexpr int kGestureHoldResetMs = 220;
-}
 
 GestureActionRouter::GestureActionRouter(LoggingService *loggingService, QObject *parent)
     : QObject(parent)
@@ -16,63 +8,37 @@ GestureActionRouter::GestureActionRouter(LoggingService *loggingService, QObject
 {
 }
 
-void GestureActionRouter::configure(bool enabled, int cooldownMs)
+void GestureActionRouter::configure(bool enabled)
 {
     m_enabled = enabled;
-    m_cooldownMs = std::max(100, cooldownMs);
-    if (!m_enabled) {
-        transitionTo(State::Idle);
-        m_activeGesture.clear();
-        m_lastActiveSeenAtMs = 0;
-    }
 }
 
-void GestureActionRouter::routeGesture(const QString &actionName,
-                                       const QString &sourceGesture,
-                                       double confidence,
-                                       qint64 timestampMs,
-                                       const QString &traceId)
+void GestureActionRouter::routeGestureEvent(const GestureEvent &event)
 {
-    Q_UNUSED(traceId);
-
     if (!m_enabled) {
         return;
     }
 
-    if (!isCancelGesture(actionName, sourceGesture)) {
+    const QString gestureName = event.sourceGesture.isEmpty() ? event.actionName : event.sourceGesture;
+    logGestureEvent(QStringLiteral("gesture_detected"), gestureName, event.confidence);
+
+    if (!isCancelGesture(event.actionName, event.sourceGesture)) {
+        logGestureEvent(QStringLiteral("gesture_ignored"), gestureName, event.confidence, QStringLiteral("unsupported"));
         return;
     }
 
-    const qint64 nowMs = timestampMs > 0 ? timestampMs : QDateTime::currentMSecsSinceEpoch();
-    advanceActiveHold(nowMs);
-    advanceCooldown(nowMs);
-    logGestureEvent(QStringLiteral("gesture_detected"), sourceGesture, confidence);
-
-    if (m_state == State::Active) {
-        m_lastActiveSeenAtMs = nowMs;
-        logGestureEvent(QStringLiteral("gesture_ignored"), sourceGesture, confidence, QStringLiteral("duplicate"));
+    if (event.type != GestureEventType::Start) {
+        const QString reason = event.type == GestureEventType::Hold
+            ? QStringLiteral("hold")
+            : QStringLiteral("end");
+        logGestureEvent(QStringLiteral("gesture_ignored"), gestureName, event.confidence, reason);
         return;
     }
 
-    if (m_state == State::Cooldown) {
-        logGestureEvent(QStringLiteral("gesture_ignored"), sourceGesture, confidence, QStringLiteral("cooldown"));
-        return;
-    }
-
-    m_activeGesture = sourceGesture;
-    m_lastTriggeredAtMs = nowMs;
-    m_lastActiveSeenAtMs = nowMs;
-    transitionTo(State::Active);
-
-    logGestureEvent(QStringLiteral("gesture_triggered"), sourceGesture, confidence);
-    emit gestureTriggered(sourceGesture, nowMs);
+    logGestureEvent(QStringLiteral("gesture_triggered"), gestureName, event.confidence);
+    emit gestureTriggered(gestureName, event.timestampMs);
     emit stopSpeakingRequested();
     emit cancelCurrentRequestRequested();
-}
-
-void GestureActionRouter::transitionTo(State state)
-{
-    m_state = state;
 }
 
 void GestureActionRouter::logGestureEvent(const QString &event,
@@ -105,26 +71,4 @@ bool GestureActionRouter::isCancelGesture(const QString &actionName, const QStri
         || normalizedGesture == QStringLiteral("open_palm")
         || normalizedGesture == QStringLiteral("palm")
         || normalizedGesture == QStringLiteral("stop");
-}
-
-void GestureActionRouter::advanceActiveHold(qint64 nowMs)
-{
-    if (m_state != State::Active) {
-        return;
-    }
-
-    if (m_lastActiveSeenAtMs <= 0 || (nowMs - m_lastActiveSeenAtMs) < kGestureHoldResetMs) {
-        return;
-    }
-
-    m_activeGesture.clear();
-    m_lastActiveSeenAtMs = 0;
-    transitionTo(State::Cooldown);
-}
-
-void GestureActionRouter::advanceCooldown(qint64 nowMs)
-{
-    if (m_state == State::Cooldown && (nowMs - m_lastTriggeredAtMs) >= m_cooldownMs) {
-        transitionTo(State::Idle);
-    }
 }

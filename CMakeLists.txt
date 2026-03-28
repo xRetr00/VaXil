@@ -224,6 +224,7 @@ set(JARVIS_SOURCES
     src/tts/WorkerTtsEngine.cpp
     src/vision/VisionIngestService.cpp
     src/vision/GestureInterpreter.cpp
+    src/vision/GestureStateMachine.cpp
     src/vision/GestureActionRouter.cpp
     src/vision/VisionContextGate.cpp
     src/vision/WorldStateCache.cpp
@@ -284,6 +285,7 @@ set(JARVIS_HEADERS
     src/tts/WorkerTtsEngine.h
     src/vision/VisionIngestService.h
     src/vision/GestureInterpreter.h
+    src/vision/GestureStateMachine.h
     src/vision/GestureActionRouter.h
     src/vision/VisionContextGate.h
     src/vision/WorldStateCache.h

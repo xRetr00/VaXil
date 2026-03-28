@@ -52,7 +52,14 @@ void GestureInterpreter::ingestSnapshot(const VisionSnapshot &snapshot)
         }
     }
 
+    QList<GestureObservation> observations;
+    observations.reserve(bestActions.size());
     for (auto it = bestActions.cbegin(); it != bestActions.cend(); ++it) {
-        emit actionInterpreted(it.key(), it.value().first, it.value().second, timestampMs, snapshot.traceId);
+        observations.push_back({
+            .actionName = it.key(),
+            .sourceGesture = it.value().first,
+            .confidence = it.value().second
+        });
     }
+    emit observationsInterpreted(observations, timestampMs, snapshot.traceId);
 }

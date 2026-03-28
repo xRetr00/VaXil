@@ -15,9 +15,7 @@ public slots:
     void ingestSnapshot(const VisionSnapshot &snapshot);
 
 signals:
-    void actionInterpreted(const QString &actionName,
-                           const QString &sourceGesture,
-                           double confidence,
-                           qint64 timestampMs,
-                           const QString &traceId);
+    void observationsInterpreted(const QList<GestureObservation> &observations,
+                                 qint64 timestampMs,
+                                 const QString &traceId);
 };

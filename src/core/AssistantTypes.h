@@ -62,6 +62,19 @@ enum class LocalIntent {
     Unknown
 };
 
+enum class GestureLifecycleState {
+    Idle,
+    Detecting,
+    Active,
+    Cooldown
+};
+
+enum class GestureEventType {
+    Start,
+    Hold,
+    End
+};
+
 struct AiRequestOptions {
     ReasoningMode mode = ReasoningMode::Balanced;
     RequestKind kind = RequestKind::Conversation;
@@ -133,6 +146,24 @@ struct VisionSnapshot {
     QList<VisionObjectDetection> objects;
     QList<VisionGestureDetection> gestures;
     QString summary;
+};
+
+struct GestureObservation {
+    QString actionName;
+    QString sourceGesture;
+    double confidence = 0.0;
+};
+
+struct GestureEvent {
+    GestureEventType type = GestureEventType::Start;
+    GestureLifecycleState lifecycleState = GestureLifecycleState::Idle;
+    QString actionName;
+    QString sourceGesture;
+    double confidence = 0.0;
+    qint64 timestampMs = 0;
+    int stableForMs = 0;
+    int stableFrameCount = 0;
+    QString traceId;
 };
 
 struct AgentToolSpec {
@@ -289,6 +320,11 @@ Q_DECLARE_METATYPE(QList<VisionObjectDetection>)
 Q_DECLARE_METATYPE(VisionGestureDetection)
 Q_DECLARE_METATYPE(QList<VisionGestureDetection>)
 Q_DECLARE_METATYPE(VisionSnapshot)
+Q_DECLARE_METATYPE(GestureLifecycleState)
+Q_DECLARE_METATYPE(GestureEventType)
+Q_DECLARE_METATYPE(GestureObservation)
+Q_DECLARE_METATYPE(QList<GestureObservation>)
+Q_DECLARE_METATYPE(GestureEvent)
 Q_DECLARE_METATYPE(ModelInfo)
 Q_DECLARE_METATYPE(QList<ModelInfo>)
 Q_DECLARE_METATYPE(AiAvailability)

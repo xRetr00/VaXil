@@ -1,6 +1,7 @@
 #include "core/AssistantController.h"
 
 #include <algorithm>
+#include <optional>
 
 #include <QDateTime>
 #include <QDir>
@@ -10,6 +11,7 @@
 #include <QJsonObject>
 #include <QLocale>
 #include <QRegularExpression>
+#include <QSet>
 #include <QStandardPaths>
 #include <QTimer>
 #include <QTime>
@@ -44,6 +46,7 @@
 #include "vision/VisionIngestService.h"
 #include "vision/GestureActionRouter.h"
 #include "vision/GestureInterpreter.h"
+#include "vision/GestureStateMachine.h"
 #include "vision/VisionContextGate.h"
 #include "vision/WorldStateCache.h"
 #include "wakeword/SherpaWakeWordEngine.h"
@@ -251,7 +254,11 @@ bool isLikelySttArtifactTranscript(const QString &input)
         QStringLiteral("subtitle by"),
         QStringLiteral("subtitles by"),
         QStringLiteral("captions by"),
-        QStringLiteral("thanks for watching")
+        QStringLiteral("thanks for watching"),
+        QStringLiteral("learn english for free"),
+        QStringLiteral("engvid"),
+        QStringLiteral("subscribe for more"),
+        QStringLiteral("follow for more")
     };
 
     for (const QString &phrase : knownArtifacts) {
@@ -263,6 +270,9 @@ bool isLikelySttArtifactTranscript(const QString &input)
     }
 
     const QStringList words = normalized.split(QRegularExpression(QStringLiteral("\\s+")), Qt::SkipEmptyParts);
+    if (QRegularExpression(QStringLiteral("\\b(?:www\\s+)?[a-z0-9]+\\s+(?:com|net|org|io|ai)\\b")).match(normalized).hasMatch()) {
+        return true;
+    }
     if (words.size() <= 3) {
         for (const QString &word : words) {
             if (word.startsWith(QStringLiteral("transcrib"))
@@ -490,6 +500,82 @@ bool isVisionRelevantQuery(const QString &input)
     });
 }
 
+bool isDirectVisionAnswerQuery(const QString &input)
+{
+    return containsAnyNormalized(input, {
+        QStringLiteral("what do you see"),
+        QStringLiteral("can you see"),
+        QStringLiteral("do you see"),
+        QStringLiteral("what am i holding"),
+        QStringLiteral("what i'm holding"),
+        QStringLiteral("what is in my hand"),
+        QStringLiteral("what's in my hand"),
+        QStringLiteral("what is on my hand"),
+        QStringLiteral("what is this"),
+        QStringLiteral("what is that"),
+        QStringLiteral("is my hand open"),
+        QStringLiteral("is my hand closed"),
+        QStringLiteral("open or closed"),
+        QStringLiteral("closed or open"),
+        QStringLiteral("my hand")
+    });
+}
+
+bool isVisionFollowUpQuery(const QString &input)
+{
+    return containsAnyNormalized(input, {
+        QStringLiteral("what about now"),
+        QStringLiteral("how about now"),
+        QStringLiteral("and now"),
+        QStringLiteral("right now"),
+        QStringLiteral("now can you"),
+        QStringLiteral("can you see now"),
+        QStringLiteral("do you see now"),
+        QStringLiteral("what do you see now")
+    });
+}
+
+bool isPortableVisionObject(const QString &label)
+{
+    static const QSet<QString> portableObjects = {
+        QStringLiteral("bottle"),
+        QStringLiteral("book"),
+        QStringLiteral("can"),
+        QStringLiteral("cell phone"),
+        QStringLiteral("cup"),
+        QStringLiteral("fork"),
+        QStringLiteral("keyboard"),
+        QStringLiteral("knife"),
+        QStringLiteral("laptop"),
+        QStringLiteral("mouse"),
+        QStringLiteral("remote"),
+        QStringLiteral("scissors"),
+        QStringLiteral("spoon"),
+        QStringLiteral("sports ball"),
+        QStringLiteral("toothbrush"),
+        QStringLiteral("wine glass")
+    };
+    return portableObjects.contains(label.trimmed().toLower());
+}
+
+QString withArticle(const QString &noun)
+{
+    const QString trimmed = noun.trimmed();
+    if (trimmed.isEmpty()) {
+        return QStringLiteral("something");
+    }
+
+    const QChar first = trimmed.front().toLower();
+    if (first == QChar::fromLatin1('a')
+        || first == QChar::fromLatin1('e')
+        || first == QChar::fromLatin1('i')
+        || first == QChar::fromLatin1('o')
+        || first == QChar::fromLatin1('u')) {
+        return QStringLiteral("an %1").arg(trimmed);
+    }
+    return QStringLiteral("a %1").arg(trimmed);
+}
+
 bool isExplicitComputerControlQuery(const QString &input)
 {
     return containsAnyNormalized(input, {
@@ -695,6 +781,10 @@ bool isLikelyKnowledgeLookupQuery(const QString &input)
 {
     const QString normalized = input.trimmed().toLower();
     if (normalized.isEmpty()) {
+        return false;
+    }
+
+    if (isVisionRelevantQuery(normalized)) {
         return false;
     }
 
@@ -949,12 +1039,15 @@ AssistantController::AssistantController(
     m_worldStateCache = new WorldStateCache(15000, 2000, this);
     m_visionIngestService = new VisionIngestService(m_settings, m_loggingService, this);
     m_gestureInterpreter = new GestureInterpreter(this);
+    m_gestureStateMachine = new GestureStateMachine(m_loggingService);
     m_gestureActionRouter = new GestureActionRouter(m_loggingService);
     m_toolWorkerThread.setObjectName(QStringLiteral("BackgroundToolWorkerThread"));
     m_gestureActionRouterThread.setObjectName(QStringLiteral("GestureActionRouterThread"));
     m_toolWorker->moveToThread(&m_toolWorkerThread);
+    m_gestureStateMachine->moveToThread(&m_gestureActionRouterThread);
     m_gestureActionRouter->moveToThread(&m_gestureActionRouterThread);
     connect(&m_toolWorkerThread, &QThread::finished, m_toolWorker, &QObject::deleteLater);
+    connect(&m_gestureActionRouterThread, &QThread::finished, m_gestureStateMachine, &QObject::deleteLater);
     connect(&m_gestureActionRouterThread, &QThread::finished, m_gestureActionRouter, &QObject::deleteLater);
     connect(m_taskDispatcher, &TaskDispatcher::taskReady, m_toolWorker, &ToolWorker::processTask, Qt::QueuedConnection);
     connect(m_taskDispatcher, &TaskDispatcher::taskCanceled, m_toolWorker, &ToolWorker::cancelTask, Qt::QueuedConnection);
@@ -967,7 +1060,8 @@ AssistantController::AssistantController(
         recordTaskResult(resultObject);
     }, Qt::QueuedConnection);
     connect(m_visionIngestService, &VisionIngestService::visionSnapshotReceived, this, &AssistantController::handleVisionSnapshot, Qt::QueuedConnection);
-    connect(m_gestureInterpreter, &GestureInterpreter::actionInterpreted, m_gestureActionRouter, &GestureActionRouter::routeGesture, Qt::QueuedConnection);
+    connect(m_gestureInterpreter, &GestureInterpreter::observationsInterpreted, m_gestureStateMachine, &GestureStateMachine::ingestObservations, Qt::QueuedConnection);
+    connect(m_gestureStateMachine, &GestureStateMachine::gestureEventReady, m_gestureActionRouter, &GestureActionRouter::routeGestureEvent, Qt::QueuedConnection);
     connect(m_gestureActionRouter, &GestureActionRouter::gestureTriggered, this, [this](const QString &gestureName, qint64 timestampMs) {
         m_lastVisionGestureTriggerMs = timestampMs;
         m_lastVisionGestureAction = gestureName;
@@ -983,8 +1077,13 @@ AssistantController::~AssistantController()
     if (m_gestureActionRouterThread.isRunning()) {
         m_gestureActionRouterThread.quit();
         m_gestureActionRouterThread.wait();
-    } else if (m_gestureActionRouter != nullptr) {
-        m_gestureActionRouter->deleteLater();
+    } else if (m_gestureStateMachine != nullptr || m_gestureActionRouter != nullptr) {
+        if (m_gestureStateMachine != nullptr) {
+            m_gestureStateMachine->deleteLater();
+        }
+        if (m_gestureActionRouter != nullptr) {
+            m_gestureActionRouter->deleteLater();
+        }
     }
     if (m_toolWorkerThread.isRunning()) {
         m_toolWorkerThread.quit();
@@ -1492,6 +1591,10 @@ void AssistantController::submitText(const QString &text)
 
     const LocalIntent intent = m_intentRouter->classify(routedInput);
     const AiAvailability availability = m_modelCatalogService->availability();
+    const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
+    const bool recentVisionQuery = (nowMs - m_lastVisionQueryMs) <= 12000;
+    const bool visionRelevantQuery = isVisionRelevantQuery(routedInput)
+        || (recentVisionQuery && isVisionFollowUpQuery(routedInput));
 
     if (intent == LocalIntent::Greeting || intent == LocalIntent::SmallTalk) {
         deliverLocalResponse(
@@ -1499,6 +1602,15 @@ void AssistantController::submitText(const QString &text)
             QStringLiteral("Local response"),
             true);
         return;
+    }
+
+    if (visionRelevantQuery && !isExplicitComputerControlQuery(routedInput)) {
+        m_lastVisionQueryMs = nowMs;
+        const QString directVisionResponse = buildDirectVisionResponse(routedInput);
+        if (!directVisionResponse.isEmpty()) {
+            deliverLocalResponse(directVisionResponse, QStringLiteral("Vision response"), true);
+            return;
+        }
     }
 
     if (!availability.online || !availability.modelAvailable) {
@@ -1517,7 +1629,7 @@ void AssistantController::submitText(const QString &text)
         return;
     }
 
-    if (isExplicitWebSearchQuery(routedInput)) {
+    if (!visionRelevantQuery && isExplicitWebSearchQuery(routedInput)) {
         QString extractedQuery = extractWebSearchQuery(routedInput);
         if (isWebSearchVerificationQuery(routedInput)) {
             extractedQuery = defaultWebSearchProbeQuery();
@@ -1538,7 +1650,7 @@ void AssistantController::submitText(const QString &text)
         return;
     }
 
-    if (m_settings->agentEnabled() && isLikelyKnowledgeLookupQuery(routedInput)) {
+    if (!visionRelevantQuery && m_settings->agentEnabled() && isLikelyKnowledgeLookupQuery(routedInput)) {
         AgentTask task;
         task.type = QStringLiteral("web_search");
         task.args = QJsonObject{{QStringLiteral("query"), routedInput}};
@@ -1551,7 +1663,7 @@ void AssistantController::submitText(const QString &text)
         return;
     }
 
-    if (m_settings->agentEnabled() && isFreshnessSensitiveQuery(routedInput)) {
+    if (!visionRelevantQuery && m_settings->agentEnabled() && isFreshnessSensitiveQuery(routedInput)) {
         AgentTask task;
         task.type = QStringLiteral("web_search");
         task.args = QJsonObject{
@@ -1573,7 +1685,6 @@ void AssistantController::submitText(const QString &text)
         return;
     }
 
-    const bool visionRelevantQuery = isVisionRelevantQuery(routedInput);
     if (visionRelevantQuery && !isExplicitComputerControlQuery(routedInput)) {
         if (m_loggingService) {
             m_loggingService->info(QStringLiteral("Routing vision-relevant query through conversation. input=\"%1\"")
@@ -2442,16 +2553,27 @@ bool AssistantController::canStartWakeMonitor() const
 
 void AssistantController::reconfigureGestureActionRouter()
 {
-    if (!m_gestureActionRouterThread.isRunning() || m_gestureActionRouter == nullptr || m_settings == nullptr) {
+    if (!m_gestureActionRouterThread.isRunning()
+        || m_gestureStateMachine == nullptr
+        || m_gestureActionRouter == nullptr
+        || m_settings == nullptr) {
         return;
     }
+
+    QMetaObject::invokeMethod(
+        m_gestureStateMachine,
+        "configure",
+        Qt::QueuedConnection,
+        Q_ARG(bool, m_settings->gestureEnabled()),
+        Q_ARG(double, m_settings->visionGesturesMinConfidence()),
+        Q_ARG(int, m_settings->gestureStabilityMs()),
+        Q_ARG(int, m_settings->gestureCooldownMs()));
 
     QMetaObject::invokeMethod(
         m_gestureActionRouter,
         "configure",
         Qt::QueuedConnection,
-        Q_ARG(bool, m_settings->gestureEnabled()),
-        Q_ARG(int, m_settings->gestureCooldownMs()));
+        Q_ARG(bool, m_settings->gestureEnabled()));
 }
 
 QString AssistantController::resolveWakeEngineRuntimePath() const
@@ -2820,6 +2942,86 @@ QString AssistantController::buildVisionPromptContext(const QString &input, Inte
         context += QStringLiteral(" Gestures: %1.").arg(gestureNames.join(QStringLiteral(", ")));
     }
     return context;
+}
+
+QString AssistantController::buildDirectVisionResponse(const QString &input) const
+{
+    const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
+    const bool recentVisionQuery = (nowMs - m_lastVisionQueryMs) <= 12000;
+    if (!m_settings->visionEnabled()
+        || !m_worldStateCache
+        || !(isDirectVisionAnswerQuery(input) || (recentVisionQuery && isVisionFollowUpQuery(input)))) {
+        return {};
+    }
+
+    const auto snapshot = m_worldStateCache->latestFreshSnapshot(m_settings->visionStaleThresholdMs());
+    if (!snapshot.has_value()) {
+        return {};
+    }
+
+    const QString normalized = input.trimmed().toLower();
+    const auto bestPortableObject = [&snapshot]() -> std::optional<VisionObjectDetection> {
+        for (const auto &object : snapshot->objects) {
+            if (isPortableVisionObject(object.className)) {
+                return object;
+            }
+        }
+        return std::nullopt;
+    }();
+
+    const auto hasGesture = [&snapshot](const QString &name) {
+        for (const auto &gesture : snapshot->gestures) {
+            if (gesture.name.compare(name, Qt::CaseInsensitive) == 0) {
+                return true;
+            }
+        }
+        return false;
+    };
+
+    const QString summary = snapshot->summary.trimmed().isEmpty()
+        ? m_worldStateCache->filteredSummary(m_settings->visionStaleThresholdMs()).trimmed()
+        : snapshot->summary.trimmed();
+
+    if (normalized.contains(QStringLiteral("holding")) || normalized.contains(QStringLiteral("in my hand"))) {
+        if (bestPortableObject.has_value()) {
+            return QStringLiteral("It looks like you're holding %1.").arg(withArticle(bestPortableObject->className));
+        }
+        if (hasGesture(QStringLiteral("pinch"))) {
+            return QStringLiteral("I can see a pinch gesture, but I can't confidently identify the object in your hand.");
+        }
+        return QStringLiteral("I can't confidently tell what you're holding right now.");
+    }
+
+    if (normalized.contains(QStringLiteral("open or closed"))
+        || normalized.contains(QStringLiteral("closed or open"))
+        || normalized.contains(QStringLiteral("is my hand open"))
+        || normalized.contains(QStringLiteral("is my hand closed"))
+        || normalized.contains(QStringLiteral("my hand"))) {
+        if (hasGesture(QStringLiteral("open_hand"))) {
+            return QStringLiteral("Your hand looks open right now.");
+        }
+        if (hasGesture(QStringLiteral("pinch"))) {
+            return bestPortableObject.has_value()
+                ? QStringLiteral("Your hand looks closed around %1.").arg(withArticle(bestPortableObject->className))
+                : QStringLiteral("Your hand looks pinched, like you're holding something.");
+        }
+        if (hasGesture(QStringLiteral("two_fingers"))) {
+            return QStringLiteral("Your hand looks like two fingers are extended.");
+        }
+        return QStringLiteral("I can see your hand, but I can't confidently tell whether it is open or closed right now.");
+    }
+
+    if (normalized.contains(QStringLiteral("what do you see"))
+        || normalized.contains(QStringLiteral("can you see"))
+        || normalized.contains(QStringLiteral("do you see"))
+        || normalized.contains(QStringLiteral("what is this"))
+        || normalized.contains(QStringLiteral("what is that"))) {
+        if (!summary.isEmpty()) {
+            return summary.endsWith(QChar::fromLatin1('.')) ? summary : summary + QChar::fromLatin1('.');
+        }
+    }
+
+    return {};
 }
 
 bool AssistantController::shouldUseVisionContext(const QString &input, IntentType intent) const

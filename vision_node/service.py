@@ -20,6 +20,7 @@ LOGGER = logging.getLogger("jarvis.vision_node")
 
 
 DEBUG_WINDOW_NAME = "JARVIS Vision Debug"
+SNAPSHOT_KEEPALIVE_SEC = 1.5
 SCENE_ANCHOR_CLASSES = {
     "person",
     "man",
@@ -29,6 +30,7 @@ SCENE_ANCHOR_CLASSES = {
 }
 HANDHELD_OBJECT_CLASSES = {
     "bottle",
+    "book",
     "can",
     "cell phone",
     "cup",
@@ -301,6 +303,24 @@ class VisionNodeService:
                     'snapshot_dropped_reason="rate_limited" max_snapshots_per_second=%.2f',
                     self.config.max_snapshots_per_second,
                 )
+            elif self._should_send_keepalive(snapshot, now, last_sent_at):
+                try:
+                    send_started_at = time.monotonic()
+                    await websocket.send(snapshot.to_json())
+                    last_send_latency_ms = (time.monotonic() - send_started_at) * 1000.0
+                    last_sent_at = now
+                    self._last_sent_snapshot = snapshot
+                    self._log_rate_limited(
+                        "snapshot_keepalive_sent",
+                        logging.INFO,
+                        'vision_sent trace="%s" reason="keepalive" summary="%s"',
+                        snapshot.trace_id,
+                        snapshot.summary,
+                        interval_sec=1.0,
+                    )
+                except ConnectionClosed:
+                    LOGGER.warning("WebSocket connection closed during keepalive send")
+                    raise
             else:
                 self._log_rate_limited(
                     f"snapshot_dropped_{drop_reason}",
@@ -517,17 +537,25 @@ class VisionNodeService:
 
             pinch_distance = ((thumb_tip.x - index_tip.x) ** 2 + (thumb_tip.y - index_tip.y) ** 2) ** 0.5
             pinch_confidence = max(0.0, min(1.0, 1.0 - (pinch_distance / self.config.pinch_distance_threshold)))
+            index_extended = index_tip.y < wrist.y
+            middle_extended = middle_tip.y < wrist.y
+            ring_extended = ring_tip.y < wrist.y
+            pinky_extended = pinky_tip.y < wrist.y
+            fingers_extended = int(index_extended) + int(middle_extended) + int(ring_extended) + int(pinky_extended)
+
             if pinch_confidence >= self.config.gestures_min_confidence:
                 gestures.append(VisionGesture(name="pinch", confidence=pinch_confidence))
-            else:
-                confidence_filtered += 1
+                continue
 
-            if wrist.y > index_tip.y and wrist.y > middle_tip.y and wrist.y > ring_tip.y and wrist.y > pinky_tip.y:
-                gestures.append(VisionGesture(name="open_hand", confidence=0.95))
-
-            fingers_extended = int(index_tip.y < wrist.y) + int(middle_tip.y < wrist.y) + int(ring_tip.y < wrist.y) + int(pinky_tip.y < wrist.y)
-            if fingers_extended == 2 and index_tip.y < wrist.y and middle_tip.y < wrist.y:
+            if fingers_extended == 2 and index_extended and middle_extended:
                 gestures.append(VisionGesture(name="two_fingers", confidence=0.85))
+                continue
+
+            if fingers_extended >= 4:
+                gestures.append(VisionGesture(name="open_hand", confidence=0.95))
+                continue
+
+            confidence_filtered += 1
 
         deduped: dict[str, float] = {}
         for gesture in gestures:
@@ -560,20 +588,21 @@ class VisionNodeService:
     def _build_scene_summary(self, objects: Sequence[VisionObject], gestures: Sequence[VisionGesture]) -> str:
         object_names = [item.class_name for item in objects]
         gesture_names = [item.name for item in gestures]
-        primary_object = self._pick_primary_object(objects)
+        held_object = self._pick_held_object(objects)
+        reference_object = self._pick_reference_object(objects)
         visible_objects = self._visible_scene_objects(objects)
 
         if "pinch" in gesture_names:
-            if primary_object is not None:
-                return f"You appear to be holding {self._with_article(primary_object.class_name)}"
+            if held_object is not None:
+                return f"You appear to be holding {self._with_article(held_object.class_name)}"
             return "A pinch gesture is visible"
         if "open_hand" in gesture_names:
-            if primary_object is not None:
-                return f"An open hand is visible near {self._with_article(primary_object.class_name)}"
+            if held_object is not None:
+                return f"An open hand is visible near {self._with_article(held_object.class_name)}"
             return "An open hand is visible"
         if "two_fingers" in gesture_names:
-            if primary_object is not None:
-                return f"You are pointing at {self._with_article(primary_object.class_name)} with two fingers"
+            if reference_object is not None:
+                return f"You are pointing at {self._with_article(reference_object.class_name)} with two fingers"
             return "A two-finger gesture is visible"
         if len(visible_objects) == 1:
             return f"I can see {self._with_article(visible_objects[0])}"
@@ -588,13 +617,21 @@ class VisionNodeService:
         return "No strong visual event detected"
 
     @staticmethod
-    def _pick_primary_object(objects: Sequence[VisionObject]) -> VisionObject | None:
+    def _pick_held_object(objects: Sequence[VisionObject]) -> VisionObject | None:
         if not objects:
             return None
 
         for object_ in objects:
             if object_.class_name in HANDHELD_OBJECT_CLASSES:
                 return object_
+
+        return None
+
+    @staticmethod
+    def _pick_reference_object(objects: Sequence[VisionObject]) -> VisionObject | None:
+        held_object = VisionNodeService._pick_held_object(objects)
+        if held_object is not None:
+            return held_object
 
         for object_ in objects:
             if object_.class_name not in SCENE_ANCHOR_CLASSES:
@@ -649,6 +686,16 @@ class VisionNodeService:
     @staticmethod
     def _labels_changed(current: Sequence, previous: Sequence, key_fn) -> bool:
         return {key_fn(item) for item in current} != {key_fn(item) for item in previous}
+
+    def _should_send_keepalive(self,
+                               snapshot: VisionSnapshotMessage,
+                               now: float,
+                               last_sent_at: float) -> bool:
+        if last_sent_at <= 0.0 or (now - last_sent_at) < SNAPSHOT_KEEPALIVE_SEC:
+            return False
+        if snapshot.objects or snapshot.gestures:
+            return True
+        return snapshot.summary != "No strong visual event detected"
 
     def _effective_send_interval_sec(self) -> float:
         rate_limit_interval = 1.0 / max(1.0, self.config.max_snapshots_per_second)

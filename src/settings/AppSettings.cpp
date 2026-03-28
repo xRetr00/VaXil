@@ -105,6 +105,11 @@ int clampGestureCooldownMs(int value)
     return std::clamp(value, 100, 5000);
 }
 
+int clampGestureStabilityMs(int value)
+{
+    return std::clamp(value, 100, 1500);
+}
+
 double clampVisionConfidence(double value, double fallback)
 {
     if (std::isnan(value)) {
@@ -188,6 +193,7 @@ bool AppSettings::load()
     m_visionObjectsMinConfidence = clampVisionConfidence(parsed.value("visionObjectsMinConfidence", 0.60), 0.60);
     m_visionGesturesMinConfidence = clampVisionConfidence(parsed.value("visionGesturesMinConfidence", 0.70), 0.70);
     m_gestureEnabled = parsed.value("gestureEnabled", false);
+    m_gestureStabilityMs = clampGestureStabilityMs(parsed.value("gestureStabilityMs", 180));
     m_gestureCooldownMs = clampGestureCooldownMs(parsed.value("gestureCooldownMs", 500));
     m_tracePanelEnabled = parsed.value("tracePanelEnabled", true);
     m_whisperExecutable = QString::fromStdString(parsed.value("whisperExecutable", std::string{}));
@@ -274,6 +280,7 @@ bool AppSettings::save() const
         {"visionObjectsMinConfidence", m_visionObjectsMinConfidence},
         {"visionGesturesMinConfidence", m_visionGesturesMinConfidence},
         {"gestureEnabled", m_gestureEnabled},
+        {"gestureStabilityMs", m_gestureStabilityMs},
         {"gestureCooldownMs", m_gestureCooldownMs},
         {"tracePanelEnabled", m_tracePanelEnabled},
         {"whisperExecutable", m_whisperExecutable.toStdString()},
@@ -474,6 +481,12 @@ bool AppSettings::gestureEnabled() const { return m_gestureEnabled; }
 void AppSettings::setGestureEnabled(bool enabled)
 {
     m_gestureEnabled = enabled;
+    emit settingsChanged();
+}
+int AppSettings::gestureStabilityMs() const { return m_gestureStabilityMs; }
+void AppSettings::setGestureStabilityMs(int stabilityMs)
+{
+    m_gestureStabilityMs = clampGestureStabilityMs(stabilityMs);
     emit settingsChanged();
 }
 int AppSettings::gestureCooldownMs() const { return m_gestureCooldownMs; }
