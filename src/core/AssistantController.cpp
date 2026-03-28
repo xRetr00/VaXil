@@ -494,6 +494,13 @@ bool isVisionRelevantQuery(const QString &input)
         QStringLiteral("camera"),
         QStringLiteral("gesture"),
         QStringLiteral("hand"),
+        QStringLiteral("finger"),
+        QStringLiteral("finger count"),
+        QStringLiteral("how many fingers"),
+        QStringLiteral("number of fingers"),
+        QStringLiteral("middle finger"),
+        QStringLiteral("thumbs up"),
+        QStringLiteral("thumbs down"),
         QStringLiteral("object"),
         QStringLiteral("what is this"),
         QStringLiteral("what is that")
@@ -517,6 +524,14 @@ bool isDirectVisionAnswerQuery(const QString &input)
         QStringLiteral("is my hand closed"),
         QStringLiteral("open or closed"),
         QStringLiteral("closed or open"),
+        QStringLiteral("closed hand"),
+        QStringLiteral("fist"),
+        QStringLiteral("how many fingers"),
+        QStringLiteral("finger count"),
+        QStringLiteral("number of fingers"),
+        QStringLiteral("thumbs up"),
+        QStringLiteral("thumbs down"),
+        QStringLiteral("middle finger"),
         QStringLiteral("my hand")
     });
 }
@@ -2992,13 +3007,59 @@ QString AssistantController::buildDirectVisionResponse(const QString &input) con
         return QStringLiteral("I can't confidently tell what you're holding right now.");
     }
 
+    if (normalized.contains(QStringLiteral("middle finger"))) {
+        if (hasGesture(QStringLiteral("middle_finger"))) {
+            return QStringLiteral("Yes, your middle finger is extended right now.");
+        }
+        return QStringLiteral("I can't confidently see a middle finger gesture right now.");
+    }
+
+    if (normalized.contains(QStringLiteral("thumbs up"))) {
+        if (hasGesture(QStringLiteral("thumbs_up"))) {
+            return QStringLiteral("Yes, that looks like a thumbs up.");
+        }
+        return QStringLiteral("I can't confidently see a thumbs up right now.");
+    }
+
+    if (normalized.contains(QStringLiteral("thumbs down"))) {
+        if (hasGesture(QStringLiteral("thumbs_down"))) {
+            return QStringLiteral("Yes, that looks like a thumbs down.");
+        }
+        return QStringLiteral("I can't confidently see a thumbs down right now.");
+    }
+
+    if (normalized.contains(QStringLiteral("how many fingers"))
+        || normalized.contains(QStringLiteral("finger count"))
+        || normalized.contains(QStringLiteral("number of fingers"))) {
+        if (snapshot->fingerCount >= 0) {
+            return QStringLiteral("I can see %1 finger%2 extended.")
+                .arg(snapshot->fingerCount)
+                .arg(snapshot->fingerCount == 1 ? QString() : QStringLiteral("s"));
+        }
+        return QStringLiteral("I can't confidently count your fingers right now.");
+    }
+
     if (normalized.contains(QStringLiteral("open or closed"))
         || normalized.contains(QStringLiteral("closed or open"))
         || normalized.contains(QStringLiteral("is my hand open"))
         || normalized.contains(QStringLiteral("is my hand closed"))
+        || normalized.contains(QStringLiteral("closed hand"))
+        || normalized.contains(QStringLiteral("fist"))
         || normalized.contains(QStringLiteral("my hand"))) {
         if (hasGesture(QStringLiteral("open_hand"))) {
             return QStringLiteral("Your hand looks open right now.");
+        }
+        if (hasGesture(QStringLiteral("closed_hand"))) {
+            return QStringLiteral("Your hand looks closed right now.");
+        }
+        if (hasGesture(QStringLiteral("middle_finger"))) {
+            return QStringLiteral("Your middle finger is extended right now.");
+        }
+        if (hasGesture(QStringLiteral("thumbs_up"))) {
+            return QStringLiteral("Your hand looks like a thumbs up right now.");
+        }
+        if (hasGesture(QStringLiteral("thumbs_down"))) {
+            return QStringLiteral("Your hand looks like a thumbs down right now.");
         }
         if (hasGesture(QStringLiteral("pinch"))) {
             return bestPortableObject.has_value()

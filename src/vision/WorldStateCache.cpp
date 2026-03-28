@@ -43,6 +43,10 @@ QString deriveSummaryFromSnapshot(const VisionSnapshot &snapshot)
         }
     }
 
+    if (snapshot.fingerCount >= 0) {
+        parts.push_back(QStringLiteral("finger count: %1").arg(snapshot.fingerCount));
+    }
+
     return parts.join(QStringLiteral("; "));
 }
 }
@@ -135,6 +139,7 @@ QString WorldStateCache::filteredSummary(int staleThresholdMs) const
 
     QSet<QString> objectNames;
     QSet<QString> gestureNames;
+    int latestFingerCount = -1;
     for (auto it = m_snapshots.crbegin(); it != m_snapshots.crend(); ++it) {
         if (snapshotAgeMs(*it, nowMs) > maxAgeMs) {
             continue;
@@ -148,6 +153,9 @@ QString WorldStateCache::filteredSummary(int staleThresholdMs) const
             if (!gesture.name.trimmed().isEmpty()) {
                 gestureNames.insert(gesture.name.trimmed());
             }
+        }
+        if (latestFingerCount < 0 && it->fingerCount >= 0) {
+            latestFingerCount = it->fingerCount;
         }
         if (objectNames.size() >= 4 && gestureNames.size() >= 3) {
             break;
@@ -164,6 +172,9 @@ QString WorldStateCache::filteredSummary(int staleThresholdMs) const
         QStringList gestureList = gestureNames.values();
         std::sort(gestureList.begin(), gestureList.end());
         parts.push_back(QStringLiteral("Recent gestures: %1").arg(gestureList.join(QStringLiteral(", "))));
+    }
+    if (latestFingerCount >= 0) {
+        parts.push_back(QStringLiteral("Finger count: %1").arg(latestFingerCount));
     }
     return parts.join(QStringLiteral(". "));
 }

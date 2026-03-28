@@ -82,3 +82,5 @@ Useful flags:
 - YOLO and MediaPipe always run on the low-resolution process frame. The debug window can scale independently, including fullscreen, without increasing inference resolution.
 - `run_vision_node.sh` installs a CPU-only PyTorch stack by default before `ultralytics`, even if CUDA is present on the machine. Override `--torch-index-url` only if you explicitly want a GPU build.
 - `run_vision_node.sh` can create a local virtualenv, install missing requirements, retry failed installs with a safer PyPI fallback, and prompt for missing required inputs such as the server URL.
+- Current server-side raw gesture outputs include `open_hand`, `closed_hand`, `pinch`, `two_fingers`, `middle_finger`, `thumbs_up`, and `thumbs_down`.
+- Snapshots also include optional `finger_count` when the hand estimate is reliable enough.

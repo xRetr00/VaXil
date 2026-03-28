@@ -44,6 +44,7 @@ class VisionSnapshotMessage:
     node_id: str
     objects: List[VisionObject] = field(default_factory=list)
     gestures: List[VisionGesture] = field(default_factory=list)
+    finger_count: int | None = None
     summary: str = ""
     trace_id: str = field(default_factory=lambda: uuid.uuid4().hex)
     ts: str = field(default_factory=utc_timestamp)
@@ -59,6 +60,7 @@ class VisionSnapshotMessage:
             "node_id": self.node_id,
             "objects": [item.to_wire() for item in self.objects],
             "gestures": [item.to_wire() for item in self.gestures],
+            "finger_count": self.finger_count,
             "summary": self.summary,
         }
 

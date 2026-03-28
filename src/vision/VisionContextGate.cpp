@@ -65,6 +65,8 @@ bool VisionContextGate::isVisionRelevantQuery(const QString &input)
         QStringLiteral("camera"),
         QStringLiteral("gesture"),
         QStringLiteral("hand"),
+        QStringLiteral("finger"),
+        QStringLiteral("middle finger"),
         QStringLiteral("object"),
         QStringLiteral("environment"),
         QStringLiteral("room"),
@@ -85,6 +87,8 @@ bool VisionContextGate::needsRawVisionDetails(const QString &input)
         QStringLiteral("details"),
         QStringLiteral("confidence"),
         QStringLiteral("hand"),
+        QStringLiteral("finger"),
+        QStringLiteral("middle finger"),
         QStringLiteral("open or closed"),
         QStringLiteral("closed or open"),
         QStringLiteral("what is my hand doing")

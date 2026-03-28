@@ -88,6 +88,10 @@ QString deriveSummary(const VisionSnapshot &snapshot)
         }
     }
 
+    if (snapshot.fingerCount >= 0) {
+        parts.push_back(QStringLiteral("Finger count: %1").arg(snapshot.fingerCount));
+    }
+
     if (parts.isEmpty()) {
         return QStringLiteral("No strong visual event detected");
     }
@@ -123,6 +127,9 @@ ParseSnapshotResult parseSnapshotMessage(const QString &payload,
     snapshot.nodeId = object.value(QStringLiteral("node_id")).toString().trimmed();
     snapshot.traceId = object.value(QStringLiteral("trace_id")).toString().trimmed();
     snapshot.summary = object.value(QStringLiteral("summary")).toString().trimmed();
+    if (object.contains(QStringLiteral("finger_count")) && object.value(QStringLiteral("finger_count")).isDouble()) {
+        snapshot.fingerCount = object.value(QStringLiteral("finger_count")).toInt(-1);
+    }
 
     const QString timestampText = object.value(QStringLiteral("ts")).toString().trimmed();
     snapshot.timestamp = QDateTime::fromString(timestampText, Qt::ISODateWithMs);

@@ -145,6 +145,7 @@ struct VisionSnapshot {
     QString traceId;
     QList<VisionObjectDetection> objects;
     QList<VisionGestureDetection> gestures;
+    int fingerCount = -1;
     QString summary;
 };
 

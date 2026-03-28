@@ -21,6 +21,7 @@ LOGGER = logging.getLogger("jarvis.vision_node")
 
 DEBUG_WINDOW_NAME = "JARVIS Vision Debug"
 SNAPSHOT_KEEPALIVE_SEC = 1.5
+MIN_HAND_SCALE = 0.10
 SCENE_ANCHOR_CLASSES = {
     "person",
     "man",
@@ -74,6 +75,7 @@ class DebugStats:
     send_latency_ms: float = 0.0
     objects_count: int = 0
     gesture_name: str = "none"
+    finger_count: int = -1
     summary: str = "No strong visual event detected"
 
 
@@ -114,6 +116,7 @@ def render_debug_frame(frame,
         f"Send: {stats.send_latency_ms:.1f}ms",
         f"Objects: {stats.objects_count}",
         f"Gesture: {stats.gesture_name}",
+        f"Fingers: {stats.finger_count if stats.finger_count >= 0 else 'unknown'}",
     ]
 
     panel_height = 26 + (len(stats_lines) * 24)
@@ -265,7 +268,7 @@ class VisionNodeService:
                 continue
 
             process_frame = self.prepare_process_frame(original_frame)
-            latest_objects, latest_detections, gestures, hand_landmarks, yolo_ms, hands_ms = self.run_inference(
+            latest_objects, latest_detections, gestures, hand_landmarks, finger_count, yolo_ms, hands_ms = self.run_inference(
                 process_frame=process_frame,
                 frame_index=frame_index,
                 latest_objects=latest_objects,
@@ -273,7 +276,7 @@ class VisionNodeService:
             )
             if yolo_ms > 0.0:
                 last_yolo_ms = yolo_ms
-            snapshot = self._build_snapshot(latest_objects, gestures)
+            snapshot = self._build_snapshot(latest_objects, gestures, finger_count)
             should_send, drop_reason = self._should_send_snapshot(snapshot)
 
             now = time.monotonic()
@@ -338,6 +341,7 @@ class VisionNodeService:
                 send_latency_ms=last_send_latency_ms,
                 objects_count=len(latest_objects),
                 gesture_name=gestures[0].name if gestures else "none",
+                finger_count=finger_count,
                 summary=snapshot.summary,
             )
 
@@ -409,9 +413,9 @@ class VisionNodeService:
             yolo_ms = (time.monotonic() - yolo_started_at) * 1000.0
 
         hands_started_at = time.monotonic()
-        gestures, hand_landmarks = self._detect_gestures(process_frame)
+        gestures, hand_landmarks, finger_count = self._detect_gestures(process_frame)
         hands_ms = (time.monotonic() - hands_started_at) * 1000.0
-        return updated_objects, updated_detections, gestures, hand_landmarks, yolo_ms, hands_ms
+        return updated_objects, updated_detections, gestures, hand_landmarks, finger_count, yolo_ms, hands_ms
 
     def render_overlays(self,
                         display_frame,
@@ -519,40 +523,123 @@ class VisionNodeService:
             debug_detections,
         )
 
-    def _detect_gestures(self, frame) -> tuple[List[VisionGesture], Sequence]:
+    def _detect_gestures(self, frame) -> tuple[List[VisionGesture], Sequence, int]:
         rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         results = self._hands.process(rgb_frame)
         if not results.multi_hand_landmarks:
-            return [], []
+            return [], [], -1
 
         gestures: List[VisionGesture] = []
         confidence_filtered = 0
-        for hand_landmarks in results.multi_hand_landmarks:
+        best_finger_count = -1
+        handedness_entries = list(results.multi_handedness or [])
+        for index, hand_landmarks in enumerate(results.multi_hand_landmarks):
+            handedness_label = ""
+            if index < len(handedness_entries) and handedness_entries[index].classification:
+                handedness_label = handedness_entries[index].classification[0].label.lower()
+
             thumb_tip = hand_landmarks.landmark[4]
             index_tip = hand_landmarks.landmark[8]
-            middle_tip = hand_landmarks.landmark[12]
-            ring_tip = hand_landmarks.landmark[16]
-            pinky_tip = hand_landmarks.landmark[20]
-            wrist = hand_landmarks.landmark[0]
+            hand_scale = self._estimate_hand_scale(hand_landmarks)
+            if hand_scale < MIN_HAND_SCALE:
+                confidence_filtered += 1
+                continue
 
-            pinch_distance = ((thumb_tip.x - index_tip.x) ** 2 + (thumb_tip.y - index_tip.y) ** 2) ** 0.5
-            pinch_confidence = max(0.0, min(1.0, 1.0 - (pinch_distance / self.config.pinch_distance_threshold)))
-            index_extended = index_tip.y < wrist.y
-            middle_extended = middle_tip.y < wrist.y
-            ring_extended = ring_tip.y < wrist.y
-            pinky_extended = pinky_tip.y < wrist.y
-            fingers_extended = int(index_extended) + int(middle_extended) + int(ring_extended) + int(pinky_extended)
+            pinch_distance = self._distance_2d(thumb_tip, index_tip)
+            pinch_ratio = pinch_distance / max(hand_scale, 1e-6)
+            absolute_pinch_confidence = self._clamp_unit(1.0 - (pinch_distance / self.config.pinch_distance_threshold))
+            relative_pinch_confidence = self._clamp_unit(1.0 - (pinch_ratio / 0.55))
+            pinch_confidence = max(absolute_pinch_confidence, relative_pinch_confidence)
+
+            index_extended_conf = self._finger_extended_confidence(hand_landmarks, 8, 6, 5, hand_scale)
+            middle_extended_conf = self._finger_extended_confidence(hand_landmarks, 12, 10, 9, hand_scale)
+            ring_extended_conf = self._finger_extended_confidence(hand_landmarks, 16, 14, 13, hand_scale)
+            pinky_extended_conf = self._finger_extended_confidence(hand_landmarks, 20, 18, 17, hand_scale)
+            thumb_extended_conf = self._thumb_extended_confidence(hand_landmarks, handedness_label, hand_scale)
+            thumb_up_conf = self._thumb_vertical_confidence(hand_landmarks, hand_scale, upward=True)
+            thumb_down_conf = self._thumb_vertical_confidence(hand_landmarks, hand_scale, upward=False)
+
+            index_folded_conf = self._finger_folded_confidence(hand_landmarks, 8, 6, hand_scale)
+            middle_folded_conf = self._finger_folded_confidence(hand_landmarks, 12, 10, hand_scale)
+            ring_folded_conf = self._finger_folded_confidence(hand_landmarks, 16, 14, hand_scale)
+            pinky_folded_conf = self._finger_folded_confidence(hand_landmarks, 20, 18, hand_scale)
+
+            middle_finger_confidence = min(
+                middle_extended_conf,
+                index_folded_conf,
+                ring_folded_conf,
+                pinky_folded_conf,
+            )
+            thumbs_up_confidence = min(
+                thumb_extended_conf,
+                thumb_up_conf,
+                index_folded_conf,
+                middle_folded_conf,
+                ring_folded_conf,
+                pinky_folded_conf,
+            )
+            thumbs_down_confidence = min(
+                thumb_extended_conf,
+                thumb_down_conf,
+                index_folded_conf,
+                middle_folded_conf,
+                ring_folded_conf,
+                pinky_folded_conf,
+            )
+            two_fingers_confidence = min(
+                index_extended_conf,
+                middle_extended_conf,
+                ring_folded_conf,
+                pinky_folded_conf,
+            )
+            open_hand_confidence = min(
+                index_extended_conf,
+                middle_extended_conf,
+                ring_extended_conf,
+                pinky_extended_conf,
+            )
+            closed_hand_confidence = min(
+                index_folded_conf,
+                middle_folded_conf,
+                ring_folded_conf,
+                pinky_folded_conf,
+            )
+
+            extended_flags = [
+                thumb_extended_conf >= self.config.gestures_min_confidence,
+                index_extended_conf >= self.config.gestures_min_confidence,
+                middle_extended_conf >= self.config.gestures_min_confidence,
+                ring_extended_conf >= self.config.gestures_min_confidence,
+                pinky_extended_conf >= self.config.gestures_min_confidence,
+            ]
+            best_finger_count = max(best_finger_count, sum(1 for flag in extended_flags if flag))
+
+            if middle_finger_confidence >= self.config.gestures_min_confidence:
+                gestures.append(VisionGesture(name="middle_finger", confidence=middle_finger_confidence))
+                continue
+
+            if thumbs_up_confidence >= self.config.gestures_min_confidence:
+                gestures.append(VisionGesture(name="thumbs_up", confidence=thumbs_up_confidence))
+                continue
+
+            if thumbs_down_confidence >= self.config.gestures_min_confidence:
+                gestures.append(VisionGesture(name="thumbs_down", confidence=thumbs_down_confidence))
+                continue
 
             if pinch_confidence >= self.config.gestures_min_confidence:
                 gestures.append(VisionGesture(name="pinch", confidence=pinch_confidence))
                 continue
 
-            if fingers_extended == 2 and index_extended and middle_extended:
-                gestures.append(VisionGesture(name="two_fingers", confidence=0.85))
+            if two_fingers_confidence >= self.config.gestures_min_confidence:
+                gestures.append(VisionGesture(name="two_fingers", confidence=two_fingers_confidence))
                 continue
 
-            if fingers_extended >= 4:
-                gestures.append(VisionGesture(name="open_hand", confidence=0.95))
+            if open_hand_confidence >= self.config.gestures_min_confidence:
+                gestures.append(VisionGesture(name="open_hand", confidence=open_hand_confidence))
+                continue
+
+            if closed_hand_confidence >= self.config.gestures_min_confidence:
+                gestures.append(VisionGesture(name="closed_hand", confidence=closed_hand_confidence))
                 continue
 
             confidence_filtered += 1
@@ -573,25 +660,32 @@ class VisionNodeService:
                 self.config.gestures_min_confidence,
             )
 
-        return [VisionGesture(name=name, confidence=confidence) for name, confidence in deduped.items()], results.multi_hand_landmarks
+        return [VisionGesture(name=name, confidence=confidence) for name, confidence in deduped.items()], results.multi_hand_landmarks, best_finger_count
 
-    def _build_snapshot(self, objects: List[VisionObject], gestures: List[VisionGesture]) -> VisionSnapshotMessage:
-        summary = self._build_scene_summary(objects, gestures)
+    def _build_snapshot(self, objects: List[VisionObject], gestures: List[VisionGesture], finger_count: int) -> VisionSnapshotMessage:
+        summary = self._build_scene_summary(objects, gestures, finger_count)
         return VisionSnapshotMessage(
             node_id=self.config.node_id,
             objects=objects,
             gestures=gestures,
+            finger_count=finger_count if finger_count >= 0 else None,
             summary=summary,
             trace_id=uuid4().hex,
         )
 
-    def _build_scene_summary(self, objects: Sequence[VisionObject], gestures: Sequence[VisionGesture]) -> str:
+    def _build_scene_summary(self, objects: Sequence[VisionObject], gestures: Sequence[VisionGesture], finger_count: int) -> str:
         object_names = [item.class_name for item in objects]
         gesture_names = [item.name for item in gestures]
         held_object = self._pick_held_object(objects)
         reference_object = self._pick_reference_object(objects)
         visible_objects = self._visible_scene_objects(objects)
 
+        if "middle_finger" in gesture_names:
+            return "A middle finger gesture is visible"
+        if "thumbs_up" in gesture_names:
+            return "A thumbs up gesture is visible"
+        if "thumbs_down" in gesture_names:
+            return "A thumbs down gesture is visible"
         if "pinch" in gesture_names:
             if held_object is not None:
                 return f"You appear to be holding {self._with_article(held_object.class_name)}"
@@ -600,10 +694,14 @@ class VisionNodeService:
             if held_object is not None:
                 return f"An open hand is visible near {self._with_article(held_object.class_name)}"
             return "An open hand is visible"
+        if "closed_hand" in gesture_names:
+            return "A closed hand is visible"
         if "two_fingers" in gesture_names:
             if reference_object is not None:
                 return f"You are pointing at {self._with_article(reference_object.class_name)} with two fingers"
             return "A two-finger gesture is visible"
+        if finger_count >= 0:
+            return f"I can see {finger_count} finger{'s' if finger_count != 1 else ''} extended"
         if len(visible_objects) == 1:
             return f"I can see {self._with_article(visible_objects[0])}"
         if len(visible_objects) > 1:
@@ -709,6 +807,86 @@ class VisionNodeService:
             return
         self._last_log_times[key] = now
         LOGGER.log(level, message, *args)
+
+    @staticmethod
+    def _distance_2d(first, second) -> float:
+        return ((first.x - second.x) ** 2 + (first.y - second.y) ** 2) ** 0.5
+
+    @classmethod
+    def _estimate_hand_scale(cls, hand_landmarks) -> float:
+        wrist = hand_landmarks.landmark[0]
+        middle_mcp = hand_landmarks.landmark[9]
+        index_mcp = hand_landmarks.landmark[5]
+        pinky_mcp = hand_landmarks.landmark[17]
+        return max(
+            cls._distance_2d(wrist, middle_mcp),
+            cls._distance_2d(index_mcp, pinky_mcp),
+            1e-6,
+        )
+
+    @classmethod
+    def _thumb_extended_confidence(cls, hand_landmarks, handedness_label: str, hand_scale: float) -> float:
+        thumb_tip = hand_landmarks.landmark[4]
+        thumb_ip = hand_landmarks.landmark[3]
+        thumb_mcp = hand_landmarks.landmark[2]
+        index_mcp = hand_landmarks.landmark[5]
+
+        radial_distance = cls._distance_2d(thumb_tip, index_mcp) / max(hand_scale, 1e-6)
+        if handedness_label == "right":
+            horizontal_extension = (thumb_ip.x - thumb_tip.x) / max(hand_scale, 1e-6)
+        elif handedness_label == "left":
+            horizontal_extension = (thumb_tip.x - thumb_ip.x) / max(hand_scale, 1e-6)
+        else:
+            horizontal_extension = abs(thumb_tip.x - thumb_ip.x) / max(hand_scale, 1e-6)
+
+        bend_distance = cls._distance_2d(thumb_tip, thumb_mcp) / max(hand_scale, 1e-6)
+        return cls._clamp_unit(min(
+            (radial_distance - 0.28) / 0.45,
+            (horizontal_extension - 0.03) / 0.18,
+            (bend_distance - 0.20) / 0.30,
+        ))
+
+    @classmethod
+    def _thumb_vertical_confidence(cls, hand_landmarks, hand_scale: float, upward: bool) -> float:
+        thumb_tip = hand_landmarks.landmark[4]
+        thumb_ip = hand_landmarks.landmark[3]
+        thumb_mcp = hand_landmarks.landmark[2]
+        if upward:
+            tip_offset = (thumb_ip.y - thumb_tip.y) / max(hand_scale, 1e-6)
+            palm_offset = (thumb_mcp.y - thumb_tip.y) / max(hand_scale, 1e-6)
+        else:
+            tip_offset = (thumb_tip.y - thumb_ip.y) / max(hand_scale, 1e-6)
+            palm_offset = (thumb_tip.y - thumb_mcp.y) / max(hand_scale, 1e-6)
+        return cls._clamp_unit(min(
+            (tip_offset - 0.05) / 0.20,
+            (palm_offset - 0.05) / 0.24,
+        ))
+
+    @staticmethod
+    def _clamp_unit(value: float) -> float:
+        return max(0.0, min(1.0, value))
+
+    @classmethod
+    def _finger_extended_confidence(cls, hand_landmarks, tip_idx: int, pip_idx: int, mcp_idx: int, hand_scale: float) -> float:
+        tip = hand_landmarks.landmark[tip_idx]
+        pip = hand_landmarks.landmark[pip_idx]
+        mcp = hand_landmarks.landmark[mcp_idx]
+        if not (tip.y < pip.y < mcp.y):
+            return 0.0
+
+        vertical_extension = (mcp.y - tip.y) / max(hand_scale, 1e-6)
+        tip_gap = (pip.y - tip.y) / max(hand_scale, 1e-6)
+        return cls._clamp_unit(min(
+            (vertical_extension - 0.18) / 0.45,
+            (tip_gap - 0.05) / 0.20,
+        ))
+
+    @classmethod
+    def _finger_folded_confidence(cls, hand_landmarks, tip_idx: int, pip_idx: int, hand_scale: float) -> float:
+        tip = hand_landmarks.landmark[tip_idx]
+        pip = hand_landmarks.landmark[pip_idx]
+        curl = (tip.y - pip.y) / max(hand_scale, 1e-6)
+        return cls._clamp_unit((curl + 0.02) / 0.20)
 
     @staticmethod
     def _with_article(noun: str) -> str:
