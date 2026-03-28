@@ -22,6 +22,8 @@ LOGGER = logging.getLogger("jarvis.vision_node")
 DEBUG_WINDOW_NAME = "JARVIS Vision Debug"
 SNAPSHOT_KEEPALIVE_SEC = 1.5
 MIN_HAND_SCALE = 0.10
+EXTENDED_FLAG_THRESHOLD = 0.55
+FOLDED_FLAG_THRESHOLD = 0.55
 SCENE_ANCHOR_CLASSES = {
     "person",
     "man",
@@ -564,53 +566,90 @@ class VisionNodeService:
             ring_folded_conf = self._finger_folded_confidence(hand_landmarks, 16, 14, hand_scale)
             pinky_folded_conf = self._finger_folded_confidence(hand_landmarks, 20, 18, hand_scale)
 
-            middle_finger_confidence = min(
-                middle_extended_conf,
-                index_folded_conf,
-                ring_folded_conf,
-                pinky_folded_conf,
-            )
-            thumbs_up_confidence = min(
-                thumb_extended_conf,
-                thumb_up_conf,
+            index_retracted_conf = max(index_folded_conf, 1.0 - index_extended_conf)
+            ring_retracted_conf = max(ring_folded_conf, 1.0 - ring_extended_conf)
+            pinky_retracted_conf = max(pinky_folded_conf, 1.0 - pinky_extended_conf)
+            folded_scores = [
                 index_folded_conf,
                 middle_folded_conf,
                 ring_folded_conf,
                 pinky_folded_conf,
-            )
-            thumbs_down_confidence = min(
-                thumb_extended_conf,
-                thumb_down_conf,
-                index_folded_conf,
-                middle_folded_conf,
-                ring_folded_conf,
-                pinky_folded_conf,
-            )
-            two_fingers_confidence = min(
-                index_extended_conf,
-                middle_extended_conf,
-                ring_folded_conf,
-                pinky_folded_conf,
-            )
-            open_hand_confidence = min(
+            ]
+            extended_scores = [
                 index_extended_conf,
                 middle_extended_conf,
                 ring_extended_conf,
                 pinky_extended_conf,
+            ]
+            folded_count = sum(1 for value in folded_scores if value >= FOLDED_FLAG_THRESHOLD)
+            extended_count = sum(1 for value in extended_scores if value >= EXTENDED_FLAG_THRESHOLD)
+            folded_average = sum(folded_scores) / len(folded_scores)
+            extended_average = sum(extended_scores) / len(extended_scores)
+
+            middle_dominance_conf = min(
+                self._clamp_unit((middle_extended_conf - index_extended_conf + 0.12) / 0.35),
+                self._clamp_unit((middle_extended_conf - ring_extended_conf + 0.12) / 0.35),
+                self._clamp_unit((middle_extended_conf - pinky_extended_conf + 0.12) / 0.35),
             )
-            closed_hand_confidence = min(
-                index_folded_conf,
-                middle_folded_conf,
-                ring_folded_conf,
-                pinky_folded_conf,
-            )
+            middle_finger_confidence = 0.0
+            if middle_extended_conf >= 0.58 and middle_dominance_conf >= 0.45:
+                middle_finger_confidence = max(
+                    0.45 * middle_extended_conf
+                    + 0.30 * middle_dominance_conf
+                    + 0.25 * ((index_retracted_conf + ring_retracted_conf + pinky_retracted_conf) / 3.0),
+                    0.78,
+                )
+
+            thumbs_up_confidence = 0.0
+            if thumb_up_conf >= 0.45 and thumb_extended_conf >= 0.35 and folded_count >= 3:
+                thumbs_up_confidence = max(
+                    0.40 * thumb_up_conf
+                    + 0.35 * thumb_extended_conf
+                    + 0.25 * folded_average,
+                    0.80,
+                )
+
+            thumbs_down_confidence = 0.0
+            if thumb_down_conf >= 0.45 and thumb_extended_conf >= 0.35 and folded_count >= 3:
+                thumbs_down_confidence = max(
+                    0.40 * thumb_down_conf
+                    + 0.35 * thumb_extended_conf
+                    + 0.25 * folded_average,
+                    0.80,
+                )
+
+            two_fingers_confidence = 0.0
+            if index_extended_conf >= 0.55 and middle_extended_conf >= 0.55 and ring_retracted_conf >= 0.45 and pinky_retracted_conf >= 0.45:
+                two_fingers_confidence = max(
+                    0.40 * ((index_extended_conf + middle_extended_conf) / 2.0)
+                    + 0.35 * ((ring_retracted_conf + pinky_retracted_conf) / 2.0)
+                    + 0.25 * self._clamp_unit((2.0 - abs(extended_count - 2.0)) / 2.0),
+                    0.78,
+                )
+
+            open_hand_confidence = 0.0
+            if extended_count >= 3 and extended_average >= 0.52:
+                open_hand_confidence = max(
+                    0.70 * extended_average
+                    + 0.15 * self._clamp_unit((extended_count - 2.0) / 2.0)
+                    + 0.15 * thumb_extended_conf,
+                    0.82 if extended_count >= 4 else 0.74,
+                )
+
+            closed_hand_confidence = 0.0
+            if folded_count >= 3 and folded_average >= 0.50:
+                closed_hand_confidence = max(
+                    0.75 * folded_average
+                    + 0.25 * self._clamp_unit((folded_count - 2.0) / 2.0),
+                    0.80 if folded_count >= 4 and pinch_confidence < 0.55 else 0.72,
+                )
 
             extended_flags = [
-                thumb_extended_conf >= self.config.gestures_min_confidence,
-                index_extended_conf >= self.config.gestures_min_confidence,
-                middle_extended_conf >= self.config.gestures_min_confidence,
-                ring_extended_conf >= self.config.gestures_min_confidence,
-                pinky_extended_conf >= self.config.gestures_min_confidence,
+                thumb_extended_conf >= EXTENDED_FLAG_THRESHOLD,
+                index_extended_conf >= EXTENDED_FLAG_THRESHOLD,
+                middle_extended_conf >= EXTENDED_FLAG_THRESHOLD,
+                ring_extended_conf >= EXTENDED_FLAG_THRESHOLD,
+                pinky_extended_conf >= EXTENDED_FLAG_THRESHOLD,
             ]
             best_finger_count = max(best_finger_count, sum(1 for flag in extended_flags if flag))
 
@@ -700,7 +739,7 @@ class VisionNodeService:
             if reference_object is not None:
                 return f"You are pointing at {self._with_article(reference_object.class_name)} with two fingers"
             return "A two-finger gesture is visible"
-        if finger_count >= 0:
+        if finger_count > 0 and not visible_objects:
             return f"I can see {finger_count} finger{'s' if finger_count != 1 else ''} extended"
         if len(visible_objects) == 1:
             return f"I can see {self._with_article(visible_objects[0])}"
