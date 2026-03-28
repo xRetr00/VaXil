@@ -69,6 +69,17 @@ QString appToolsRoot()
     return root;
 }
 
+QString legacyJarvisToolsRoot()
+{
+    if (!PlatformRuntime::isLinux()) {
+        return {};
+    }
+
+    const QString root = QDir::homePath() + QStringLiteral("/.local/share/jarvis/tools");
+    QDir().mkpath(root);
+    return root;
+}
+
 QVariantMap toVariantMap(const ToolInfo &info)
 {
     QVariantMap map;
@@ -103,6 +114,7 @@ QList<ToolInfo> ToolManager::scan()
 {
     const QString root = toolsRoot();
     const QString appTools = appToolsRoot();
+    const QString legacyTools = legacyJarvisToolsRoot();
     const QString sourceRoot = QStringLiteral(JARVIS_SOURCE_DIR) + QStringLiteral("/third_party");
     const QString whisperExecutableName = PlatformRuntime::helperExecutableName(QStringLiteral("whisper-cli"));
     const QString whisperFallbackExecutableName = PlatformRuntime::helperExecutableName(QStringLiteral("main"));
@@ -153,6 +165,11 @@ QList<ToolInfo> ToolManager::scan()
                   }, false, true),
         probeTool(QStringLiteral("whisper.cpp"), QStringLiteral("stt"), {
                       firstExecutableOnPath(PlatformRuntime::whisperExecutableNames()),
+                      legacyTools + QStringLiteral("/whisper/") + whisperExecutableName,
+                      legacyTools + QStringLiteral("/whisper/") + whisperFallbackExecutableName,
+                      legacyTools + QStringLiteral("/whisper/bin/") + whisperExecutableName,
+                      legacyTools + QStringLiteral("/whisper/bin/") + whisperFallbackExecutableName,
+                      legacyTools.isEmpty() ? QString{} : findFirstRecursive(legacyTools + QStringLiteral("/whisper"), PlatformRuntime::whisperExecutableNames()),
                       appTools + QStringLiteral("/whisper/") + whisperExecutableName,
                       appTools + QStringLiteral("/whisper/") + whisperFallbackExecutableName,
                       appTools + QStringLiteral("/whisper/bin/") + whisperExecutableName,
@@ -573,6 +590,26 @@ void ToolManager::finalizeDownload(QNetworkReply *reply)
         }
 
         if (toolName == QStringLiteral("whisper.cpp") && PlatformRuntime::isLinux()) {
+            const QString existingWhisperPath = resolveExistingPath({
+                firstExecutableOnPath(PlatformRuntime::whisperExecutableNames()),
+                appToolsRoot() + QStringLiteral("/whisper/") + PlatformRuntime::helperExecutableName(QStringLiteral("whisper-cli")),
+                appToolsRoot() + QStringLiteral("/whisper/bin/") + PlatformRuntime::helperExecutableName(QStringLiteral("whisper-cli")),
+                appToolsRoot() + QStringLiteral("/whisper/") + PlatformRuntime::helperExecutableName(QStringLiteral("main")),
+                appToolsRoot() + QStringLiteral("/whisper/bin/") + PlatformRuntime::helperExecutableName(QStringLiteral("main")),
+                legacyJarvisToolsRoot() + QStringLiteral("/whisper/") + PlatformRuntime::helperExecutableName(QStringLiteral("whisper-cli")),
+                legacyJarvisToolsRoot() + QStringLiteral("/whisper/bin/") + PlatformRuntime::helperExecutableName(QStringLiteral("whisper-cli")),
+                legacyJarvisToolsRoot() + QStringLiteral("/whisper/") + PlatformRuntime::helperExecutableName(QStringLiteral("main")),
+                legacyJarvisToolsRoot() + QStringLiteral("/whisper/bin/") + PlatformRuntime::helperExecutableName(QStringLiteral("main"))
+            });
+            if (!existingWhisperPath.isEmpty()) {
+                m_activeDownloadName.clear();
+                m_activeDownloadPercent = -1;
+                rescan();
+                emit downloadFinished(toolName, true, QStringLiteral("Whisper is already installed."));
+                reply->deleteLater();
+                return;
+            }
+
             const QString sourceCmakePath = findFirstRecursive(destinationDir, {QStringLiteral("CMakeLists.txt")});
             if (sourceCmakePath.isEmpty()) {
                 m_activeDownloadName.clear();
