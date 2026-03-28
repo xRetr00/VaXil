@@ -22,6 +22,12 @@ def parse_args() -> VisionNodeConfig:
     parser.add_argument("--objects-min-confidence", type=float, default=0.60, help="Minimum object confidence to include")
     parser.add_argument("--gestures-min-confidence", type=float, default=0.70, help="Minimum gesture confidence to include")
     parser.add_argument("--delta-threshold", type=float, default=0.12, help="Confidence delta threshold for resend")
+    parser.add_argument("--process-width", type=int, default=640, help="Inference frame width")
+    parser.add_argument("--process-height", type=int, default=480, help="Inference frame height")
+    parser.add_argument("--display-width", type=int, default=1280, help="Debug window frame width")
+    parser.add_argument("--display-height", type=int, default=720, help="Debug window frame height")
+    parser.add_argument("--fullscreen", action="store_true", help="Show debug window fullscreen")
+    parser.add_argument("--debug-skip-frames", type=int, default=1, help="Render every Nth debug frame")
     parser.add_argument("--debug-ui", action="store_true", help="Show lightweight local debug overlays")
     args = parser.parse_args()
 
@@ -38,6 +44,12 @@ def parse_args() -> VisionNodeConfig:
         objects_min_confidence=args.objects_min_confidence,
         gestures_min_confidence=args.gestures_min_confidence,
         delta_threshold=args.delta_threshold,
+        process_width=args.process_width,
+        process_height=args.process_height,
+        display_width=args.display_width,
+        display_height=args.display_height,
+        fullscreen=args.fullscreen,
+        debug_skip_frames=args.debug_skip_frames,
         debug_ui=args.debug_ui,
     )
 

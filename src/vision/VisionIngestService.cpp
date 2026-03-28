@@ -197,8 +197,9 @@ public:
     explicit Worker(QObject *parent = nullptr)
         : QObject(parent)
     {
-        m_dispatchTimer.setInterval(kDispatchIntervalMs);
-        connect(&m_dispatchTimer, &QTimer::timeout, this, &Worker::dispatchLatestSnapshot);
+        m_dispatchTimer = new QTimer(this);
+        m_dispatchTimer->setInterval(kDispatchIntervalMs);
+        connect(m_dispatchTimer, &QTimer::timeout, this, &Worker::dispatchLatestSnapshot);
     }
 
 public slots:
@@ -298,13 +299,17 @@ private:
             return;
         }
 
-        m_dispatchTimer.start();
+        if (m_dispatchTimer != nullptr) {
+            m_dispatchTimer->start();
+        }
         emit statusReady(QStringLiteral("Vision ingest listening on %1").arg(m_endpoint), false);
     }
 
     void stopServer()
     {
-        m_dispatchTimer.stop();
+        if (m_dispatchTimer != nullptr) {
+            m_dispatchTimer->stop();
+        }
         for (QPointer<QWebSocket> &client : m_clients) {
             if (client) {
                 client->close();
@@ -344,8 +349,8 @@ private:
 
         m_latestSnapshot = parsed.snapshot;
         ++m_latestSequence;
-        if (!m_dispatchTimer.isActive()) {
-            m_dispatchTimer.start();
+        if (m_dispatchTimer != nullptr && !m_dispatchTimer->isActive()) {
+            m_dispatchTimer->start();
         }
     }
 
@@ -357,7 +362,7 @@ private:
     double m_gesturesMinConfidence = 0.70;
     QWebSocketServer *m_server = nullptr;
     QList<QPointer<QWebSocket>> m_clients;
-    QTimer m_dispatchTimer;
+    QTimer *m_dispatchTimer = nullptr;
     std::optional<VisionSnapshot> m_latestSnapshot;
     quint64 m_latestSequence = 0;
     quint64 m_dispatchedSequence = 0;

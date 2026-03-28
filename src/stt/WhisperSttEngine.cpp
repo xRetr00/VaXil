@@ -7,6 +7,7 @@
 #include <QProcess>
 #include <QScopeGuard>
 #include <QStandardPaths>
+#include <QTimer>
 
 #include "logging/LoggingService.h"
 #include "settings/AppSettings.h"
@@ -48,18 +49,7 @@ WhisperSttEngine::WhisperSttEngine(AppSettings *settings, LoggingService *loggin
 
 WhisperSttEngine::~WhisperSttEngine()
 {
-    const auto activeProcesses = m_activeProcesses;
-    for (QProcess *process : activeProcesses) {
-        if (!process) {
-            continue;
-        }
-
-        process->terminate();
-        if (!process->waitForFinished(1000)) {
-            process->kill();
-            process->waitForFinished(1000);
-        }
-    }
+    stopActiveProcesses(QStringLiteral("shutdown"));
 }
 
 quint64 WhisperSttEngine::transcribePcm(const QByteArray &pcmData, const QString &initialPrompt, bool suppressNonSpeechTokens)
@@ -111,20 +101,37 @@ quint64 WhisperSttEngine::transcribePcm(const QByteArray &pcmData, const QString
                 .arg(suppressNonSpeechTokens ? QStringLiteral("true") : QStringLiteral("false")));
     }
 
+    stopActiveProcesses(QStringLiteral("superseded_by_new_request"));
+
     auto *process = new QProcess(this);
     m_activeProcesses.insert(process);
     connect(process, &QObject::destroyed, this, [this, process]() {
         m_activeProcesses.remove(process);
     });
-    connect(process, &QProcess::errorOccurred, this, [this, process, waveFile](QProcess::ProcessError error) {
-            const QString message = QStringLiteral("whisper.cpp process error (%1). executable=\"%2\" model=\"%3\" input=\"%4\" stderr=\"%5\"")
+    connect(process, &QProcess::errorOccurred, this, [this, process, waveFile, requestId](QProcess::ProcessError error) {
+        const bool superseded = process->property("jarvis_superseded").toBool();
+        if (superseded) {
+            return;
+        }
+
+        const QString stderrText = QString::fromUtf8(process->readAllStandardError()).trimmed();
+        const QString message = QStringLiteral("whisper.cpp process error (%1). executable=\"%2\" model=\"%3\" input=\"%4\" stderr=\"%5\"")
                                     .arg(static_cast<int>(error))
                                     .arg(m_settings->whisperExecutable(),
                                          m_settings->whisperModelPath(),
                                          waveFile,
-                                         QString::fromUtf8(process->readAllStandardError()).trimmed());
+                                         stderrText);
         if (m_loggingService) {
             m_loggingService->error(message);
+        }
+
+        if (error == QProcess::FailedToStart && !process->property("jarvis_failure_notified").toBool()) {
+            process->setProperty("jarvis_failure_notified", true);
+            const QString uiDetailed = stderrText.isEmpty()
+                ? QStringLiteral("whisper.cpp failed to start")
+                : QStringLiteral("whisper.cpp failed to start: %1").arg(stderrText.left(180));
+            emit transcriptionFailed(requestId, uiDetailed);
+            QFile::remove(waveFile);
         }
     });
 
@@ -135,6 +142,23 @@ quint64 WhisperSttEngine::transcribePcm(const QByteArray &pcmData, const QString
         });
         const QString stdoutText = QString::fromUtf8(process->readAllStandardOutput()).trimmed();
         const QString stderrText = QString::fromUtf8(process->readAllStandardError()).trimmed();
+        const bool superseded = process->property("jarvis_superseded").toBool();
+        const bool failureAlreadyNotified = process->property("jarvis_failure_notified").toBool();
+        const auto removeWaveFile = qScopeGuard([&waveFile]() {
+            QFile::remove(waveFile);
+        });
+
+        if (superseded) {
+            if (m_loggingService) {
+                m_loggingService->info(QStringLiteral("whisper.cpp transcription superseded before completion. input=\"%1\"")
+                                           .arg(waveFile));
+            }
+            return;
+        }
+
+        if (failureAlreadyNotified) {
+            return;
+        }
 
         if (status != QProcess::NormalExit || exitCode != 0) {
             const QString uiMessage = QStringLiteral("whisper.cpp failed to transcribe input");
@@ -189,6 +213,27 @@ quint64 WhisperSttEngine::transcribePcm(const QByteArray &pcmData, const QString
 
     process->start(m_settings->whisperExecutable(), arguments);
     return requestId;
+}
+
+void WhisperSttEngine::stopActiveProcesses(const QString &reason)
+{
+    const auto activeProcesses = m_activeProcesses;
+    for (QProcess *process : activeProcesses) {
+        if (!process || process->state() == QProcess::NotRunning) {
+            continue;
+        }
+
+        process->setProperty("jarvis_superseded", true);
+        if (m_loggingService) {
+            m_loggingService->info(QStringLiteral("Stopping prior whisper.cpp transcription. reason=\"%1\"").arg(reason));
+        }
+        process->terminate();
+        QTimer::singleShot(400, process, [process]() {
+            if (process->state() != QProcess::NotRunning) {
+                process->kill();
+            }
+        });
+    }
 }
 
 QString WhisperSttEngine::writeWaveFile(const QByteArray &pcmData) const

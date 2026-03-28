@@ -83,6 +83,10 @@ bool VisionContextGate::needsRawVisionDetails(const QString &input)
         QStringLiteral("which gesture"),
         QStringLiteral("show raw"),
         QStringLiteral("details"),
-        QStringLiteral("confidence")
+        QStringLiteral("confidence"),
+        QStringLiteral("hand"),
+        QStringLiteral("open or closed"),
+        QStringLiteral("closed or open"),
+        QStringLiteral("what is my hand doing")
     });
 }

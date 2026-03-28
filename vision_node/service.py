@@ -20,6 +20,30 @@ LOGGER = logging.getLogger("jarvis.vision_node")
 
 
 DEBUG_WINDOW_NAME = "JARVIS Vision Debug"
+SCENE_ANCHOR_CLASSES = {
+    "person",
+    "man",
+    "woman",
+    "boy",
+    "girl",
+}
+HANDHELD_OBJECT_CLASSES = {
+    "bottle",
+    "can",
+    "cell phone",
+    "cup",
+    "fork",
+    "keyboard",
+    "knife",
+    "laptop",
+    "mouse",
+    "remote",
+    "scissors",
+    "spoon",
+    "sports ball",
+    "toothbrush",
+    "wine glass",
+}
 
 try:
     MP_SOLUTIONS = mp.solutions
@@ -137,6 +161,12 @@ class VisionNodeConfig:
     objects_min_confidence: float = 0.60
     gestures_min_confidence: float = 0.70
     delta_threshold: float = 0.12
+    process_width: int = 640
+    process_height: int = 480
+    display_width: int = 1280
+    display_height: int = 720
+    fullscreen: bool = False
+    debug_skip_frames: int = 1
     debug_ui: bool = False
 
 
@@ -154,6 +184,7 @@ class VisionNodeService:
         self._capture: cv2.VideoCapture | None = None
         self._last_sent_snapshot: VisionSnapshotMessage | None = None
         self._last_log_times: Dict[str, float] = {}
+        self._debug_window_initialized = False
 
     async def run_forever(self) -> None:
         while not self._stop_event.is_set():
@@ -178,6 +209,15 @@ class VisionNodeService:
 
     async def _run_session(self) -> None:
         self._open_capture()
+        LOGGER.info(
+            "Vision pipeline configuration: process=%dx%d display=%dx%d fullscreen=%s debug_skip_frames=%d",
+            self.config.process_width,
+            self.config.process_height,
+            self.config.display_width,
+            self.config.display_height,
+            "true" if self.config.fullscreen else "false",
+            max(1, self.config.debug_skip_frames),
+        )
         LOGGER.info("Connecting to %s", self.config.server_url)
         async with websockets.connect(
             self.config.server_url,
@@ -201,6 +241,7 @@ class VisionNodeService:
             self._capture = None
         if self.config.debug_ui:
             cv2.destroyAllWindows()
+            self._debug_window_initialized = False
 
     async def _capture_loop(self, websocket: websockets.WebSocketClientProtocol) -> None:
         assert self._capture is not None
@@ -216,21 +257,20 @@ class VisionNodeService:
 
         while not self._stop_event.is_set():
             frame_started_at = time.monotonic()
-            ok, frame = self._capture.read()
-            if not ok:
-                LOGGER.warning("Camera frame capture failed")
+            original_frame = self.capture_frame()
+            if original_frame is None:
                 await asyncio.sleep(0.2)
                 continue
 
-            hand_landmarks = []
-            if frame_index % max(1, self.config.yolo_every_n_frames) == 0:
-                yolo_started_at = time.monotonic()
-                latest_objects, latest_detections = self._detect_objects(frame)
-                last_yolo_ms = (time.monotonic() - yolo_started_at) * 1000.0
-
-            hands_started_at = time.monotonic()
-            gestures, hand_landmarks = self._detect_gestures(frame)
-            hands_ms = (time.monotonic() - hands_started_at) * 1000.0
+            process_frame = self.prepare_process_frame(original_frame)
+            latest_objects, latest_detections, gestures, hand_landmarks, yolo_ms, hands_ms = self.run_inference(
+                process_frame=process_frame,
+                frame_index=frame_index,
+                latest_objects=latest_objects,
+                latest_detections=latest_detections,
+            )
+            if yolo_ms > 0.0:
+                last_yolo_ms = yolo_ms
             snapshot = self._build_snapshot(latest_objects, gestures)
             should_send, drop_reason = self._should_send_snapshot(snapshot)
 
@@ -281,15 +321,133 @@ class VisionNodeService:
                 summary=snapshot.summary,
             )
 
-            if self.config.debug_ui:
-                debug_frame = render_debug_frame(frame, latest_detections, hand_landmarks, stats)
-                cv2.imshow(DEBUG_WINDOW_NAME, debug_frame)
-                if (cv2.waitKey(1) & 0xFF) == 27:
+            self._log_rate_limited(
+                "debug_runtime_fps",
+                logging.INFO,
+                "runtime_fps=%.1f process=%dx%d display=%dx%d",
+                stats.fps,
+                process_frame.shape[1],
+                process_frame.shape[0],
+                self.config.display_width,
+                self.config.display_height,
+                interval_sec=5.0,
+            )
+
+            if self.config.debug_ui and frame_index % max(1, self.config.debug_skip_frames) == 0:
+                display_frame = self.prepare_display_frame(original_frame)
+                debug_frame = self.render_overlays(
+                    display_frame=display_frame,
+                    detections=self._scale_debug_detections(
+                        latest_detections,
+                        process_frame.shape[1],
+                        process_frame.shape[0],
+                        display_frame.shape[1],
+                        display_frame.shape[0],
+                    ),
+                    hand_landmarks=hand_landmarks,
+                    stats=stats,
+                )
+                if not self.show_debug_window(debug_frame):
                     LOGGER.info("ESC pressed, closing debug UI")
                     self.request_stop()
                     break
 
             await asyncio.sleep(max(0.0, frame_interval - elapsed))
+
+    def capture_frame(self):
+        assert self._capture is not None
+        ok, frame = self._capture.read()
+        if not ok:
+            LOGGER.warning("Camera frame capture failed")
+            return None
+        return frame
+
+    def prepare_process_frame(self, frame):
+        target_size = (max(1, self.config.process_width), max(1, self.config.process_height))
+        if frame.shape[1] == target_size[0] and frame.shape[0] == target_size[1]:
+            return frame
+        return cv2.resize(frame, target_size, interpolation=cv2.INTER_AREA)
+
+    def prepare_display_frame(self, frame):
+        target_size = (max(1, self.config.display_width), max(1, self.config.display_height))
+        if frame.shape[1] == target_size[0] and frame.shape[0] == target_size[1]:
+            return frame.copy()
+        return cv2.resize(frame, target_size, interpolation=cv2.INTER_LINEAR)
+
+    def run_inference(self,
+                      process_frame,
+                      frame_index: int,
+                      latest_objects: List[VisionObject],
+                      latest_detections: List[DebugDetection]):
+        updated_objects = latest_objects
+        updated_detections = latest_detections
+        yolo_ms = 0.0
+
+        if frame_index % max(1, self.config.yolo_every_n_frames) == 0:
+            yolo_started_at = time.monotonic()
+            updated_objects, updated_detections = self._detect_objects(process_frame)
+            yolo_ms = (time.monotonic() - yolo_started_at) * 1000.0
+
+        hands_started_at = time.monotonic()
+        gestures, hand_landmarks = self._detect_gestures(process_frame)
+        hands_ms = (time.monotonic() - hands_started_at) * 1000.0
+        return updated_objects, updated_detections, gestures, hand_landmarks, yolo_ms, hands_ms
+
+    def render_overlays(self,
+                        display_frame,
+                        detections: Sequence[DebugDetection],
+                        hand_landmarks,
+                        stats: DebugStats):
+        return render_debug_frame(display_frame, detections, hand_landmarks, stats)
+
+    def show_debug_window(self, frame) -> bool:
+        self._ensure_debug_window()
+        cv2.imshow(DEBUG_WINDOW_NAME, frame)
+        return (cv2.waitKey(1) & 0xFF) != 27
+
+    def _ensure_debug_window(self) -> None:
+        if self._debug_window_initialized:
+            return
+
+        cv2.namedWindow(DEBUG_WINDOW_NAME, cv2.WINDOW_NORMAL)
+        if self.config.fullscreen:
+            cv2.setWindowProperty(
+                DEBUG_WINDOW_NAME,
+                cv2.WND_PROP_FULLSCREEN,
+                cv2.WINDOW_FULLSCREEN,
+            )
+        else:
+            cv2.resizeWindow(
+                DEBUG_WINDOW_NAME,
+                max(1, self.config.display_width),
+                max(1, self.config.display_height),
+            )
+        self._debug_window_initialized = True
+
+    @staticmethod
+    def _scale_debug_detections(detections: Sequence[DebugDetection],
+                                source_width: int,
+                                source_height: int,
+                                target_width: int,
+                                target_height: int) -> List[DebugDetection]:
+        if source_width <= 0 or source_height <= 0:
+            return list(detections)
+
+        scale_x = target_width / float(source_width)
+        scale_y = target_height / float(source_height)
+        return [
+            DebugDetection(
+                class_name=detection.class_name,
+                confidence=detection.confidence,
+                box=(
+                    int(detection.box[0] * scale_x),
+                    int(detection.box[1] * scale_y),
+                    int(detection.box[2] * scale_x),
+                    int(detection.box[3] * scale_y),
+                ),
+            )
+            for detection in detections
+        ]
 
     def _detect_objects(self, frame) -> tuple[List[VisionObject], List[DebugDetection]]:
         results = self._model(frame, verbose=False)
@@ -402,20 +560,65 @@ class VisionNodeService:
     def _build_scene_summary(self, objects: Sequence[VisionObject], gestures: Sequence[VisionGesture]) -> str:
         object_names = [item.class_name for item in objects]
         gesture_names = [item.name for item in gestures]
+        primary_object = self._pick_primary_object(objects)
+        visible_objects = self._visible_scene_objects(objects)
 
-        if object_names and "pinch" in gesture_names:
-            return f"You are holding {self._with_article(object_names[0])}"
-        if object_names and "open_hand" in gesture_names:
-            return f"An open hand is visible near {self._with_article(object_names[0])}"
-        if object_names and "two_fingers" in gesture_names:
-            return f"You are pointing at {self._with_article(object_names[0])} with two fingers"
+        if "pinch" in gesture_names:
+            if primary_object is not None:
+                return f"You appear to be holding {self._with_article(primary_object.class_name)}"
+            return "A pinch gesture is visible"
+        if "open_hand" in gesture_names:
+            if primary_object is not None:
+                return f"An open hand is visible near {self._with_article(primary_object.class_name)}"
+            return "An open hand is visible"
+        if "two_fingers" in gesture_names:
+            if primary_object is not None:
+                return f"You are pointing at {self._with_article(primary_object.class_name)} with two fingers"
+            return "A two-finger gesture is visible"
+        if len(visible_objects) == 1:
+            return f"I can see {self._with_article(visible_objects[0])}"
+        if len(visible_objects) > 1:
+            return f"I can see {self._join_object_names(visible_objects[:2])}"
         if len(object_names) == 1:
             return f"I can see {self._with_article(object_names[0])}"
         if len(object_names) > 1:
-            return f"I can see {', '.join(object_names[:2])}"
+            return f"I can see {self._join_object_names(object_names[:2])}"
         if gesture_names:
             return f"Detected gesture: {gesture_names[0]}"
         return "No strong visual event detected"
+
+    @staticmethod
+    def _pick_primary_object(objects: Sequence[VisionObject]) -> VisionObject | None:
+        if not objects:
+            return None
+
+        for object_ in objects:
+            if object_.class_name in HANDHELD_OBJECT_CLASSES:
+                return object_
+
+        for object_ in objects:
+            if object_.class_name not in SCENE_ANCHOR_CLASSES:
+                return object_
+
+        return None
+
+    @staticmethod
+    def _visible_scene_objects(objects: Sequence[VisionObject]) -> List[str]:
+        preferred = [item.class_name for item in objects if item.class_name not in SCENE_ANCHOR_CLASSES]
+        if preferred:
+            return preferred
+        return [item.class_name for item in objects]
+
+    @classmethod
+    def _join_object_names(cls, object_names: Sequence[str]) -> str:
+        names = [cls._with_article(name) for name in object_names if name]
+        if not names:
+            return "something"
+        if len(names) == 1:
+            return names[0]
+        if len(names) == 2:
+            return f"{names[0]} and {names[1]}"
+        return ", ".join(names[:-1]) + f", and {names[-1]}"
 
     def _should_send_snapshot(self, snapshot: VisionSnapshotMessage) -> tuple[bool, str]:
         if self._last_sent_snapshot is None:

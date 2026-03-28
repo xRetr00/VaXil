@@ -1573,7 +1573,14 @@ void AssistantController::submitText(const QString &text)
         return;
     }
 
-    if (intent == LocalIntent::Command || m_reasoningRouter->isLikelyCommand(routedInput)) {
+    const bool visionRelevantQuery = isVisionRelevantQuery(routedInput);
+    if (visionRelevantQuery && !isExplicitComputerControlQuery(routedInput)) {
+        if (m_loggingService) {
+            m_loggingService->info(QStringLiteral("Routing vision-relevant query through conversation. input=\"%1\"")
+                                       .arg(routedInput.left(240)));
+        }
+        startConversationRequest(routedInput);
+    } else if (intent == LocalIntent::Command || m_reasoningRouter->isLikelyCommand(routedInput)) {
         startCommandRequest(routedInput);
     } else if (effectiveIntent.type != IntentType::GENERAL_CHAT
                && effectiveIntent.confidence > 0.4f

@@ -45,6 +45,12 @@ Debug mode with overlays:
 python main.py --server-url ws://MAIN-PC-IP:8765/vision --node-id laptop-vision-node --debug-ui
 ```
 
+Fullscreen debug mode with decoupled inference/display resolutions:
+
+```bash
+python main.py --server-url ws://MAIN-PC-IP:8765/vision --debug-ui --fullscreen --process-width 640 --process-height 480 --display-width 1280 --display-height 720
+```
+
 Useful flags:
 
 - `--camera-index 0`
@@ -56,6 +62,12 @@ Useful flags:
 - `--objects-min-confidence 0.60`
 - `--gestures-min-confidence 0.70`
 - `--delta-threshold 0.12`
+- `--process-width 640`
+- `--process-height 480`
+- `--display-width 1280`
+- `--display-height 720`
+- `--fullscreen`
+- `--debug-skip-frames 1`
 - `--pip-index-url https://pypi.org/simple`
 - `--torch-index-url https://download.pytorch.org/whl/cpu`
 - `--debug-ui`
@@ -67,5 +79,6 @@ Useful flags:
 - The laptop node reconnects automatically if the network drops or the main PC restarts.
 - Semantic snapshots are confidence-filtered, delta-filtered, and rate-limited before send; this node does not stream raw frames.
 - The debug UI is optional and headless mode remains the default.
+- YOLO and MediaPipe always run on the low-resolution process frame. The debug window can scale independently, including fullscreen, without increasing inference resolution.
 - `run_vision_node.sh` installs a CPU-only PyTorch stack by default before `ultralytics`, even if CUDA is present on the machine. Override `--torch-index-url` only if you explicitly want a GPU build.
 - `run_vision_node.sh` can create a local virtualenv, install missing requirements, retry failed installs with a safer PyPI fallback, and prompt for missing required inputs such as the server URL.
