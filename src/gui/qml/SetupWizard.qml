@@ -399,6 +399,14 @@ Window {
                         RowLayout {
                             Layout.fillWidth: true
                             TextField { id: whisperPathField; Layout.fillWidth: true; text: settingsVm.whisperExecutable }
+                            Button {
+                                text: "Download"
+                                visible: settingsVm.supportsAutoToolInstall
+                                onClicked: {
+                                    settingsVm.downloadTool("whisper.cpp")
+                                    wizard.syncVoiceFieldsFromBackend()
+                                }
+                            }
                             Button { text: "Open Dir"; onClicked: settingsVm.openContainingDirectory(whisperPathField.text) }
                         }
 
@@ -459,6 +467,14 @@ Window {
                         RowLayout {
                             Layout.fillWidth: true
                             TextField { id: piperPathField; Layout.fillWidth: true; text: settingsVm.piperExecutable }
+                            Button {
+                                text: "Download"
+                                visible: settingsVm.supportsAutoToolInstall
+                                onClicked: {
+                                    settingsVm.downloadTool("piper")
+                                    wizard.syncVoiceFieldsFromBackend()
+                                }
+                            }
                             Button { text: "Open Dir"; onClicked: settingsVm.openContainingDirectory(piperPathField.text) }
                         }
 

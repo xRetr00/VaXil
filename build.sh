@@ -97,6 +97,137 @@ detect_package_manager() {
   echo ""
 }
 
+linux_whisper_names() {
+  cat <<'EOF'
+whisper-cli
+whisper
+main
+EOF
+}
+
+linux_piper_names() {
+  cat <<'EOF'
+piper
+EOF
+}
+
+has_any_executable() {
+  local candidate
+  for candidate in "$@"; do
+    [[ -z "${candidate}" ]] && continue
+    if need_cmd "${candidate}"; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+first_available_package() {
+  local manager="$1"
+  shift
+
+  local package
+  for package in "$@"; do
+    [[ -z "${package}" ]] && continue
+    case "${manager}" in
+      apt)
+        if apt-cache show "${package}" >/dev/null 2>&1; then
+          echo "${package}"
+          return 0
+        fi
+        ;;
+      dnf)
+        if dnf list "${package}" >/dev/null 2>&1; then
+          echo "${package}"
+          return 0
+        fi
+        ;;
+      pacman)
+        if pacman -Si "${package}" >/dev/null 2>&1; then
+          echo "${package}"
+          return 0
+        fi
+        ;;
+      zypper)
+        if zypper --non-interactive info "${package}" >/dev/null 2>&1; then
+          echo "${package}"
+          return 0
+        fi
+        ;;
+    esac
+  done
+
+  return 1
+}
+
+install_package_by_manager() {
+  local manager="$1"
+  local package="$2"
+
+  case "${manager}" in
+    apt)
+      run_as_root env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends "${package}"
+      ;;
+    dnf)
+      run_as_root dnf install -y "${package}"
+      ;;
+    pacman)
+      run_as_root pacman -Sy --needed --noconfirm "${package}"
+      ;;
+    zypper)
+      run_as_root zypper --non-interactive install -y "${package}"
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+ensure_linux_voice_tool() {
+  local manager="$1"
+  local label="$2"
+  shift 2
+
+  local separator_idx=-1
+  local idx=0
+  local item
+  for item in "$@"; do
+    if [[ "${item}" == "--" ]]; then
+      separator_idx=${idx}
+      break
+    fi
+    idx=$((idx + 1))
+  done
+
+  if [[ ${separator_idx} -lt 1 || ${separator_idx} -ge $# ]]; then
+    log_warn "Internal bootstrap configuration error for ${label}."
+    return
+  fi
+
+  local -a exe_names=("${@:1:${separator_idx}}")
+  local -a package_candidates=("${@:$((separator_idx + 2))}")
+
+  if has_any_executable "${exe_names[@]}"; then
+    log_info "${label} executable already available."
+    return
+  fi
+
+  local package=""
+  if package="$(first_available_package "${manager}" "${package_candidates[@]}")"; then
+    log_info "Installing ${label} via package '${package}'..."
+    install_package_by_manager "${manager}" "${package}"
+  else
+    log_warn "No known ${label} package was found for ${manager}."
+    return
+  fi
+
+  if has_any_executable "${exe_names[@]}"; then
+    log_info "${label} executable is now available."
+  else
+    log_warn "${label} package installed but executable was not found on PATH."
+  fi
+}
+
 install_linux_dependencies() {
   local manager="$1"
 
@@ -537,6 +668,15 @@ ensure_dependencies() {
   fi
 
   install_linux_dependencies "${manager}"
+
+  # Auto-bootstrap optional voice executables when missing. Never reinstalls if already present.
+  ensure_linux_voice_tool "${manager}" "whisper.cpp" \
+    whisper-cli whisper main -- \
+    whisper.cpp whisper-cpp
+
+  ensure_linux_voice_tool "${manager}" "piper" \
+    piper -- \
+    piper-tts piper
 }
 
 for arg in "$@"; do

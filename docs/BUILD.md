@@ -134,6 +134,7 @@ ctest --test-dir build-linux-release --output-on-failure
 - The application builds and deploys `jarvis_sherpa_wake_helper` next to the main `jarvis` executable, using the platform's executable suffix when applicable
 - `windeployqt` runs as a post-build step on Windows to stage Qt runtime files
 - On Linux/X11, the Qt xcb platform plugin requires runtime packages such as `libxcb-cursor0`; `build.sh` installs these via apt
+- On Linux, `build.sh` also attempts to auto-install `whisper.cpp` and `piper` executables from distro packages when missing
 - Automatic tool downloads are supported on managed platforms; if unavailable in your environment, configure existing `whisper`, `piper`, `ffmpeg`, and optional wake assets manually
 - The default premium voice profile targets a calm English delivery:
   - preferred Piper voice families: `en_GB-*` medium voices, especially `en_GB-alba-medium`

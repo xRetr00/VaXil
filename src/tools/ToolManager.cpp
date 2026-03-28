@@ -3,6 +3,7 @@
 #include <QCryptographicHash>
 #include <QDir>
 #include <QFile>
+#include <QFileDevice>
 #include <QFileInfo>
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
@@ -159,7 +160,7 @@ QList<ToolInfo> ToolManager::scan()
                       appTools + QStringLiteral("/whisper/Release/") + whisperExecutableName,
                       appTools + QStringLiteral("/whisper/Release/") + whisperFallbackExecutableName,
                       findFirstRecursive(appTools + QStringLiteral("/whisper"), PlatformRuntime::whisperExecutableNames())
-                  }, true, false),
+                  }, true, true),
         probeTool(QStringLiteral("ffmpeg"), QStringLiteral("audio"), {
                       firstExecutableOnPath(PlatformRuntime::ffmpegExecutableNames()),
                       appTools + QStringLiteral("/ffmpeg/") + ffmpegExecutableName,
@@ -173,7 +174,7 @@ QList<ToolInfo> ToolManager::scan()
                       appTools + QStringLiteral("/piper/bin/") + piperExecutableName,
                       appTools + QStringLiteral("/piper/piper/") + piperExecutableName,
                       findFirstRecursive(appTools + QStringLiteral("/piper"), PlatformRuntime::piperExecutableNames())
-                  }, false, false)
+                  }, false, true)
     };
     return m_tools;
 }
@@ -360,6 +361,36 @@ ToolManager::DownloadDescriptor ToolManager::descriptorForName(const QString &na
             .extractDestinationDir = QStringLiteral("speexdsp")
         };
     }
+    if (name == QStringLiteral("whisper.cpp")) {
+        if (isLinux) {
+            return {
+                .name = name,
+                .category = QStringLiteral("stt"),
+                .url = QStringLiteral("https://github.com/ggml-org/whisper.cpp/archive/refs/tags/v1.8.4.tar.gz"),
+                .relativeTargetPath = QStringLiteral("archives/whisper.cpp-v1.8.4.tar.gz"),
+                .extractArchive = true,
+                .extractDestinationDir = QStringLiteral("whisper-src")
+            };
+        }
+        return {
+            .name = name
+        };
+    }
+    if (name == QStringLiteral("piper")) {
+        if (isLinux) {
+            return {
+                .name = name,
+                .category = QStringLiteral("tts"),
+                .url = QStringLiteral("https://github.com/rhasspy/piper/releases/latest/download/piper_linux_x86_64.tar.gz"),
+                .relativeTargetPath = QStringLiteral("archives/piper_linux_x86_64.tar.gz"),
+                .extractArchive = true,
+                .extractDestinationDir = QStringLiteral("piper")
+            };
+        }
+        return {
+            .name = name
+        };
+    }
     if (name == QStringLiteral("sherpa-onnx-source") || name == QStringLiteral("sherpa-onnx")) {
         if (isWindows) {
             return {
@@ -539,6 +570,96 @@ void ToolManager::finalizeDownload(QNetworkReply *reply)
                                       : QStringLiteral("Downloaded archive but extraction failed: %1").arg(stderrText));
             reply->deleteLater();
             return;
+        }
+
+        if (toolName == QStringLiteral("whisper.cpp") && PlatformRuntime::isLinux()) {
+            const QString sourceCmakePath = findFirstRecursive(destinationDir, {QStringLiteral("CMakeLists.txt")});
+            if (sourceCmakePath.isEmpty()) {
+                m_activeDownloadName.clear();
+                m_activeDownloadPercent = -1;
+                emit downloadFinished(toolName, false, QStringLiteral("Whisper source extracted, but CMakeLists.txt was not found."));
+                reply->deleteLater();
+                return;
+            }
+
+            const QString sourceDir = QFileInfo(sourceCmakePath).absolutePath();
+            const QString buildDir = sourceDir + QStringLiteral("/build-jarvis");
+            QDir().mkpath(buildDir);
+
+            QProcess configure;
+            configure.start(QStringLiteral("cmake"), {
+                QStringLiteral("-S"), sourceDir,
+                QStringLiteral("-B"), buildDir,
+                QStringLiteral("-DCMAKE_BUILD_TYPE=Release"),
+                QStringLiteral("-DWHISPER_BUILD_TESTS=OFF"),
+                QStringLiteral("-DWHISPER_BUILD_EXAMPLES=ON")
+            });
+            if (!configure.waitForFinished(300000) || configure.exitCode() != 0) {
+                const QString stderrText = QString::fromUtf8(configure.readAllStandardError()).trimmed();
+                m_activeDownloadName.clear();
+                m_activeDownloadPercent = -1;
+                emit downloadFinished(
+                    toolName,
+                    false,
+                    stderrText.isEmpty()
+                        ? QStringLiteral("Whisper configure failed.")
+                        : QStringLiteral("Whisper configure failed: %1").arg(stderrText));
+                reply->deleteLater();
+                return;
+            }
+
+            auto buildWhisperTarget = [&buildDir](const QString &target) {
+                QProcess build;
+                build.start(QStringLiteral("cmake"), {
+                    QStringLiteral("--build"), buildDir,
+                    QStringLiteral("--parallel"),
+                    QStringLiteral("--target"), target
+                });
+                if (!build.waitForFinished(300000) || build.exitCode() != 0) {
+                    const QString stderrText = QString::fromUtf8(build.readAllStandardError()).trimmed();
+                    return stderrText.isEmpty() ? QStringLiteral("build failed") : stderrText;
+                }
+                return QString();
+            };
+
+            QString buildError = buildWhisperTarget(QStringLiteral("whisper-cli"));
+            if (!buildError.isEmpty()) {
+                buildError = buildWhisperTarget(QStringLiteral("main"));
+            }
+            if (!buildError.isEmpty()) {
+                m_activeDownloadName.clear();
+                m_activeDownloadPercent = -1;
+                emit downloadFinished(toolName, false, QStringLiteral("Whisper build failed: %1").arg(buildError));
+                reply->deleteLater();
+                return;
+            }
+
+            const QString builtWhisperPath = findFirstRecursive(buildDir, PlatformRuntime::whisperExecutableNames());
+            if (builtWhisperPath.isEmpty()) {
+                m_activeDownloadName.clear();
+                m_activeDownloadPercent = -1;
+                emit downloadFinished(toolName, false, QStringLiteral("Whisper build completed, but executable was not found."));
+                reply->deleteLater();
+                return;
+            }
+
+            const QString installDir = appToolsRoot() + QStringLiteral("/whisper/bin");
+            const QString installedWhisperPath = installDir + QStringLiteral("/") + PlatformRuntime::helperExecutableName(QStringLiteral("whisper-cli"));
+            QDir().mkpath(installDir);
+            QFile::remove(installedWhisperPath);
+            if (!QFile::copy(builtWhisperPath, installedWhisperPath)) {
+                m_activeDownloadName.clear();
+                m_activeDownloadPercent = -1;
+                emit downloadFinished(toolName, false, QStringLiteral("Whisper executable copy failed."));
+                reply->deleteLater();
+                return;
+            }
+
+            QFile installedFile(installedWhisperPath);
+            installedFile.setPermissions(
+                QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner |
+                QFileDevice::ReadGroup | QFileDevice::ExeGroup |
+                QFileDevice::ReadOther | QFileDevice::ExeOther);
         }
     }
 

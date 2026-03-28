@@ -688,7 +688,19 @@ Window {
                     }
 
                     Text { text: "whisper.cpp executable"; color: "#c9def3"; font.pixelSize: 13 }
-                    TextField { id: whisperPathField; Layout.fillWidth: true; text: settingsVm.whisperExecutable }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        TextField { id: whisperPathField; Layout.fillWidth: true; text: settingsVm.whisperExecutable }
+                        Button {
+                            text: "Download"
+                            visible: settingsVm.supportsAutoToolInstall
+                            onClicked: {
+                                settingsVm.downloadTool("whisper.cpp")
+                                settingsWindow.syncFieldsFromBackend()
+                                settingsWindow.refreshRequirementStatus()
+                            }
+                        }
+                    }
                     RowLayout {
                         Layout.fillWidth: true
                         Rectangle { width: 10; height: 10; radius: 5; color: settingsWindow.statusColor(requirementStatus.whisperOk === true) }
@@ -754,7 +766,19 @@ Window {
                     }
 
                     Text { text: "Piper executable"; color: "#c9def3"; font.pixelSize: 13 }
-                    TextField { id: piperPathField; Layout.fillWidth: true; text: settingsVm.piperExecutable }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        TextField { id: piperPathField; Layout.fillWidth: true; text: settingsVm.piperExecutable }
+                        Button {
+                            text: "Download"
+                            visible: settingsVm.supportsAutoToolInstall
+                            onClicked: {
+                                settingsVm.downloadTool("piper")
+                                settingsWindow.syncFieldsFromBackend()
+                                settingsWindow.refreshRequirementStatus()
+                            }
+                        }
+                    }
                     RowLayout {
                         Layout.fillWidth: true
                         Rectangle { width: 10; height: 10; radius: 5; color: settingsWindow.statusColor(requirementStatus.piperOk === true) }
