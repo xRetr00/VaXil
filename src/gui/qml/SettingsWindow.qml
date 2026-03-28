@@ -1326,12 +1326,23 @@ Window {
                         wrapMode: Text.Wrap
                     }
 
-                    ProgressBar {
+                    Rectangle {
                         Layout.fillWidth: true
+                        Layout.preferredHeight: 10
                         visible: settingsVm.supportsAutoToolInstall && settingsVm.toolDownloadPercent >= 0
-                        from: 0
-                        to: 100
-                        value: settingsVm.toolDownloadPercent >= 0 ? settingsVm.toolDownloadPercent : 0
+                        radius: 5
+                        color: "#1b2a40"
+                        border.width: 1
+                        border.color: "#2d4668"
+
+                        Rectangle {
+                            anchors.left: parent.left
+                            anchors.top: parent.top
+                            anchors.bottom: parent.bottom
+                            width: parent.width * Math.max(0, Math.min(1, settingsVm.toolDownloadPercent / 100.0))
+                            radius: parent.radius
+                            color: "#4d9cff"
+                        }
                     }
 
                     Repeater {
