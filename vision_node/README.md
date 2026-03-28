@@ -24,6 +24,12 @@ pip install -r requirements.txt
 python main.py --server-url ws://MAIN-PC-IP:8765/vision --node-id laptop-vision-node
 ```
 
+Debug mode with overlays:
+
+```bash
+python main.py --server-url ws://MAIN-PC-IP:8765/vision --node-id laptop-vision-node --debug-ui
+```
+
 Useful flags:
 
 - `--camera-index 0`
@@ -35,9 +41,11 @@ Useful flags:
 - `--objects-min-confidence 0.60`
 - `--gestures-min-confidence 0.70`
 - `--delta-threshold 0.12`
+- `--debug-ui`
 
 ## Notes
 
 - The Windows main PC hosts the WebSocket server.
 - The laptop node reconnects automatically if the network drops or the main PC restarts.
 - Semantic snapshots are confidence-filtered, delta-filtered, and rate-limited before send; this node does not stream raw frames.
+- The debug UI is optional and headless mode remains the default.

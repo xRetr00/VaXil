@@ -42,6 +42,7 @@
 #include "tts/TtsEngine.h"
 #include "tts/WorkerTtsEngine.h"
 #include "vision/VisionIngestService.h"
+#include "vision/GestureActionRouter.h"
 #include "vision/GestureInterpreter.h"
 #include "vision/VisionContextGate.h"
 #include "vision/WorldStateCache.h"
@@ -948,9 +949,13 @@ AssistantController::AssistantController(
     m_worldStateCache = new WorldStateCache(15000, 2000, this);
     m_visionIngestService = new VisionIngestService(m_settings, m_loggingService, this);
     m_gestureInterpreter = new GestureInterpreter(this);
+    m_gestureActionRouter = new GestureActionRouter(m_loggingService);
     m_toolWorkerThread.setObjectName(QStringLiteral("BackgroundToolWorkerThread"));
+    m_gestureActionRouterThread.setObjectName(QStringLiteral("GestureActionRouterThread"));
     m_toolWorker->moveToThread(&m_toolWorkerThread);
+    m_gestureActionRouter->moveToThread(&m_gestureActionRouterThread);
     connect(&m_toolWorkerThread, &QThread::finished, m_toolWorker, &QObject::deleteLater);
+    connect(&m_gestureActionRouterThread, &QThread::finished, m_gestureActionRouter, &QObject::deleteLater);
     connect(m_taskDispatcher, &TaskDispatcher::taskReady, m_toolWorker, &ToolWorker::processTask, Qt::QueuedConnection);
     connect(m_taskDispatcher, &TaskDispatcher::taskCanceled, m_toolWorker, &ToolWorker::cancelTask, Qt::QueuedConnection);
     connect(m_taskDispatcher, &TaskDispatcher::activeTaskChanged, this, [this](const QString &type, int taskId) {
@@ -962,12 +967,25 @@ AssistantController::AssistantController(
         recordTaskResult(resultObject);
     }, Qt::QueuedConnection);
     connect(m_visionIngestService, &VisionIngestService::visionSnapshotReceived, this, &AssistantController::handleVisionSnapshot, Qt::QueuedConnection);
-    connect(m_gestureInterpreter, &GestureInterpreter::actionInterpreted, this, &AssistantController::handleGestureAction, Qt::QueuedConnection);
+    connect(m_gestureInterpreter, &GestureInterpreter::actionInterpreted, m_gestureActionRouter, &GestureActionRouter::routeGesture, Qt::QueuedConnection);
+    connect(m_gestureActionRouter, &GestureActionRouter::gestureTriggered, this, [this](const QString &gestureName, qint64 timestampMs) {
+        m_lastVisionGestureTriggerMs = timestampMs;
+        m_lastVisionGestureAction = gestureName;
+    }, Qt::QueuedConnection);
+    connect(m_gestureActionRouter, &GestureActionRouter::stopSpeakingRequested, this, &AssistantController::stopSpeaking, Qt::QueuedConnection);
+    connect(m_gestureActionRouter, &GestureActionRouter::cancelCurrentRequestRequested, this, &AssistantController::cancelCurrentRequest, Qt::QueuedConnection);
+    connect(m_settings, &AppSettings::settingsChanged, this, &AssistantController::reconfigureGestureActionRouter);
     createWakeWordEngine();
 }
 
 AssistantController::~AssistantController()
 {
+    if (m_gestureActionRouterThread.isRunning()) {
+        m_gestureActionRouterThread.quit();
+        m_gestureActionRouterThread.wait();
+    } else if (m_gestureActionRouter != nullptr) {
+        m_gestureActionRouter->deleteLater();
+    }
     if (m_toolWorkerThread.isRunning()) {
         m_toolWorkerThread.quit();
         m_toolWorkerThread.wait();
@@ -980,6 +998,10 @@ void AssistantController::initialize()
     if (!m_toolWorkerThread.isRunning()) {
         m_toolWorkerThread.start();
     }
+    if (!m_gestureActionRouterThread.isRunning()) {
+        m_gestureActionRouterThread.start();
+    }
+    reconfigureGestureActionRouter();
     if (m_visionIngestService) {
         m_visionIngestService->start();
     }
@@ -1677,6 +1699,23 @@ void AssistantController::stopWakeMonitor()
     updateStartupState();
 }
 
+void AssistantController::stopSpeaking()
+{
+    if (!m_ttsEngine->isSpeaking()) {
+        return;
+    }
+
+    invalidateWakeMonitorResume();
+    m_ttsEngine->clear();
+    if (m_duplexState == DuplexState::TtsExclusive || m_duplexState == DuplexState::Cooldown) {
+        setDuplexState(DuplexState::Open);
+    }
+    setStatus(QStringLiteral("Speech interrupted"));
+    endConversationSession();
+    resumeWakeMonitor(shortWakeResumeDelayMs());
+    emit idleRequested();
+}
+
 void AssistantController::stopListening()
 {
     if (isMicrophoneBlocked()) {
@@ -1702,6 +1741,15 @@ void AssistantController::cancelActiveRequest()
     endConversationSession();
     resumeWakeMonitor(shortWakeResumeDelayMs());
     emit idleRequested();
+}
+
+void AssistantController::cancelCurrentRequest()
+{
+    if (m_currentState != AssistantState::Processing
+        && m_currentState != AssistantState::Speaking) {
+        return;
+    }
+    cancelActiveRequest();
 }
 
 void AssistantController::setSelectedModel(const QString &modelId)
@@ -2382,6 +2430,20 @@ bool AssistantController::canStartWakeMonitor() const
         && !resolveWakeEngineModelPath().isEmpty();
 }
 
+void AssistantController::reconfigureGestureActionRouter()
+{
+    if (!m_gestureActionRouterThread.isRunning() || m_gestureActionRouter == nullptr || m_settings == nullptr) {
+        return;
+    }
+
+    QMetaObject::invokeMethod(
+        m_gestureActionRouter,
+        "configure",
+        Qt::QueuedConnection,
+        Q_ARG(bool, m_settings->gestureEnabled()),
+        Q_ARG(int, m_settings->gestureCooldownMs()));
+}
+
 QString AssistantController::resolveWakeEngineRuntimePath() const
 {
     return firstExistingPath({
@@ -2766,54 +2828,6 @@ void AssistantController::applyVisionGestureTriggers(const VisionSnapshot &snaps
         return;
     }
     m_gestureInterpreter->ingestSnapshot(snapshot);
-}
-
-void AssistantController::handleGestureAction(const QString &actionName,
-                                              const QString &sourceGesture,
-                                              double confidence,
-                                              const QString &traceId)
-{
-    Q_UNUSED(traceId);
-
-    const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
-    if ((nowMs - m_lastVisionGestureTriggerMs) < 1500) {
-        return;
-    }
-
-    m_lastVisionGestureTriggerMs = nowMs;
-    m_lastVisionGestureAction = actionName;
-
-    if (m_loggingService) {
-        m_loggingService->logVisionStatus(
-            QStringLiteral("Vision gesture interpreted. action=\"%1\" source=\"%2\" confidence=%3")
-                .arg(actionName, sourceGesture)
-                .arg(confidence, 0, 'f', 2),
-            QStringLiteral("vision_gesture_%1_%2").arg(actionName, sourceGesture),
-            1200);
-    }
-
-    if (actionName == QStringLiteral("start_listening")) {
-        if (m_currentState == AssistantState::Speaking) {
-            interruptSpeechAndListen();
-        } else {
-            startListening();
-        }
-        return;
-    }
-
-    if (actionName == QStringLiteral("stop_listening")) {
-        stopListening();
-        return;
-    }
-
-    if (actionName == QStringLiteral("cancel")) {
-        if (m_currentState == AssistantState::Listening) {
-            stopListening();
-        } else {
-            cancelActiveRequest();
-        }
-        return;
-    }
 }
 
 void AssistantController::startCommandRequest(const QString &input)

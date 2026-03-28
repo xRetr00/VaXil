@@ -13,6 +13,7 @@ class IntentDetector;
 class IntentEngine;
 class IntentRouter;
 class AiBackendClient;
+class GestureActionRouter;
 class GestureInterpreter;
 class LocalResponseEngine;
 class LoggingService;
@@ -83,8 +84,10 @@ public slots:
     void interruptSpeechAndListen();
     void startWakeMonitor();
     void stopWakeMonitor();
+    void stopSpeaking();
     void stopListening();
     void cancelActiveRequest();
+    void cancelCurrentRequest();
     void setSelectedModel(const QString &modelId);
     void setAgentEnabled(bool enabled);
     void setBackgroundPanelVisible(bool visible);
@@ -199,16 +202,13 @@ private:
     void deliverLocalResponse(const QString &text, const QString &status, bool speak = true);
     void scheduleWakeMonitorRestart(int delayMs = 250);
     bool canStartWakeMonitor() const;
+    void reconfigureGestureActionRouter();
     bool startAudioCapture(AudioCaptureMode mode, bool announceListening);
     void startConversationRequest(const QString &input);
     void startAgentConversationRequest(const QString &input, IntentType expectedIntent);
     void continueAgentConversation(const QList<AgentToolResult> &results);
     void startCommandRequest(const QString &input);
     void handleVisionSnapshot(const VisionSnapshot &snapshot);
-    void handleGestureAction(const QString &actionName,
-                             const QString &sourceGesture,
-                             double confidence,
-                             const QString &traceId);
     QString buildVisionPromptContext(const QString &input, IntentType intent) const;
     bool shouldUseVisionContext(const QString &input, IntentType intent) const;
     void applyVisionGestureTriggers(const VisionSnapshot &snapshot);
@@ -254,6 +254,7 @@ private:
     VoicePipelineRuntime *m_voicePipelineRuntime = nullptr;
     WorldStateCache *m_worldStateCache = nullptr;
     GestureInterpreter *m_gestureInterpreter = nullptr;
+    GestureActionRouter *m_gestureActionRouter = nullptr;
     AssistantState m_currentState = AssistantState::Idle;
     DuplexState m_duplexState = DuplexState::Open;
     QString m_transcript;
@@ -298,4 +299,5 @@ private:
     QString m_lastWakeError;
     QString m_startupBlockingIssue = QStringLiteral("Loading services...");
     QThread m_toolWorkerThread;
+    QThread m_gestureActionRouterThread;
 };

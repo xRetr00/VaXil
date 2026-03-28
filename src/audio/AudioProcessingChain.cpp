@@ -8,9 +8,17 @@
 
 #include "audio/SileroVadSession.h"
 
+#if __has_include(<rnnoise.h>)
+#define JARVIS_HAS_RNNOISE_HEADER 1
+#else
+#define JARVIS_HAS_RNNOISE_HEADER 0
+#endif
+
 extern "C" {
 #include <fvad.h>
+#if JARVIS_HAS_RNNOISE_HEADER
 #include <rnnoise.h>
+#endif
 #include <speex/speex_echo.h>
 #include <speex/speex_preprocess.h>
 #include <speex/speex_resampler.h>
@@ -57,9 +65,11 @@ AudioProcessingChain::~AudioProcessingChain()
     if (m_farEndResampler != nullptr) {
         speex_resampler_destroy(m_farEndResampler);
     }
+#if JARVIS_HAS_RNNOISE_HEADER
     if (m_rnnoise != nullptr) {
         rnnoise_destroy(m_rnnoise);
     }
+#endif
 }
 
 void AudioProcessingChain::initialize(const AudioProcessingConfig &config)
@@ -94,10 +104,12 @@ void AudioProcessingChain::initialize(const AudioProcessingConfig &config)
         speex_resampler_destroy(m_farEndResampler);
         m_farEndResampler = nullptr;
     }
+#if JARVIS_HAS_RNNOISE_HEADER
     if (m_rnnoise != nullptr) {
         rnnoise_destroy(m_rnnoise);
         m_rnnoise = nullptr;
     }
+#endif
 
     if (m_nativeProcessingEnabled) {
         m_echoState = speex_echo_state_init(
@@ -111,7 +123,11 @@ void AudioProcessingChain::initialize(const AudioProcessingConfig &config)
         m_preprocessState = speex_preprocess_state_init(kProcessFrameSamples, kProcessSampleRate);
         configureSpeexPreprocessor();
 
+#if JARVIS_HAS_RNNOISE_HEADER
         m_rnnoise = rnnoise_create(nullptr);
+#else
+    m_rnnoise = nullptr;
+#endif
     }
     initializeSileroVad();
     resetProcessingState();
@@ -157,6 +173,7 @@ AudioFrame AudioProcessingChain::process(const AudioFrame &in)
     }
 
     if (m_config.rnnoiseEnabled && m_rnnoise != nullptr) {
+#if JARVIS_HAS_RNNOISE_HEADER
         for (int i = 0; i < kProcessFrameSamples; ++i) {
             m_rnnoiseFrame[static_cast<size_t>(i)] = static_cast<float>(m_preprocessPcm[static_cast<size_t>(i)]);
         }
@@ -167,6 +184,7 @@ AudioFrame AudioProcessingChain::process(const AudioFrame &in)
                 -1.0f,
                 1.0f);
         }
+#endif
     } else {
         for (int i = 0; i < kProcessFrameSamples; ++i) {
             out.samples[static_cast<size_t>(i)] = static_cast<float>(m_preprocessPcm[static_cast<size_t>(i)]) / 32768.0f;

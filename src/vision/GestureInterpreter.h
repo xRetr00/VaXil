@@ -18,5 +18,6 @@ signals:
     void actionInterpreted(const QString &actionName,
                            const QString &sourceGesture,
                            double confidence,
+                           qint64 timestampMs,
                            const QString &traceId);
 };

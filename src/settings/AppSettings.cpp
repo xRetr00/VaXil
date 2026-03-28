@@ -100,6 +100,11 @@ int clampVisionStaleThresholdMs(int value)
     return std::clamp(value, 100, 10000);
 }
 
+int clampGestureCooldownMs(int value)
+{
+    return std::clamp(value, 100, 5000);
+}
+
 double clampVisionConfidence(double value, double fallback)
 {
     if (std::isnan(value)) {
@@ -182,6 +187,8 @@ bool AppSettings::load()
     m_visionContextAlwaysOn = parsed.value("visionContextAlwaysOn", false);
     m_visionObjectsMinConfidence = clampVisionConfidence(parsed.value("visionObjectsMinConfidence", 0.60), 0.60);
     m_visionGesturesMinConfidence = clampVisionConfidence(parsed.value("visionGesturesMinConfidence", 0.70), 0.70);
+    m_gestureEnabled = parsed.value("gestureEnabled", false);
+    m_gestureCooldownMs = clampGestureCooldownMs(parsed.value("gestureCooldownMs", 500));
     m_tracePanelEnabled = parsed.value("tracePanelEnabled", true);
     m_whisperExecutable = QString::fromStdString(parsed.value("whisperExecutable", std::string{}));
     m_whisperModelPath = QString::fromStdString(parsed.value("whisperModelPath", std::string{}));
@@ -266,6 +273,8 @@ bool AppSettings::save() const
         {"visionContextAlwaysOn", m_visionContextAlwaysOn},
         {"visionObjectsMinConfidence", m_visionObjectsMinConfidence},
         {"visionGesturesMinConfidence", m_visionGesturesMinConfidence},
+        {"gestureEnabled", m_gestureEnabled},
+        {"gestureCooldownMs", m_gestureCooldownMs},
         {"tracePanelEnabled", m_tracePanelEnabled},
         {"whisperExecutable", m_whisperExecutable.toStdString()},
         {"whisperModelPath", m_whisperModelPath.toStdString()},
@@ -459,6 +468,18 @@ double AppSettings::visionGesturesMinConfidence() const { return m_visionGesture
 void AppSettings::setVisionGesturesMinConfidence(double confidence)
 {
     m_visionGesturesMinConfidence = clampVisionConfidence(confidence, 0.70);
+    emit settingsChanged();
+}
+bool AppSettings::gestureEnabled() const { return m_gestureEnabled; }
+void AppSettings::setGestureEnabled(bool enabled)
+{
+    m_gestureEnabled = enabled;
+    emit settingsChanged();
+}
+int AppSettings::gestureCooldownMs() const { return m_gestureCooldownMs; }
+void AppSettings::setGestureCooldownMs(int cooldownMs)
+{
+    m_gestureCooldownMs = clampGestureCooldownMs(cooldownMs);
     emit settingsChanged();
 }
 bool AppSettings::tracePanelEnabled() const { return m_tracePanelEnabled; }

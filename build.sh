@@ -11,6 +11,7 @@ FRESH=0
 AUTO_INSTALL_DEPS=1
 INSTALL_ONLY=0
 AUTO_INSTALL_QT=1
+AUTO_INSTALL_RNNOISE=1
 REQUIRED_QT_VERSION="6.6.0"
 DEFAULT_AQT_QT_VERSION="6.6.3"
 
@@ -326,6 +327,59 @@ ensure_qt_kit() {
   install_qt_with_aqt
 }
 
+rnnoise_root_dir() {
+  echo "${JARVIS_RNNOISE_ROOT:-${ROOT}/third_party/rnnoise/rnnoise-main}"
+}
+
+rnnoise_source_ready() {
+  local rnnoise_root="$1"
+  [[ -f "${rnnoise_root}/include/rnnoise.h" && -f "${rnnoise_root}/src/rnnoise_data.c" ]]
+}
+
+ensure_rnnoise_source() {
+  if [[ "${AUTO_INSTALL_RNNOISE}" -eq 0 ]]; then
+    log_info "Skipping RNNoise source bootstrap (nornnoise)."
+    return
+  fi
+
+  local rnnoise_root
+  rnnoise_root="$(rnnoise_root_dir)"
+
+  if rnnoise_source_ready "${rnnoise_root}"; then
+    log_info "RNNoise source ready at ${rnnoise_root}"
+    return
+  fi
+
+  if [[ -d "${rnnoise_root}" && ! -d "${rnnoise_root}/.git" ]]; then
+    log_error "RNNoise directory exists but is incomplete: ${rnnoise_root}"
+    log_error "Remove it manually, then rerun ./build.sh so RNNoise can be re-downloaded."
+    exit 1
+  fi
+
+  if ! need_cmd git; then
+    log_error "git is required to bootstrap RNNoise source."
+    exit 1
+  fi
+
+  mkdir -p "$(dirname "${rnnoise_root}")"
+
+  if [[ -d "${rnnoise_root}/.git" ]]; then
+    log_info "Updating RNNoise source in ${rnnoise_root}"
+    git -C "${rnnoise_root}" fetch --depth 1 origin
+    git -C "${rnnoise_root}" reset --hard FETCH_HEAD
+  else
+    log_info "Cloning RNNoise source into ${rnnoise_root}"
+    git clone --depth 1 https://github.com/xiph/rnnoise "${rnnoise_root}"
+  fi
+
+  if ! rnnoise_source_ready "${rnnoise_root}"; then
+    log_error "RNNoise source bootstrap completed but required files are still missing."
+    exit 1
+  fi
+
+  log_info "RNNoise source ready at ${rnnoise_root}"
+}
+
 ensure_dependencies() {
   if [[ "${AUTO_INSTALL_DEPS}" -eq 0 ]]; then
     log_info "Skipping dependency installation (nodeps)."
@@ -372,9 +426,12 @@ for arg in "$@"; do
     noqt)
       AUTO_INSTALL_QT=0
       ;;
+    nornnoise)
+      AUTO_INSTALL_RNNOISE=0
+      ;;
     *)
       log_error "Unknown argument: ${arg}"
-      echo "Usage: ./build.sh [debug|release] [clean] [notest] [nodeps] [bootstrap] [noqt]" >&2
+      echo "Usage: ./build.sh [debug|release] [clean] [notest] [nodeps] [bootstrap] [noqt] [nornnoise]" >&2
       exit 1
       ;;
   esac
@@ -382,6 +439,7 @@ done
 
 ensure_dependencies
 ensure_qt_kit
+ensure_rnnoise_source
 
 if [[ ${INSTALL_ONLY} -eq 1 ]]; then
   echo

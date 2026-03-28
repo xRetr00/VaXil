@@ -1,5 +1,6 @@
 #include <QtTest>
 
+#include "vision/GestureActionRouter.h"
 #include "vision/VisionContextGate.h"
 #include "vision/WorldStateCache.h"
 
@@ -13,6 +14,8 @@ private slots:
     void worldStateCacheRejectsStaleSnapshotOnIngest();
     void visionContextGateMatchesRelevantQueries();
     void visionContextGateBlocksIrrelevantQueries();
+    void gestureActionRouterTriggersOnlyOnStart();
+    void gestureActionRouterRespectsCooldown();
 };
 
 void VisionStateTests::worldStateCacheTracksFreshLatestSnapshot()
@@ -75,6 +78,38 @@ void VisionStateTests::visionContextGateBlocksIrrelevantQueries()
                                              true,
                                              false,
                                              false));
+}
+
+void VisionStateTests::gestureActionRouterTriggersOnlyOnStart()
+{
+    GestureActionRouter router(nullptr);
+    router.configure(true, 500);
+
+    QSignalSpy stopSpy(&router, &GestureActionRouter::stopSpeakingRequested);
+    QSignalSpy cancelSpy(&router, &GestureActionRouter::cancelCurrentRequestRequested);
+
+    router.routeGesture(QStringLiteral("cancel"), QStringLiteral("open_hand"), 0.95, 1000, QStringLiteral("trace-a"));
+    router.routeGesture(QStringLiteral("cancel"), QStringLiteral("open_hand"), 0.95, 1050, QStringLiteral("trace-a"));
+
+    QCOMPARE(stopSpy.count(), 1);
+    QCOMPARE(cancelSpy.count(), 1);
+}
+
+void VisionStateTests::gestureActionRouterRespectsCooldown()
+{
+    GestureActionRouter router(nullptr);
+    router.configure(true, 500);
+
+    QSignalSpy stopSpy(&router, &GestureActionRouter::stopSpeakingRequested);
+    QSignalSpy cancelSpy(&router, &GestureActionRouter::cancelCurrentRequestRequested);
+
+    router.routeGesture(QStringLiteral("cancel"), QStringLiteral("open_hand"), 0.90, 1000, QStringLiteral("trace-a"));
+    QTest::qWait(260);
+    router.routeGesture(QStringLiteral("cancel"), QStringLiteral("open_hand"), 0.90, 1200, QStringLiteral("trace-b"));
+    router.routeGesture(QStringLiteral("cancel"), QStringLiteral("open_hand"), 0.90, 1700, QStringLiteral("trace-c"));
+
+    QCOMPARE(stopSpy.count(), 2);
+    QCOMPARE(cancelSpy.count(), 2);
 }
 
 QTEST_APPLESS_MAIN(VisionStateTests)

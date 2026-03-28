@@ -105,6 +105,12 @@ public:
     double visionGesturesMinConfidence() const;
     void setVisionGesturesMinConfidence(double confidence);
 
+    bool gestureEnabled() const;
+    void setGestureEnabled(bool enabled);
+
+    int gestureCooldownMs() const;
+    void setGestureCooldownMs(int cooldownMs);
+
     bool tracePanelEnabled() const;
     void setTracePanelEnabled(bool enabled);
 
@@ -213,6 +219,8 @@ private:
     bool m_visionContextAlwaysOn = false;
     double m_visionObjectsMinConfidence = 0.60;
     double m_visionGesturesMinConfidence = 0.70;
+    bool m_gestureEnabled = false;
+    int m_gestureCooldownMs = 500;
     bool m_tracePanelEnabled = true;
     QString m_whisperExecutable;
     QString m_whisperModelPath;

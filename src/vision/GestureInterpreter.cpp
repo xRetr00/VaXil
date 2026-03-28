@@ -1,5 +1,6 @@
 #include "vision/GestureInterpreter.h"
 
+#include <QDateTime>
 #include <QHash>
 
 namespace {
@@ -35,6 +36,9 @@ GestureInterpreter::GestureInterpreter(QObject *parent)
 
 void GestureInterpreter::ingestSnapshot(const VisionSnapshot &snapshot)
 {
+    const qint64 timestampMs = snapshot.timestamp.isValid()
+        ? snapshot.timestamp.toUTC().toMSecsSinceEpoch()
+        : QDateTime::currentMSecsSinceEpoch();
     QHash<QString, QPair<QString, double>> bestActions;
     for (const auto &gesture : snapshot.gestures) {
         const QString action = mapGestureToAction(gesture.name);
@@ -49,6 +53,6 @@ void GestureInterpreter::ingestSnapshot(const VisionSnapshot &snapshot)
     }
 
     for (auto it = bestActions.cbegin(); it != bestActions.cend(); ++it) {
-        emit actionInterpreted(it.key(), it.value().first, it.value().second, snapshot.traceId);
+        emit actionInterpreted(it.key(), it.value().first, it.value().second, timestampMs, snapshot.traceId);
     }
 }

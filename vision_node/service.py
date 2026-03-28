@@ -1,10 +1,8 @@
 from __future__ import annotations
 
-import argparse
 import asyncio
 from dataclasses import dataclass
 import logging
-import signal
 import time
 from typing import Dict, List, Sequence
 from uuid import uuid4
@@ -19,6 +17,94 @@ from schema import VisionGesture, VisionObject, VisionSnapshotMessage
 
 
 LOGGER = logging.getLogger("jarvis.vision_node")
+
+
+DEBUG_WINDOW_NAME = "JARVIS Vision Debug"
+
+
+@dataclass(slots=True)
+class DebugDetection:
+    class_name: str
+    confidence: float
+    box: tuple[int, int, int, int]
+
+
+@dataclass(slots=True)
+class DebugStats:
+    fps: float = 0.0
+    yolo_ms: float = 0.0
+    hands_ms: float = 0.0
+    send_latency_ms: float = 0.0
+    objects_count: int = 0
+    gesture_name: str = "none"
+    summary: str = "No strong visual event detected"
+
+
+def render_debug_frame(frame,
+                       detections: Sequence[DebugDetection],
+                       hand_landmarks,
+                       stats: DebugStats):
+    output = frame.copy()
+
+    for detection in detections:
+        x1, y1, x2, y2 = detection.box
+        cv2.rectangle(output, (x1, y1), (x2, y2), (80, 220, 80), 2)
+        label = f"{detection.class_name} ({detection.confidence:.2f})"
+        cv2.putText(output,
+                    label,
+                    (x1, max(20, y1 - 8)),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.55,
+                    (80, 220, 80),
+                    2,
+                    cv2.LINE_AA)
+
+    drawing_utils = mp.solutions.drawing_utils
+    drawing_styles = mp.solutions.drawing_styles
+    for landmarks in hand_landmarks or []:
+        drawing_utils.draw_landmarks(
+            output,
+            landmarks,
+            mp.solutions.hands.HAND_CONNECTIONS,
+            drawing_styles.get_default_hand_landmarks_style(),
+            drawing_styles.get_default_hand_connections_style(),
+        )
+
+    stats_lines = [
+        f"FPS: {stats.fps:.1f}",
+        f"YOLO: {stats.yolo_ms:.1f}ms",
+        f"Hands: {stats.hands_ms:.1f}ms",
+        f"Send: {stats.send_latency_ms:.1f}ms",
+        f"Objects: {stats.objects_count}",
+        f"Gesture: {stats.gesture_name}",
+    ]
+
+    panel_height = 26 + (len(stats_lines) * 24)
+    cv2.rectangle(output, (12, 12), (250, panel_height), (18, 18, 18), -1)
+    cv2.rectangle(output, (12, 12), (250, panel_height), (70, 70, 70), 1)
+
+    for index, line in enumerate(stats_lines):
+        color = (220, 220, 220)
+        if line.startswith("Gesture:") and stats.gesture_name != "none":
+            color = (70, 90, 240)
+        cv2.putText(output,
+                    line,
+                    (22, 36 + (index * 22)),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.55,
+                    color,
+                    1,
+                    cv2.LINE_AA)
+
+    cv2.putText(output,
+                stats.summary[:90],
+                (18, max(40, output.shape[0] - 18)),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.6,
+                (255, 255, 255),
+                2,
+                cv2.LINE_AA)
+    return output
 
 
 @dataclass(slots=True)
@@ -40,6 +126,7 @@ class VisionNodeConfig:
     objects_min_confidence: float = 0.60
     gestures_min_confidence: float = 0.70
     delta_threshold: float = 0.12
+    debug_ui: bool = False
 
 
 class VisionNodeService:
@@ -101,14 +188,20 @@ class VisionNodeService:
         if self._capture is not None:
             self._capture.release()
             self._capture = None
+        if self.config.debug_ui:
+            cv2.destroyAllWindows()
 
     async def _capture_loop(self, websocket: websockets.WebSocketClientProtocol) -> None:
         assert self._capture is not None
         frame_index = 0
         last_sent_at = 0.0
         latest_objects: List[VisionObject] = []
+        latest_detections: List[DebugDetection] = []
         frame_interval = 1.0 / max(1.0, self.config.target_fps)
         send_interval = self._effective_send_interval_sec()
+        last_yolo_ms = 0.0
+        last_send_latency_ms = 0.0
+        stats = DebugStats()
 
         while not self._stop_event.is_set():
             frame_started_at = time.monotonic()
@@ -118,10 +211,15 @@ class VisionNodeService:
                 await asyncio.sleep(0.2)
                 continue
 
+            hand_landmarks = []
             if frame_index % max(1, self.config.yolo_every_n_frames) == 0:
-                latest_objects = self._detect_objects(frame)
+                yolo_started_at = time.monotonic()
+                latest_objects, latest_detections = self._detect_objects(frame)
+                last_yolo_ms = (time.monotonic() - yolo_started_at) * 1000.0
 
-            gestures = self._detect_gestures(frame)
+            hands_started_at = time.monotonic()
+            gestures, hand_landmarks = self._detect_gestures(frame)
+            hands_ms = (time.monotonic() - hands_started_at) * 1000.0
             snapshot = self._build_snapshot(latest_objects, gestures)
             should_send, drop_reason = self._should_send_snapshot(snapshot)
 
@@ -129,7 +227,9 @@ class VisionNodeService:
             rate_limited = (now - last_sent_at) < send_interval
             if should_send and not rate_limited:
                 try:
+                    send_started_at = time.monotonic()
                     await websocket.send(snapshot.to_json())
+                    last_send_latency_ms = (time.monotonic() - send_started_at) * 1000.0
                     last_sent_at = now
                     self._last_sent_snapshot = snapshot
                     self._log_rate_limited(
@@ -160,27 +260,54 @@ class VisionNodeService:
 
             frame_index += 1
             elapsed = time.monotonic() - frame_started_at
+            stats = DebugStats(
+                fps=1.0 / max(elapsed, 0.0001),
+                yolo_ms=last_yolo_ms,
+                hands_ms=hands_ms,
+                send_latency_ms=last_send_latency_ms,
+                objects_count=len(latest_objects),
+                gesture_name=gestures[0].name if gestures else "none",
+                summary=snapshot.summary,
+            )
+
+            if self.config.debug_ui:
+                debug_frame = render_debug_frame(frame, latest_detections, hand_landmarks, stats)
+                cv2.imshow(DEBUG_WINDOW_NAME, debug_frame)
+                if (cv2.waitKey(1) & 0xFF) == 27:
+                    LOGGER.info("ESC pressed, closing debug UI")
+                    self.request_stop()
+                    break
+
             await asyncio.sleep(max(0.0, frame_interval - elapsed))
 
-    def _detect_objects(self, frame) -> List[VisionObject]:
+    def _detect_objects(self, frame) -> tuple[List[VisionObject], List[DebugDetection]]:
         results = self._model(frame, verbose=False)
         if not results:
-            return []
+            return [], []
 
         result = results[0]
         if result.boxes is None:
-            return []
+            return [], []
 
         by_label: dict[str, float] = {}
+        debug_detections: List[DebugDetection] = []
         confidence_filtered = 0
         for box in result.boxes:
             confidence = float(box.conf[0].item())
+            class_index = int(box.cls[0].item())
+            label = result.names.get(class_index, str(class_index))
+            xyxy = box.xyxy[0].tolist()
+            debug_detections.append(
+                DebugDetection(
+                    class_name=label,
+                    confidence=confidence,
+                    box=(int(xyxy[0]), int(xyxy[1]), int(xyxy[2]), int(xyxy[3])),
+                )
+            )
             if confidence < self.config.objects_min_confidence:
                 confidence_filtered += 1
                 continue
 
-            class_index = int(box.cls[0].item())
-            label = result.names.get(class_index, str(class_index))
             existing = by_label.get(label, 0.0)
             if confidence > existing:
                 by_label[label] = confidence
@@ -195,16 +322,19 @@ class VisionNodeService:
             )
 
         sorted_objects = sorted(by_label.items(), key=lambda item: item[1], reverse=True)
-        return [
-            VisionObject(class_name=label, confidence=confidence)
-            for label, confidence in sorted_objects[: self.config.max_objects_per_snapshot]
-        ]
+        return (
+            [
+                VisionObject(class_name=label, confidence=confidence)
+                for label, confidence in sorted_objects[: self.config.max_objects_per_snapshot]
+            ],
+            debug_detections,
+        )
 
-    def _detect_gestures(self, frame) -> List[VisionGesture]:
+    def _detect_gestures(self, frame) -> tuple[List[VisionGesture], Sequence]:
         rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         results = self._hands.process(rgb_frame)
         if not results.multi_hand_landmarks:
-            return []
+            return [], []
 
         gestures: List[VisionGesture] = []
         confidence_filtered = 0
@@ -246,7 +376,7 @@ class VisionNodeService:
                 self.config.gestures_min_confidence,
             )
 
-        return [VisionGesture(name=name, confidence=confidence) for name, confidence in deduped.items()]
+        return [VisionGesture(name=name, confidence=confidence) for name, confidence in deduped.items()], results.multi_hand_landmarks
 
     def _build_snapshot(self, objects: List[VisionObject], gestures: List[VisionGesture]) -> VisionSnapshotMessage:
         summary = self._build_scene_summary(objects, gestures)
@@ -324,61 +454,3 @@ class VisionNodeService:
         if not noun:
             return "something"
         return f"an {noun}" if noun[0].lower() in {"a", "e", "i", "o", "u"} else f"a {noun}"
-
-
-def parse_args() -> VisionNodeConfig:
-    parser = argparse.ArgumentParser(description="JARVIS distributed vision node")
-    parser.add_argument("--server-url", required=True, help="WebSocket server URL exposed by the main PC")
-    parser.add_argument("--node-id", default="laptop-vision-node", help="Stable node identifier")
-    parser.add_argument("--camera-index", type=int, default=0, help="OpenCV camera index")
-    parser.add_argument("--fps", type=float, default=12.0, help="Target processing FPS")
-    parser.add_argument("--send-interval-ms", type=int, default=120, help="Minimum interval between semantic snapshots")
-    parser.add_argument("--max-snapshots-per-second", type=float, default=6.0, help="Hard cap for snapshot send rate")
-    parser.add_argument("--yolo-every-n-frames", type=int, default=4, help="Run YOLO every N frames")
-    parser.add_argument("--reconnect-delay-sec", type=float, default=3.0, help="Reconnect delay after transport failure")
-    parser.add_argument("--model-name", default="yolov8n.pt", help="Ultralytics model name or path")
-    parser.add_argument("--objects-min-confidence", type=float, default=0.60, help="Minimum object confidence to include")
-    parser.add_argument("--gestures-min-confidence", type=float, default=0.70, help="Minimum gesture confidence to include")
-    parser.add_argument("--delta-threshold", type=float, default=0.12, help="Confidence delta threshold for resend")
-    args = parser.parse_args()
-
-    return VisionNodeConfig(
-        server_url=args.server_url,
-        node_id=args.node_id,
-        camera_index=args.camera_index,
-        target_fps=args.fps,
-        send_interval_ms=args.send_interval_ms,
-        max_snapshots_per_second=args.max_snapshots_per_second,
-        yolo_every_n_frames=args.yolo_every_n_frames,
-        reconnect_delay_sec=args.reconnect_delay_sec,
-        model_name=args.model_name,
-        objects_min_confidence=args.objects_min_confidence,
-        gestures_min_confidence=args.gestures_min_confidence,
-        delta_threshold=args.delta_threshold,
-    )
-
-
-async def _main() -> None:
-    config = parse_args()
-    service = VisionNodeService(config)
-    loop = asyncio.get_running_loop()
-
-    for sig in (signal.SIGINT, signal.SIGTERM):
-        try:
-            loop.add_signal_handler(sig, service.request_stop)
-        except NotImplementedError:  # pragma: no cover - Windows fallback
-            signal.signal(sig, lambda *_: service.request_stop())
-
-    await service.run_forever()
-
-
-def main() -> None:
-    logging.basicConfig(
-        level=logging.INFO,
-        format="[%(asctime)s] [%(levelname)s] %(name)s: %(message)s",
-    )
-    asyncio.run(_main())
-
-
-if __name__ == "__main__":
-    main()
