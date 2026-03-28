@@ -24,7 +24,7 @@ The vision node intentionally uses a CPU-only PyTorch install by default, and `r
 ## Run
 
 ```bash
-python main.py --server-url ws://MAIN-PC-IP:8765/vision --node-id laptop-vision-node
+python main.py --server-url ws://MAIN-PC-IP:8765/vision --node-id laptop-vision-node --open-timeout-sec 20
 ```
 
 Interactive launcher:
@@ -36,7 +36,7 @@ Interactive launcher:
 Non-interactive launcher:
 
 ```bash
-./run_vision_node.sh --server-url ws://MAIN-PC-IP:8765/vision --debug-ui
+./run_vision_node.sh --server-url ws://MAIN-PC-IP:8765/vision --open-timeout-sec 20 --debug-ui
 ```
 
 Debug mode with overlays:

@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass
 import logging
+from urllib.parse import urlparse
 import time
 from typing import Dict, List, Sequence
 from uuid import uuid4
@@ -47,7 +48,7 @@ HANDHELD_OBJECT_CLASSES = {
     "spoon",
     "sports ball",
     "toothbrush",
-    "wine glass",
+    "ciggarette",
 }
 
 try:
@@ -159,7 +160,7 @@ class VisionNodeConfig:
     max_snapshots_per_second: float = 6.0
     yolo_every_n_frames: int = 4
     reconnect_delay_sec: float = 3.0
-    websocket_open_timeout_sec: float = 8.0
+    websocket_open_timeout_sec: float = 20.0
     model_name: str = "yolov8n.pt"
     pinch_distance_threshold: float = 0.09
     min_detection_confidence: float = 0.45
@@ -226,6 +227,7 @@ class VisionNodeService:
             max(1, self.config.debug_skip_frames),
         )
         LOGGER.info("Connecting to %s", self.config.server_url)
+        await self._preflight_endpoint_check()
         async with websockets.connect(
             self.config.server_url,
             open_timeout=self.config.websocket_open_timeout_sec,
@@ -235,6 +237,40 @@ class VisionNodeService:
         ) as websocket:
             LOGGER.info("Connected to %s", self.config.server_url)
             await self._capture_loop(websocket)
+
+    async def _preflight_endpoint_check(self) -> None:
+        parsed = urlparse(self.config.server_url)
+        host = parsed.hostname
+        if not host:
+            raise RuntimeError(f"Invalid server URL (missing host): {self.config.server_url}")
+
+        if parsed.scheme not in {"ws", "wss"}:
+            raise RuntimeError(
+                f"Invalid server URL scheme '{parsed.scheme}'. Use ws:// or wss:// in {self.config.server_url}"
+            )
+
+        default_port = 443 if parsed.scheme == "wss" else 80
+        port = parsed.port or default_port
+
+        writer: asyncio.StreamWriter | None = None
+        try:
+            connect_timeout = min(5.0, max(1.0, self.config.websocket_open_timeout_sec * 0.5))
+            _, writer = await asyncio.wait_for(
+                asyncio.open_connection(host, port),
+                timeout=connect_timeout,
+            )
+        except Exception as exc:
+            raise RuntimeError(
+                "TCP preflight to WebSocket endpoint failed "
+                f"({host}:{port}). Verify IP, port, firewall, and that the main PC is listening on /vision."
+            ) from exc
+        finally:
+            if writer is not None:
+                writer.close()
+                try:
+                    await writer.wait_closed()
+                except Exception:
+                    pass
 
     def _open_capture(self) -> None:
         self._close_capture()

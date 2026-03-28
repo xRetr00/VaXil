@@ -18,6 +18,7 @@ def parse_args() -> VisionNodeConfig:
     parser.add_argument("--max-snapshots-per-second", type=float, default=6.0, help="Hard cap for snapshot send rate")
     parser.add_argument("--yolo-every-n-frames", type=int, default=4, help="Run YOLO every N frames")
     parser.add_argument("--reconnect-delay-sec", type=float, default=3.0, help="Reconnect delay after transport failure")
+    parser.add_argument("--open-timeout-sec", type=float, default=20.0, help="WebSocket opening handshake timeout")
     parser.add_argument("--model-name", default="yolov8n.pt", help="Ultralytics model name or path")
     parser.add_argument("--objects-min-confidence", type=float, default=0.60, help="Minimum object confidence to include")
     parser.add_argument("--gestures-min-confidence", type=float, default=0.70, help="Minimum gesture confidence to include")
@@ -40,6 +41,7 @@ def parse_args() -> VisionNodeConfig:
         max_snapshots_per_second=args.max_snapshots_per_second,
         yolo_every_n_frames=args.yolo_every_n_frames,
         reconnect_delay_sec=args.reconnect_delay_sec,
+        websocket_open_timeout_sec=args.open_timeout_sec,
         model_name=args.model_name,
         objects_min_confidence=args.objects_min_confidence,
         gestures_min_confidence=args.gestures_min_confidence,

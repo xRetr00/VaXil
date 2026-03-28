@@ -11,6 +11,7 @@ FPS="${FPS:-12}"
 SEND_INTERVAL_MS="${SEND_INTERVAL_MS:-120}"
 MAX_SNAPSHOTS_PER_SECOND="${MAX_SNAPSHOTS_PER_SECOND:-6}"
 YOLO_EVERY_N_FRAMES="${YOLO_EVERY_N_FRAMES:-4}"
+OPEN_TIMEOUT_SEC="${OPEN_TIMEOUT_SEC:-20}"
 DEFAULT_MODEL_NAME="yolov8n.pt"
 MODEL_NAME="${MODEL_NAME:-}"
 OBJECTS_MIN_CONFIDENCE="${OBJECTS_MIN_CONFIDENCE:-0.60}"
@@ -193,6 +194,7 @@ Options:
   --send-interval-ms N             Minimum send interval (default: 120)
   --max-snapshots-per-second N     Hard send cap (default: 6)
   --yolo-every-n-frames N          Run YOLO every N frames (default: 4)
+  --open-timeout-sec N             WebSocket opening handshake timeout (default: 20)
   --model-name NAME                YOLO model name/path (skips model selection prompt)
   --objects-min-confidence N       Object threshold (default: 0.60)
   --gestures-min-confidence N      Gesture threshold (default: 0.70)
@@ -710,6 +712,10 @@ parse_args() {
         YOLO_EVERY_N_FRAMES="$(sanitize_value "${2:-}")"
         shift 2
         ;;
+      --open-timeout-sec)
+        OPEN_TIMEOUT_SEC="$(sanitize_value "${2:-}")"
+        shift 2
+        ;;
       --model-name)
         MODEL_NAME="$(sanitize_value "${2:-}")"
         shift 2
@@ -785,6 +791,7 @@ print_summary() {
   Send interval (ms):      ${SEND_INTERVAL_MS}
   Max snapshots/sec:       ${MAX_SNAPSHOTS_PER_SECOND}
   YOLO every N frames:     ${YOLO_EVERY_N_FRAMES}
+  Open timeout (sec):      ${OPEN_TIMEOUT_SEC}
   Model:                   ${MODEL_NAME}
   Objects min confidence:  ${OBJECTS_MIN_CONFIDENCE}
   Gestures min confidence: ${GESTURES_MIN_CONFIDENCE}
@@ -818,6 +825,7 @@ main() {
     --send-interval-ms "${SEND_INTERVAL_MS}"
     --max-snapshots-per-second "${MAX_SNAPSHOTS_PER_SECOND}"
     --yolo-every-n-frames "${YOLO_EVERY_N_FRAMES}"
+    --open-timeout-sec "${OPEN_TIMEOUT_SEC}"
     --model-name "${MODEL_NAME}"
     --objects-min-confidence "${OBJECTS_MIN_CONFIDENCE}"
     --gestures-min-confidence "${GESTURES_MIN_CONFIDENCE}"
