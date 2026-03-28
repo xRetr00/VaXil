@@ -4,6 +4,7 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QProcessEnvironment>
 #include <QSet>
 #include <QRegularExpression>
 #include <QStandardPaths>
@@ -270,6 +271,47 @@ bool SherpaWakeWordEngine::startHelperProcess()
     m_helperProcess->setProgram(m_helperPath);
     m_helperProcess->setArguments(args);
     m_helperProcess->setWorkingDirectory(QFileInfo(m_helperPath).absolutePath());
+
+    // Make runtime library resolution explicit for the helper process.
+    QStringList runtimeSearchPaths;
+    const QFileInfo runtimeInfo(m_runtimeRoot);
+    const QString runtimeBaseDir = runtimeInfo.isFile()
+        ? runtimeInfo.absolutePath()
+        : runtimeInfo.absoluteFilePath();
+    if (!runtimeBaseDir.isEmpty()) {
+        runtimeSearchPaths << runtimeBaseDir
+                           << (runtimeBaseDir + QStringLiteral("/lib"))
+                           << (runtimeBaseDir + QStringLiteral("/bin"));
+    }
+    runtimeSearchPaths << QFileInfo(m_helperPath).absolutePath();
+
+    QStringList existingRuntimeDirs;
+    existingRuntimeDirs.reserve(runtimeSearchPaths.size());
+    for (const QString &candidate : std::as_const(runtimeSearchPaths)) {
+        if (!candidate.isEmpty() && QFileInfo(candidate).exists()) {
+            existingRuntimeDirs.push_back(QFileInfo(candidate).absoluteFilePath());
+        }
+    }
+    existingRuntimeDirs.removeDuplicates();
+
+    if (!existingRuntimeDirs.isEmpty()) {
+        QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+#if defined(Q_OS_WIN)
+        const QString existingPath = env.value(QStringLiteral("PATH"));
+        env.insert(
+            QStringLiteral("PATH"),
+            existingRuntimeDirs.join(QStringLiteral(";"))
+                + (existingPath.isEmpty() ? QString() : QStringLiteral(";") + existingPath));
+#else
+        const QString existingLdLibraryPath = env.value(QStringLiteral("LD_LIBRARY_PATH"));
+        env.insert(
+            QStringLiteral("LD_LIBRARY_PATH"),
+            existingRuntimeDirs.join(QStringLiteral(":"))
+                + (existingLdLibraryPath.isEmpty() ? QString() : QStringLiteral(":") + existingLdLibraryPath));
+#endif
+        m_helperProcess->setProcessEnvironment(env);
+    }
+
     m_helperProcess->start();
     if (!m_helperProcess->waitForStarted(3000)) {
         const QString message = m_helperProcess->errorString().trimmed().isEmpty()
