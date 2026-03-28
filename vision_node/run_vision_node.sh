@@ -15,6 +15,7 @@ MODEL_NAME="${MODEL_NAME:-yolov8n.pt}"
 OBJECTS_MIN_CONFIDENCE="${OBJECTS_MIN_CONFIDENCE:-0.60}"
 GESTURES_MIN_CONFIDENCE="${GESTURES_MIN_CONFIDENCE:-0.70}"
 DELTA_THRESHOLD="${DELTA_THRESHOLD:-0.12}"
+PIP_INDEX_URL="${PIP_INDEX_URL:-}"
 DEBUG_UI=0
 SKIP_INSTALL=0
 NON_INTERACTIVE=0
@@ -52,6 +53,7 @@ Options:
   --objects-min-confidence N       Object threshold (default: 0.60)
   --gestures-min-confidence N      Gesture threshold (default: 0.70)
   --delta-threshold N              Resend delta threshold (default: 0.12)
+  --pip-index-url URL              Override pip package index for dependency install
   --debug-ui                       Enable OpenCV debug window
   --python PATH                    Python interpreter to use
   --skip-install                   Do not offer dependency install
@@ -126,10 +128,52 @@ ensure_virtualenv() {
   fi
 }
 
+install_requirements() {
+  local active_python="$1"
+  local install_attempt=1
+  local max_attempts=3
+  local attempt_index_url="${PIP_INDEX_URL}"
+  local -a pip_args=(
+    -m pip install
+    --no-cache-dir
+    --prefer-binary
+    --retries 5
+    --timeout 60
+    -r "${ROOT_DIR}/requirements.txt"
+  )
+  local -a install_cmd=()
+
+  while [[ ${install_attempt} -le ${max_attempts} ]]; do
+    if [[ -z "${attempt_index_url}" && ${install_attempt} -ge 2 ]]; then
+      attempt_index_url="https://pypi.org/simple"
+    fi
+
+    log_info "Installing Python dependencies (attempt ${install_attempt}/${max_attempts})..."
+    if [[ -n "${attempt_index_url}" ]]; then
+      log_info "Using pip index: ${attempt_index_url}"
+    fi
+
+    install_cmd=("${active_python}" "${pip_args[@]}")
+    if [[ -n "${attempt_index_url}" ]]; then
+      install_cmd+=(--index-url "${attempt_index_url}")
+    fi
+
+    if env PIP_DISABLE_PIP_VERSION_CHECK=1 "${install_cmd[@]}"; then
+      return 0
+    fi
+
+    log_warn "Dependency installation attempt ${install_attempt} failed."
+    install_attempt=$((install_attempt + 1))
+    if [[ ${install_attempt} -le ${max_attempts} ]]; then
+      sleep 2
+    fi
+  done
+
+  return 1
+}
+
 ensure_requirements() {
   local active_python="${PYTHON_BIN}"
-  local install_attempt=1
-  local install_success=0
   if [[ -x "${VENV_DIR}/bin/python" ]]; then
     active_python="${VENV_DIR}/bin/python"
   fi
@@ -152,26 +196,33 @@ EOF
   fi
 
   if prompt_yes_no "Install vision node Python dependencies from requirements.txt?" "y"; then
-    while [[ ${install_attempt} -le 3 ]]; do
-      log_info "Installing Python dependencies (attempt ${install_attempt}/3)..."
-      if PIP_DISABLE_PIP_VERSION_CHECK=1 \
-        "${active_python}" -m pip install --no-cache-dir --retries 3 --timeout 60 \
-        -r "${ROOT_DIR}/requirements.txt"; then
-        install_success=1
-        break
+    if ! install_requirements "${active_python}"; then
+      if [[ "${NON_INTERACTIVE}" -eq 0 ]] && prompt_yes_no "Dependency install failed. Retry with a custom pip index URL?" "n"; then
+        PIP_INDEX_URL="$(prompt_value "Enter pip index URL" "https://pypi.org/simple")"
+        if ! install_requirements "${active_python}"; then
+          log_error "Unable to install Python dependencies after retrying with ${PIP_INDEX_URL}."
+          exit 1
+        fi
+      else
+        log_error "Unable to install Python dependencies after multiple attempts."
+        log_error "You can retry later with:"
+        if [[ -n "${PIP_INDEX_URL}" ]]; then
+          log_error "  ${active_python} -m pip install --no-cache-dir --prefer-binary --index-url ${PIP_INDEX_URL} -r ${ROOT_DIR}/requirements.txt"
+        else
+          log_error "  ${active_python} -m pip install --no-cache-dir --prefer-binary -r ${ROOT_DIR}/requirements.txt"
+        fi
+        exit 1
       fi
+    fi
 
-      log_warn "Dependency installation attempt ${install_attempt} failed."
-      install_attempt=$((install_attempt + 1))
-      if [[ ${install_attempt} -le 3 ]]; then
-        sleep 2
-      fi
-    done
-
-    if [[ ${install_success} -ne 1 ]]; then
-      log_error "Unable to install Python dependencies after multiple attempts."
-      log_error "You can retry later with:"
-      log_error "  ${active_python} -m pip install --no-cache-dir -r ${ROOT_DIR}/requirements.txt"
+    if ! "${active_python}" - <<'EOF' >/dev/null 2>&1
+import importlib.util
+modules = ("cv2", "mediapipe", "ultralytics", "websockets")
+missing = [name for name in modules if importlib.util.find_spec(name) is None]
+raise SystemExit(1 if missing else 0)
+EOF
+    then
+      log_error "Dependency installation completed but required modules are still missing."
       exit 1
     fi
   fi
@@ -224,6 +275,10 @@ parse_args() {
         ;;
       --delta-threshold)
         DELTA_THRESHOLD="${2:-}"
+        shift 2
+        ;;
+      --pip-index-url)
+        PIP_INDEX_URL="${2:-}"
         shift 2
         ;;
       --debug-ui)
@@ -285,6 +340,8 @@ EOF
 }
 
 main() {
+  local -a run_cmd=()
+
   parse_args "$@"
   ensure_python
   ensure_virtualenv
@@ -293,19 +350,26 @@ main() {
   print_summary
 
   cd "${ROOT_DIR}"
-  exec "${PYTHON_BIN}" "${ROOT_DIR}/main.py" \
-    --server-url "${SERVER_URL}" \
-    --node-id "${NODE_ID}" \
-    --camera-index "${CAMERA_INDEX}" \
-    --fps "${FPS}" \
-    --send-interval-ms "${SEND_INTERVAL_MS}" \
-    --max-snapshots-per-second "${MAX_SNAPSHOTS_PER_SECOND}" \
-    --yolo-every-n-frames "${YOLO_EVERY_N_FRAMES}" \
-    --model-name "${MODEL_NAME}" \
-    --objects-min-confidence "${OBJECTS_MIN_CONFIDENCE}" \
-    --gestures-min-confidence "${GESTURES_MIN_CONFIDENCE}" \
-    --delta-threshold "${DELTA_THRESHOLD}" \
-    $( [[ "${DEBUG_UI}" -eq 1 ]] && printf '%s' '--debug-ui' )
+  run_cmd=(
+    "${PYTHON_BIN}" "${ROOT_DIR}/main.py"
+    --server-url "${SERVER_URL}"
+    --node-id "${NODE_ID}"
+    --camera-index "${CAMERA_INDEX}"
+    --fps "${FPS}"
+    --send-interval-ms "${SEND_INTERVAL_MS}"
+    --max-snapshots-per-second "${MAX_SNAPSHOTS_PER_SECOND}"
+    --yolo-every-n-frames "${YOLO_EVERY_N_FRAMES}"
+    --model-name "${MODEL_NAME}"
+    --objects-min-confidence "${OBJECTS_MIN_CONFIDENCE}"
+    --gestures-min-confidence "${GESTURES_MIN_CONFIDENCE}"
+    --delta-threshold "${DELTA_THRESHOLD}"
+  )
+
+  if [[ "${DEBUG_UI}" -eq 1 ]]; then
+    run_cmd+=(--debug-ui)
+  fi
+
+  exec "${run_cmd[@]}"
 }
 
 main "$@"
