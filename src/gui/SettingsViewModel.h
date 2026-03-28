@@ -21,6 +21,13 @@ class SettingsViewModel : public QObject
     Q_PROPERTY(bool autoRoutingEnabled READ autoRoutingEnabled NOTIFY settingsChanged)
     Q_PROPERTY(bool streamingEnabled READ streamingEnabled NOTIFY settingsChanged)
     Q_PROPERTY(int requestTimeoutMs READ requestTimeoutMs NOTIFY settingsChanged)
+    Q_PROPERTY(bool visionEnabled READ visionEnabled NOTIFY settingsChanged)
+    Q_PROPERTY(QString visionEndpoint READ visionEndpoint NOTIFY settingsChanged)
+    Q_PROPERTY(int visionTimeoutMs READ visionTimeoutMs NOTIFY settingsChanged)
+    Q_PROPERTY(int visionStaleThresholdMs READ visionStaleThresholdMs NOTIFY settingsChanged)
+    Q_PROPERTY(bool visionContextAlwaysOn READ visionContextAlwaysOn NOTIFY settingsChanged)
+    Q_PROPERTY(double visionObjectsMinConfidence READ visionObjectsMinConfidence NOTIFY settingsChanged)
+    Q_PROPERTY(double visionGesturesMinConfidence READ visionGesturesMinConfidence NOTIFY settingsChanged)
     Q_PROPERTY(bool clickThroughEnabled READ clickThroughEnabled NOTIFY settingsChanged)
     Q_PROPERTY(QStringList voicePresetNames READ voicePresetNames NOTIFY settingsChanged)
     Q_PROPERTY(QStringList voicePresetIds READ voicePresetIds NOTIFY settingsChanged)
@@ -99,6 +106,13 @@ public:
     bool autoRoutingEnabled() const;
     bool streamingEnabled() const;
     int requestTimeoutMs() const;
+    bool visionEnabled() const;
+    QString visionEndpoint() const;
+    int visionTimeoutMs() const;
+    int visionStaleThresholdMs() const;
+    bool visionContextAlwaysOn() const;
+    double visionObjectsMinConfidence() const;
+    double visionGesturesMinConfidence() const;
     bool clickThroughEnabled() const;
     QStringList voicePresetNames() const;
     QStringList voicePresetIds() const;
@@ -179,6 +193,13 @@ public:
     Q_INVOKABLE void setWakeEngineKind(const QString &kind);
     Q_INVOKABLE void setTtsEngineKind(const QString &kind);
     Q_INVOKABLE void saveAudioProcessing(bool aecEnabled, bool rnnoiseEnabled, double vadSensitivity);
+    Q_INVOKABLE void saveVisionSettings(bool enabled,
+                                        const QString &endpoint,
+                                        int timeoutMs,
+                                        int staleThresholdMs,
+                                        bool contextAlwaysOn,
+                                        double objectsMinConfidence,
+                                        double gesturesMinConfidence);
     Q_INVOKABLE void saveAgentSettings(bool enabled,
                                        const QString &providerMode,
                                        double conversationTemperature,

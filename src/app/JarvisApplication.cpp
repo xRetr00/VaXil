@@ -79,6 +79,11 @@ bool JarvisApplication::initialize()
     qRegisterMetaType<AudioProcessingConfig>("AudioProcessingConfig");
     qRegisterMetaType<AiMessage>("AiMessage");
     qRegisterMetaType<QList<AiMessage>>("QList<AiMessage>");
+    qRegisterMetaType<VisionObjectDetection>("VisionObjectDetection");
+    qRegisterMetaType<QList<VisionObjectDetection>>("QList<VisionObjectDetection>");
+    qRegisterMetaType<VisionGestureDetection>("VisionGestureDetection");
+    qRegisterMetaType<QList<VisionGestureDetection>>("QList<VisionGestureDetection>");
+    qRegisterMetaType<VisionSnapshot>("VisionSnapshot");
     qRegisterMetaType<ModelInfo>("ModelInfo");
     qRegisterMetaType<QList<ModelInfo>>("QList<ModelInfo>");
     qRegisterMetaType<AiAvailability>("AiAvailability");

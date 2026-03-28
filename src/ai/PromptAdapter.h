@@ -17,7 +17,8 @@ public:
         const QList<MemoryRecord> &memory,
         const AssistantIdentity &identity,
         const UserProfile &userProfile,
-        ReasoningMode mode) const;
+        ReasoningMode mode,
+        const QString &visionContext = QString()) const;
 
     QList<AiMessage> buildCommandMessages(
         const QString &input,
@@ -33,7 +34,8 @@ public:
         const QString &workspaceRoot,
         IntentType intent,
         const QList<AgentToolSpec> &availableTools,
-        ReasoningMode mode) const;
+        ReasoningMode mode,
+        const QString &visionContext = QString()) const;
 
     QString buildAgentInstructions(
         const QList<MemoryRecord> &memory,
@@ -43,14 +45,16 @@ public:
         const UserProfile &userProfile,
         const QString &workspaceRoot,
         IntentType intent,
-        bool memoryAutoWrite) const;
+        bool memoryAutoWrite,
+        const QString &visionContext = QString()) const;
 
     QList<AgentToolSpec> getRelevantTools(IntentType intent, const QList<AgentToolSpec> &availableTools) const;
     QString buildAgentWorldContext(
         IntentType intent,
         const QList<AgentToolSpec> &availableTools,
         const QList<MemoryRecord> &memory,
-        const QString &workspaceRoot) const;
+        const QString &workspaceRoot,
+        const QString &visionContext = QString()) const;
     QString applyReasoningMode(const QString &input, ReasoningMode mode) const;
 
 private:

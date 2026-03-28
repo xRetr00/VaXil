@@ -13,6 +13,7 @@ private slots:
     void promptAdapterAppliesDeepPrefix();
     void promptAdapterInjectsIdentityAndProfile();
     void promptAdapterInjectsRuntimeContext();
+    void promptAdapterInjectsVisionContext();
     void promptAdapterSelectsComputerToolsForGeneralChat();
     void spokenReplyParsesStructuredPayload();
     void spokenReplyFallsBackToSanitizedPlainText();
@@ -81,6 +82,27 @@ void AiServicesTests::promptAdapterInjectsRuntimeContext()
     QVERIFY(messages.first().content.contains(QStringLiteral("wake phrase: Jarvis")));
     QVERIFY(messages.first().content.contains(QStringLiteral("timezone:")));
     QVERIFY(messages.first().content.contains(QStringLiteral("Spoken-safe output only")));
+}
+
+void AiServicesTests::promptAdapterInjectsVisionContext()
+{
+    PromptAdapter adapter;
+
+    const auto messages = adapter.buildConversationMessages(
+        QStringLiteral("What am I holding?"),
+        {},
+        {},
+        {
+            .assistantName = QStringLiteral("JARVIS"),
+            .personality = QStringLiteral("calm"),
+            .tone = QStringLiteral("confident"),
+            .addressingStyle = QStringLiteral("direct")
+        },
+        {},
+        ReasoningMode::Balanced,
+        QStringLiteral("User appears to be holding a red can"));
+
+    QVERIFY(messages.first().content.contains(QStringLiteral("current scene summary: User appears to be holding a red can")));
 }
 
 void AiServicesTests::promptAdapterSelectsComputerToolsForGeneralChat()

@@ -260,7 +260,8 @@ QList<AiMessage> PromptAdapter::buildConversationMessages(
     const QList<MemoryRecord> &memory,
     const AssistantIdentity &identity,
     const UserProfile &userProfile,
-    ReasoningMode mode) const
+    ReasoningMode mode,
+    const QString &visionContext) const
 {
     QString systemPrompt =
         QStringLiteral("You are %1, a %2 desktop AI assistant. "
@@ -287,6 +288,9 @@ QList<AiMessage> PromptAdapter::buildConversationMessages(
     systemPrompt += QStringLiteral("\nCurrent runtime context:");
     systemPrompt += QStringLiteral("\n%1").arg(currentTimeContext());
     systemPrompt += QStringLiteral("\n- wake phrase: Jarvis");
+    if (!visionContext.trimmed().isEmpty()) {
+        systemPrompt += QStringLiteral("\n- current scene summary: %1").arg(visionContext.trimmed());
+    }
 
     systemPrompt += QStringLiteral("\nResponse contract:");
     systemPrompt += QStringLiteral("\n- If the user asks for steps, return a short numbered list.");
@@ -359,7 +363,8 @@ QList<AiMessage> PromptAdapter::buildHybridAgentMessages(
     const QString &workspaceRoot,
     IntentType intent,
     const QList<AgentToolSpec> &availableTools,
-    ReasoningMode mode) const
+    ReasoningMode mode,
+    const QString &visionContext) const
 {
     const QString userName = resolvedUserName(userProfile);
     QString systemPrompt;
@@ -372,7 +377,7 @@ QList<AiMessage> PromptAdapter::buildHybridAgentMessages(
     systemPrompt += QStringLiteral("\nRuntime:");
     systemPrompt += QStringLiteral("\n%1").arg(currentTimeContext());
     systemPrompt += QStringLiteral("\n</identity>\n");
-    systemPrompt += buildAgentWorldContext(intent, availableTools, memory, workspaceRoot);
+    systemPrompt += buildAgentWorldContext(intent, availableTools, memory, workspaceRoot, visionContext);
     systemPrompt += QStringLiteral("\n<output_contract>");
     systemPrompt += QStringLiteral("\nReturn exactly one JSON object with keys: intent, message, background_tasks.");
     systemPrompt += QStringLiteral("\nintent must be one of: LIST_FILES, READ_FILE, WRITE_FILE, MEMORY_WRITE, GENERAL_CHAT.");
@@ -416,7 +421,8 @@ QString PromptAdapter::buildAgentInstructions(
     const UserProfile &userProfile,
     const QString &workspaceRoot,
     IntentType intent,
-    bool memoryAutoWrite) const
+    bool memoryAutoWrite,
+    const QString &visionContext) const
 {
     const QString userName = resolvedUserName(userProfile);
     QString instructions;
@@ -430,7 +436,7 @@ QString PromptAdapter::buildAgentInstructions(
     instructions += QStringLiteral("\n%1").arg(currentTimeContext());
     instructions += QStringLiteral("\n- wake phrase: Jarvis");
     instructions += QStringLiteral("\n</identity>\n");
-    instructions += buildAgentWorldContext(intent, availableTools, memory, workspaceRoot);
+    instructions += buildAgentWorldContext(intent, availableTools, memory, workspaceRoot, visionContext);
     instructions += QStringLiteral("\n<agent_mode>");
     instructions += QStringLiteral("\nUse tool calls instead of guessing when the request depends on files, logs, memory, skills, or the web.");
     instructions += QStringLiteral("\nFor web requests and factual/current questions, call web_search before giving a factual final answer.");
@@ -483,13 +489,18 @@ QString PromptAdapter::buildAgentWorldContext(
     IntentType intent,
     const QList<AgentToolSpec> &availableTools,
     const QList<MemoryRecord> &memory,
-    const QString &workspaceRoot) const
+    const QString &workspaceRoot,
+    const QString &visionContext) const
 {
     QString worldContext;
     worldContext += QStringLiteral("<agent_world>");
     worldContext += QStringLiteral("\nExpected intent: %1").arg(intentName(intent));
     worldContext += QStringLiteral("\nYou know your tools, runtime boundaries, and log locations from the sections below.");
     worldContext += QStringLiteral("\nNever guess file, log, or web contents when a tool can verify them.");
+    if (!visionContext.trimmed().isEmpty()) {
+        worldContext += QStringLiteral("\nLatest optional scene summary: %1").arg(visionContext.trimmed());
+        worldContext += QStringLiteral("\nPrefer the scene summary over raw detections unless the user explicitly asks for object or gesture details.");
+    }
     worldContext += QStringLiteral("\n</agent_world>\n");
     worldContext += buildToolSchemaContext(getRelevantTools(intent, availableTools));
     worldContext += QStringLiteral("\n");

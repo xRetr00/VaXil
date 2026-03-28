@@ -79,6 +79,13 @@ Window {
         autoRoutingCheck.checked = settingsVm.autoRoutingEnabled
         streamCheck.checked = settingsVm.streamingEnabled
         timeoutSpin.value = settingsVm.requestTimeoutMs
+        visionEnabledCheck.checked = settingsVm.visionEnabled
+        visionEndpointField.text = settingsVm.visionEndpoint
+        visionTimeoutSpin.value = settingsVm.visionTimeoutMs
+        visionStaleThresholdSpin.value = settingsVm.visionStaleThresholdMs
+        visionContextAlwaysOnCheck.checked = settingsVm.visionContextAlwaysOn
+        visionObjectsMinConfidenceSlider.value = settingsVm.visionObjectsMinConfidence
+        visionGesturesMinConfidenceSlider.value = settingsVm.visionGesturesMinConfidence
         clickThroughCheck.checked = settingsVm.clickThroughEnabled
         agentEnabledCheck.checked = settingsVm.agentEnabled
         agentProviderField.text = settingsVm.agentProviderMode
@@ -1068,6 +1075,154 @@ Window {
                                         clickThroughCheck.checked
                                     )
                                 }
+                            }
+                        }
+                    }
+                }
+            }
+
+            Rectangle {
+                width: parent.width
+                implicitHeight: visionColumn.implicitHeight + 44
+                radius: 30
+                color: "#9208111d"
+                border.width: 1
+                border.color: "#1d2f4d"
+
+                ColumnLayout {
+                    id: visionColumn
+                    anchors.fill: parent
+                    anchors.margins: 22
+                    spacing: 14
+
+                    Text {
+                        text: "Distributed Vision"
+                        color: "#eef7ff"
+                        font.pixelSize: 22
+                        font.weight: Font.Medium
+                    }
+
+                    Text {
+                        text: "Optional semantic vision ingest. The main PC hosts a WebSocket endpoint and the laptop vision node connects to it."
+                        color: "#8099b8"
+                        font.pixelSize: 14
+                        wrapMode: Text.Wrap
+                    }
+
+                    CheckBox {
+                        id: visionEnabledCheck
+                        text: "Enable vision ingest"
+                        checked: settingsVm.visionEnabled
+                    }
+
+                    CheckBox {
+                        id: visionContextAlwaysOnCheck
+                        text: "Always allow vision context in prompts"
+                        checked: settingsVm.visionContextAlwaysOn
+                    }
+
+                    Text {
+                        text: "WebSocket endpoint"
+                        color: "#c9def3"
+                        font.pixelSize: 13
+                    }
+                    TextField {
+                        id: visionEndpointField
+                        Layout.fillWidth: true
+                        text: settingsVm.visionEndpoint
+                        placeholderText: "ws://0.0.0.0:8765/vision"
+                    }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            Text { text: "Transport timeout"; color: "#c9def3"; font.pixelSize: 13 }
+                            SpinBox {
+                                id: visionTimeoutSpin
+                                Layout.fillWidth: true
+                                from: 1000
+                                to: 60000
+                                stepSize: 500
+                                value: settingsVm.visionTimeoutMs
+                            }
+                        }
+
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            Text { text: "Stale drop threshold"; color: "#c9def3"; font.pixelSize: 13 }
+                            SpinBox {
+                                id: visionStaleThresholdSpin
+                                Layout.fillWidth: true
+                                from: 100
+                                to: 10000
+                                stepSize: 100
+                                value: settingsVm.visionStaleThresholdMs
+                            }
+                        }
+                    }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            Text { text: "Objects min confidence"; color: "#c9def3"; font.pixelSize: 13 }
+                            Slider {
+                                id: visionObjectsMinConfidenceSlider
+                                Layout.fillWidth: true
+                                from: 0.10
+                                to: 0.95
+                                value: settingsVm.visionObjectsMinConfidence
+                            }
+                            Text {
+                                text: visionObjectsMinConfidenceSlider.value.toFixed(2)
+                                color: "#9ab0ca"
+                                font.pixelSize: 12
+                            }
+                        }
+
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            Text { text: "Gestures min confidence"; color: "#c9def3"; font.pixelSize: 13 }
+                            Slider {
+                                id: visionGesturesMinConfidenceSlider
+                                Layout.fillWidth: true
+                                from: 0.10
+                                to: 0.95
+                                value: settingsVm.visionGesturesMinConfidence
+                            }
+                            Text {
+                                text: visionGesturesMinConfidenceSlider.value.toFixed(2)
+                                color: "#9ab0ca"
+                                font.pixelSize: 12
+                            }
+                        }
+                    }
+
+                    Text {
+                        text: "Vision snapshots older than the stale threshold are dropped before they reach the assistant. When disabled, the voice pipeline and assistant behavior remain unchanged."
+                        color: "#9ab0ca"
+                        font.pixelSize: 12
+                        wrapMode: Text.Wrap
+                    }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        Item { Layout.fillWidth: true }
+                        Button {
+                            text: "Save vision settings"
+                            onClicked: {
+                                settingsVm.saveVisionSettings(
+                                    visionEnabledCheck.checked,
+                                    visionEndpointField.text,
+                                    visionTimeoutSpin.value,
+                                    visionStaleThresholdSpin.value,
+                                    visionContextAlwaysOnCheck.checked,
+                                    visionObjectsMinConfidenceSlider.value,
+                                    visionGesturesMinConfidenceSlider.value
+                                )
                             }
                         }
                     }

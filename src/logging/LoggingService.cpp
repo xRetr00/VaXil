@@ -4,6 +4,7 @@
 #include <QDateTime>
 #include <QDir>
 #include <QFile>
+#include <QMutexLocker>
 #include <QRandomGenerator>
 #include <QStringConverter>
 #include <QTextStream>
@@ -61,6 +62,75 @@ void LoggingService::error(const QString &message) const
     if (m_logger) {
         m_logger->error(message.toStdString());
     }
+}
+
+bool LoggingService::shouldLogRateLimited(const QString &key, int intervalMs) const
+{
+    if (key.trimmed().isEmpty()) {
+        return true;
+    }
+
+    const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
+    QMutexLocker locker(&m_rateLimitMutex);
+    const qint64 previousMs = m_rateLimitedLogTimes.value(key, 0);
+    if (previousMs > 0 && (nowMs - previousMs) < intervalMs) {
+        return false;
+    }
+    m_rateLimitedLogTimes.insert(key, nowMs);
+    return true;
+}
+
+void LoggingService::logVisionSnapshot(const VisionSnapshot &snapshot, const QString &source) const
+{
+    const QString rateLimitKey = QStringLiteral("vision_snapshot_%1_%2")
+        .arg(snapshot.nodeId, snapshot.summary.left(96));
+    if (!shouldLogRateLimited(rateLimitKey, 1200)) {
+        return;
+    }
+
+    QStringList objects;
+    for (const auto &object : snapshot.objects) {
+        objects.push_back(QStringLiteral("%1(%2)")
+                              .arg(object.className)
+                              .arg(object.confidence, 0, 'f', 2));
+    }
+
+    QStringList gestures;
+    for (const auto &gesture : snapshot.gestures) {
+        gestures.push_back(QStringLiteral("%1(%2)")
+                               .arg(gesture.name)
+                               .arg(gesture.confidence, 0, 'f', 2));
+    }
+
+    info(QStringLiteral("Vision snapshot received. source=\"%1\" node=\"%2\" trace=\"%3\" summary=\"%4\" objects=[%5] gestures=[%6]")
+             .arg(source,
+                  snapshot.nodeId,
+                  snapshot.traceId,
+                  snapshot.summary,
+                  objects.join(QStringLiteral(", ")),
+                  gestures.join(QStringLiteral(", "))));
+}
+
+void LoggingService::logVisionStatus(const QString &message, const QString &rateLimitKey, int intervalMs) const
+{
+    if (!shouldLogRateLimited(rateLimitKey, intervalMs)) {
+        return;
+    }
+    info(message);
+}
+
+void LoggingService::logVisionDrop(const QString &reason,
+                                   const QString &detail,
+                                   const QString &rateLimitKey,
+                                   int intervalMs) const
+{
+    if (!shouldLogRateLimited(rateLimitKey, intervalMs)) {
+        return;
+    }
+
+    info(QStringLiteral("Vision snapshot dropped. snapshot_dropped_reason=\"%1\" detail=\"%2\"")
+             .arg(reason.trimmed().isEmpty() ? QStringLiteral("unknown") : reason.trimmed(),
+                  detail.trimmed()));
 }
 
 bool LoggingService::logAiExchange(const QString &prompt, const QString &response, const QString &source, const QString &status) const

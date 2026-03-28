@@ -1088,6 +1088,13 @@ int BackendFacade::defaultReasoningMode() const { return static_cast<int>(m_sett
 bool BackendFacade::autoRoutingEnabled() const { return m_settings->autoRoutingEnabled(); }
 bool BackendFacade::streamingEnabled() const { return m_settings->streamingEnabled(); }
 int BackendFacade::requestTimeoutMs() const { return m_settings->requestTimeoutMs(); }
+bool BackendFacade::visionEnabled() const { return m_settings->visionEnabled(); }
+QString BackendFacade::visionEndpoint() const { return m_settings->visionEndpoint(); }
+int BackendFacade::visionTimeoutMs() const { return m_settings->visionTimeoutMs(); }
+int BackendFacade::visionStaleThresholdMs() const { return m_settings->visionStaleThresholdMs(); }
+bool BackendFacade::visionContextAlwaysOn() const { return m_settings->visionContextAlwaysOn(); }
+double BackendFacade::visionObjectsMinConfidence() const { return m_settings->visionObjectsMinConfidence(); }
+double BackendFacade::visionGesturesMinConfidence() const { return m_settings->visionGesturesMinConfidence(); }
 bool BackendFacade::aecEnabled() const { return m_settings->aecEnabled(); }
 bool BackendFacade::rnnoiseEnabled() const { return m_settings->rnnoiseEnabled(); }
 double BackendFacade::vadSensitivity() const { return m_settings->vadSensitivity(); }
@@ -1324,6 +1331,26 @@ void BackendFacade::saveAudioProcessing(bool aecEnabled, bool rnnoiseEnabled, do
     m_settings->save();
     emit settingsChanged();
 }
+
+void BackendFacade::saveVisionSettings(bool enabled,
+                                       const QString &endpoint,
+                                       int timeoutMs,
+                                       int staleThresholdMs,
+                                       bool contextAlwaysOn,
+                                       double objectsMinConfidence,
+                                       double gesturesMinConfidence)
+{
+    m_settings->setVisionEnabled(enabled);
+    m_settings->setVisionEndpoint(endpoint);
+    m_settings->setVisionTimeoutMs(timeoutMs);
+    m_settings->setVisionStaleThresholdMs(staleThresholdMs);
+    m_settings->setVisionContextAlwaysOn(contextAlwaysOn);
+    m_settings->setVisionObjectsMinConfidence(objectsMinConfidence);
+    m_settings->setVisionGesturesMinConfidence(gesturesMinConfidence);
+    m_settings->save();
+    emit settingsChanged();
+}
+
 void BackendFacade::setSelectedVoicePresetId(const QString &voiceId)
 {
     const PiperVoicePreset *preset = findVoicePreset(voiceId);

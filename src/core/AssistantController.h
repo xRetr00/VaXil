@@ -13,6 +13,7 @@ class IntentDetector;
 class IntentEngine;
 class IntentRouter;
 class AiBackendClient;
+class GestureInterpreter;
 class LocalResponseEngine;
 class LoggingService;
 class MemoryStore;
@@ -26,8 +27,10 @@ class TaskDispatcher;
 class SpeechRecognizer;
 class TtsEngine;
 class ToolWorker;
+class VisionIngestService;
 class WakeWordEngine;
 class VoicePipelineRuntime;
+class WorldStateCache;
 
 class AssistantController : public QObject
 {
@@ -201,6 +204,14 @@ private:
     void startAgentConversationRequest(const QString &input, IntentType expectedIntent);
     void continueAgentConversation(const QList<AgentToolResult> &results);
     void startCommandRequest(const QString &input);
+    void handleVisionSnapshot(const VisionSnapshot &snapshot);
+    void handleGestureAction(const QString &actionName,
+                             const QString &sourceGesture,
+                             double confidence,
+                             const QString &traceId);
+    QString buildVisionPromptContext(const QString &input, IntentType intent) const;
+    bool shouldUseVisionContext(const QString &input, IntentType intent) const;
+    void applyVisionGestureTriggers(const VisionSnapshot &snapshot);
     void handleConversationFinished(const QString &text);
     void handleHybridAgentFinished(const QString &payload);
     void handleAgentResponse(const AgentResponse &response);
@@ -239,7 +250,10 @@ private:
     SpeechRecognizer *m_whisperSttEngine = nullptr;
     WakeWordEngine *m_wakeWordEngine = nullptr;
     TtsEngine *m_ttsEngine = nullptr;
+    VisionIngestService *m_visionIngestService = nullptr;
     VoicePipelineRuntime *m_voicePipelineRuntime = nullptr;
+    WorldStateCache *m_worldStateCache = nullptr;
+    GestureInterpreter *m_gestureInterpreter = nullptr;
     AssistantState m_currentState = AssistantState::Idle;
     DuplexState m_duplexState = DuplexState::Open;
     QString m_transcript;
@@ -258,6 +272,8 @@ private:
     AgentCapabilitySet m_agentCapabilities;
     QList<AgentTraceEntry> m_agentTrace;
     QList<BackgroundTaskResult> m_backgroundTaskResults;
+    qint64 m_lastVisionGestureTriggerMs = 0;
+    QString m_lastVisionGestureAction;
     bool m_backgroundPanelVisible = false;
     QString m_latestTaskToast;
     QString m_latestTaskToastTone = QStringLiteral("status");

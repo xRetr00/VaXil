@@ -41,6 +41,10 @@
 #include "stt/RuntimeSpeechRecognizer.h"
 #include "tts/TtsEngine.h"
 #include "tts/WorkerTtsEngine.h"
+#include "vision/VisionIngestService.h"
+#include "vision/GestureInterpreter.h"
+#include "vision/VisionContextGate.h"
+#include "vision/WorldStateCache.h"
 #include "wakeword/SherpaWakeWordEngine.h"
 #include "wakeword/WakeWordEngine.h"
 #include "workers/VoicePipelineRuntime.h"
@@ -456,6 +460,32 @@ bool isExplicitToolInventoryQuery(const QString &input)
         QStringLiteral("what tools can you reach"),
         QStringLiteral("correct tools available"),
         QStringLiteral("tools inside the workspace")
+    });
+}
+
+bool isVisionRelevantQuery(const QString &input)
+{
+    return containsAnyNormalized(input, {
+        QStringLiteral("what do you see"),
+        QStringLiteral("can you see"),
+        QStringLiteral("do you see"),
+        QStringLiteral("what am i holding"),
+        QStringLiteral("am i holding"),
+        QStringLiteral("holding"),
+        QStringLiteral("look at"),
+        QStringLiteral("look around"),
+        QStringLiteral("around me"),
+        QStringLiteral("in front of me"),
+        QStringLiteral("on my desk"),
+        QStringLiteral("on the desk"),
+        QStringLiteral("environment"),
+        QStringLiteral("room"),
+        QStringLiteral("camera"),
+        QStringLiteral("gesture"),
+        QStringLiteral("hand"),
+        QStringLiteral("object"),
+        QStringLiteral("what is this"),
+        QStringLiteral("what is that")
     });
 }
 
@@ -915,6 +945,9 @@ AssistantController::AssistantController(
     m_toolWorker = new ToolWorker(backgroundAllowedRoots(), m_loggingService, m_settings);
     m_whisperSttEngine = new RuntimeSpeechRecognizer(m_voicePipelineRuntime, this);
     m_ttsEngine = new WorkerTtsEngine(m_voicePipelineRuntime, this);
+    m_worldStateCache = new WorldStateCache(15000, 2000, this);
+    m_visionIngestService = new VisionIngestService(m_settings, m_loggingService, this);
+    m_gestureInterpreter = new GestureInterpreter(this);
     m_toolWorkerThread.setObjectName(QStringLiteral("BackgroundToolWorkerThread"));
     m_toolWorker->moveToThread(&m_toolWorkerThread);
     connect(&m_toolWorkerThread, &QThread::finished, m_toolWorker, &QObject::deleteLater);
@@ -928,6 +961,8 @@ AssistantController::AssistantController(
     connect(m_taskDispatcher, &TaskDispatcher::taskResultReady, this, [this](const QJsonObject &resultObject) {
         recordTaskResult(resultObject);
     }, Qt::QueuedConnection);
+    connect(m_visionIngestService, &VisionIngestService::visionSnapshotReceived, this, &AssistantController::handleVisionSnapshot, Qt::QueuedConnection);
+    connect(m_gestureInterpreter, &GestureInterpreter::actionInterpreted, this, &AssistantController::handleGestureAction, Qt::QueuedConnection);
     createWakeWordEngine();
 }
 
@@ -944,6 +979,9 @@ void AssistantController::initialize()
     m_statusText = QStringLiteral("Loading services...");
     if (!m_toolWorkerThread.isRunning()) {
         m_toolWorkerThread.start();
+    }
+    if (m_visionIngestService) {
+        m_visionIngestService->start();
     }
     m_voicePipelineRuntime->start();
     m_aiBackendClient->setProviderConfig(m_settings->chatBackendKind(), m_settings->chatBackendApiKey());
@@ -2499,7 +2537,8 @@ void AssistantController::startConversationRequest(const QString &input)
         requestMemory,
         m_identityProfileService->identity(),
         m_identityProfileService->userProfile(),
-        mode);
+        mode,
+        buildVisionPromptContext(input, IntentType::GENERAL_CHAT));
 
     m_activeRequestId = m_aiBackendClient->sendChatRequest(messages, modelId, {
         .mode = mode,
@@ -2549,6 +2588,7 @@ void AssistantController::startAgentConversationRequest(const QString &input, In
     requestMemory.push_front(runtimeToolStatusMemory(m_settings));
 
     if (directToolCalling) {
+        const QString visionContext = buildVisionPromptContext(input, expectedIntent);
         const AgentRequest request{
             .model = modelId,
             .instructions = m_promptAdapter->buildAgentInstructions(
@@ -2559,7 +2599,8 @@ void AssistantController::startAgentConversationRequest(const QString &input, In
                 m_identityProfileService->userProfile(),
                 QDir::currentPath(),
                 expectedIntent,
-                m_settings->memoryAutoWrite()),
+                m_settings->memoryAutoWrite(),
+                visionContext),
             .inputText = input,
             .previousResponseId = {},
             .tools = relevantTools,
@@ -2580,7 +2621,8 @@ void AssistantController::startAgentConversationRequest(const QString &input, In
         QDir::currentPath(),
         expectedIntent,
         relevantTools,
-        mode);
+        mode,
+        buildVisionPromptContext(input, expectedIntent));
 
     m_activeRequestId = m_aiBackendClient->sendChatRequest(messages, modelId, {
         .mode = mode,
@@ -2622,7 +2664,8 @@ void AssistantController::continueAgentConversation(const QList<AgentToolResult>
             m_identityProfileService->userProfile(),
             QDir::currentPath(),
             m_lastAgentIntent,
-            m_settings->memoryAutoWrite()),
+            m_settings->memoryAutoWrite(),
+            buildVisionPromptContext(m_lastAgentInput, m_lastAgentIntent)),
         .inputText = {},
         .previousResponseId = m_previousAgentResponseId,
         .tools = relevantTools,
@@ -2632,6 +2675,145 @@ void AssistantController::continueAgentConversation(const QList<AgentToolResult>
         .timeout = std::chrono::milliseconds(effectiveRequestTimeoutMs(m_settings))
     };
     m_activeRequestId = m_aiBackendClient->sendAgentRequest(request);
+}
+
+void AssistantController::handleVisionSnapshot(const VisionSnapshot &snapshot)
+{
+    if (!m_worldStateCache) {
+        return;
+    }
+
+    m_worldStateCache->setHistoryWindowMs(std::max(10000, m_settings->visionStaleThresholdMs() * 6));
+    m_worldStateCache->setMaxSnapshotAgeMs(m_settings->visionStaleThresholdMs());
+    if (!m_worldStateCache->ingestSnapshot(snapshot)) {
+        if (m_loggingService) {
+            m_loggingService->logVisionDrop(QStringLiteral("stale_rejected"),
+                                            QStringLiteral("trace=\"%1\" node=\"%2\"")
+                                                .arg(snapshot.traceId, snapshot.nodeId),
+                                            QStringLiteral("vision_cache_stale_%1").arg(snapshot.nodeId),
+                                            1200);
+        }
+        return;
+    }
+    if (m_loggingService) {
+        m_loggingService->logVisionSnapshot(snapshot);
+    }
+    applyVisionGestureTriggers(snapshot);
+}
+
+QString AssistantController::buildVisionPromptContext(const QString &input, IntentType intent) const
+{
+    if (!m_settings->visionEnabled() || !m_worldStateCache) {
+        return {};
+    }
+    if (!shouldUseVisionContext(input, intent)) {
+        return {};
+    }
+
+    const auto snapshot = m_worldStateCache->latestFreshSnapshot(m_settings->visionStaleThresholdMs());
+    if (!snapshot.has_value()) {
+        return {};
+    }
+
+    QString context = snapshot->summary.trimmed();
+    if (context.isEmpty()) {
+        context = m_worldStateCache->filteredSummary(m_settings->visionStaleThresholdMs());
+    }
+    if (context.isEmpty()) {
+        return {};
+    }
+
+    if (!VisionContextGate::needsRawVisionDetails(input)) {
+        return context;
+    }
+
+    QStringList objectNames;
+    for (const auto &object : snapshot->objects) {
+        objectNames.push_back(QStringLiteral("%1(%2)")
+                                  .arg(object.className)
+                                  .arg(object.confidence, 0, 'f', 2));
+    }
+
+    QStringList gestureNames;
+    for (const auto &gesture : snapshot->gestures) {
+        gestureNames.push_back(QStringLiteral("%1(%2)")
+                                   .arg(gesture.name)
+                                   .arg(gesture.confidence, 0, 'f', 2));
+    }
+
+    if (!objectNames.isEmpty()) {
+        context += QStringLiteral(" Objects: %1.").arg(objectNames.join(QStringLiteral(", ")));
+    }
+    if (!gestureNames.isEmpty()) {
+        context += QStringLiteral(" Gestures: %1.").arg(gestureNames.join(QStringLiteral(", ")));
+    }
+    return context;
+}
+
+bool AssistantController::shouldUseVisionContext(const QString &input, IntentType intent) const
+{
+    return VisionContextGate::shouldInject(
+        input,
+        intent,
+        m_worldStateCache != nullptr && m_worldStateCache->isFresh(m_settings->visionStaleThresholdMs()),
+        m_settings->visionContextAlwaysOn(),
+        (QDateTime::currentMSecsSinceEpoch() - m_lastVisionGestureTriggerMs) <= 3000);
+}
+
+void AssistantController::applyVisionGestureTriggers(const VisionSnapshot &snapshot)
+{
+    if (!m_gestureInterpreter) {
+        return;
+    }
+    m_gestureInterpreter->ingestSnapshot(snapshot);
+}
+
+void AssistantController::handleGestureAction(const QString &actionName,
+                                              const QString &sourceGesture,
+                                              double confidence,
+                                              const QString &traceId)
+{
+    Q_UNUSED(traceId);
+
+    const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
+    if ((nowMs - m_lastVisionGestureTriggerMs) < 1500) {
+        return;
+    }
+
+    m_lastVisionGestureTriggerMs = nowMs;
+    m_lastVisionGestureAction = actionName;
+
+    if (m_loggingService) {
+        m_loggingService->logVisionStatus(
+            QStringLiteral("Vision gesture interpreted. action=\"%1\" source=\"%2\" confidence=%3")
+                .arg(actionName, sourceGesture)
+                .arg(confidence, 0, 'f', 2),
+            QStringLiteral("vision_gesture_%1_%2").arg(actionName, sourceGesture),
+            1200);
+    }
+
+    if (actionName == QStringLiteral("start_listening")) {
+        if (m_currentState == AssistantState::Speaking) {
+            interruptSpeechAndListen();
+        } else {
+            startListening();
+        }
+        return;
+    }
+
+    if (actionName == QStringLiteral("stop_listening")) {
+        stopListening();
+        return;
+    }
+
+    if (actionName == QStringLiteral("cancel")) {
+        if (m_currentState == AssistantState::Listening) {
+            stopListening();
+        } else {
+            cancelActiveRequest();
+        }
+        return;
+    }
 }
 
 void AssistantController::startCommandRequest(const QString &input)

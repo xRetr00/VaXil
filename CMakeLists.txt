@@ -43,6 +43,7 @@ find_package(Qt6 6.6 REQUIRED COMPONENTS
     QuickControls2
     Svg
     Test
+    WebSockets
     Widgets
 )
 find_package(Qt6ShaderToolsTools REQUIRED)
@@ -196,6 +197,10 @@ set(JARVIS_SOURCES
     src/tools/ToolManager.cpp
     src/tts/PiperTtsEngine.cpp
     src/tts/WorkerTtsEngine.cpp
+    src/vision/VisionIngestService.cpp
+    src/vision/GestureInterpreter.cpp
+    src/vision/VisionContextGate.cpp
+    src/vision/WorldStateCache.cpp
     src/wakeword/SherpaWakeWordEngine.cpp
     src/workers/AiBackendWorker.cpp
     src/workers/SpeechInputWorker.cpp
@@ -251,6 +256,10 @@ set(JARVIS_HEADERS
     src/tts/TtsEngine.h
     src/tts/PiperTtsEngine.h
     src/tts/WorkerTtsEngine.h
+    src/vision/VisionIngestService.h
+    src/vision/GestureInterpreter.h
+    src/vision/VisionContextGate.h
+    src/vision/WorldStateCache.h
     src/wakeword/SherpaWakeWordEngine.h
     src/wakeword/WakeWordEngine.h
     src/workers/AiBackendWorker.h
@@ -415,6 +424,7 @@ target_link_libraries(jarvis_lib
         Qt6::Quick
         Qt6::QuickControls2
         Qt6::Svg
+        Qt6::WebSockets
         Qt6::Widgets
         nlohmann_json::nlohmann_json
         spdlog::spdlog
@@ -605,4 +615,18 @@ if(JARVIS_BUILD_TESTS)
     add_test(NAME jarvis_platform_runtime_tests COMMAND jarvis_platform_runtime_tests)
     set_tests_properties(jarvis_platform_runtime_tests PROPERTIES ENVIRONMENT "PATH=${QT_BIN_DIR}${JARVIS_PATH_ENV_SEPARATOR}$ENV{PATH}")
     jarvis_copy_optional_runtime_libraries(jarvis_platform_runtime_tests)
+
+    qt_add_executable(jarvis_vision_tests
+        tests/VisionStateTests.cpp
+    )
+
+    target_link_libraries(jarvis_vision_tests
+        PRIVATE
+            jarvis_lib
+            Qt6::Test
+    )
+
+    add_test(NAME jarvis_vision_tests COMMAND jarvis_vision_tests)
+    set_tests_properties(jarvis_vision_tests PROPERTIES ENVIRONMENT "PATH=${QT_BIN_DIR}${JARVIS_PATH_ENV_SEPARATOR}$ENV{PATH}")
+    jarvis_copy_optional_runtime_libraries(jarvis_vision_tests)
 endif()

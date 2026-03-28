@@ -10,7 +10,9 @@ class AgentViewModel;
 class BackendFacade;
 class IdentityProfileService;
 class LoggingService;
+#ifdef Q_OS_WIN
 class NativeHotkeyFilter;
+#endif
 class OverlayController;
 class QQmlApplicationEngine;
 class QQuickWindow;
@@ -40,7 +42,9 @@ private:
     std::unique_ptr<TaskViewModel> m_taskViewModel;
     std::unique_ptr<QQmlApplicationEngine> m_engine;
     std::unique_ptr<QSystemTrayIcon> m_trayIcon;
+#ifdef Q_OS_WIN
     std::unique_ptr<NativeHotkeyFilter> m_hotkeyFilter;
+#endif
     QPointer<QQuickWindow> m_mainWindow;
     QPointer<QQuickWindow> m_settingsWindow;
     QPointer<QQuickWindow> m_setupWindow;

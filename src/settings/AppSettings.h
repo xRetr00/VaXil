@@ -84,6 +84,27 @@ public:
     QString mcpServerUrl() const;
     void setMcpServerUrl(const QString &url);
 
+    bool visionEnabled() const;
+    void setVisionEnabled(bool enabled);
+
+    QString visionEndpoint() const;
+    void setVisionEndpoint(const QString &endpoint);
+
+    int visionTimeoutMs() const;
+    void setVisionTimeoutMs(int timeoutMs);
+
+    int visionStaleThresholdMs() const;
+    void setVisionStaleThresholdMs(int thresholdMs);
+
+    bool visionContextAlwaysOn() const;
+    void setVisionContextAlwaysOn(bool enabled);
+
+    double visionObjectsMinConfidence() const;
+    void setVisionObjectsMinConfidence(double confidence);
+
+    double visionGesturesMinConfidence() const;
+    void setVisionGesturesMinConfidence(double confidence);
+
     bool tracePanelEnabled() const;
     void setTracePanelEnabled(bool enabled);
 
@@ -185,6 +206,13 @@ private:
     bool m_mcpEnabled = false;
     QString m_mcpCatalogUrl;
     QString m_mcpServerUrl;
+    bool m_visionEnabled = false;
+    QString m_visionEndpoint = QStringLiteral("ws://0.0.0.0:8765/vision");
+    int m_visionTimeoutMs = 5000;
+    int m_visionStaleThresholdMs = 2000;
+    bool m_visionContextAlwaysOn = false;
+    double m_visionObjectsMinConfidence = 0.60;
+    double m_visionGesturesMinConfidence = 0.70;
     bool m_tracePanelEnabled = true;
     QString m_whisperExecutable;
     QString m_whisperModelPath;

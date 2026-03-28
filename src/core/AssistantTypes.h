@@ -114,6 +114,27 @@ struct AiMessage {
     QString content;
 };
 
+struct VisionObjectDetection {
+    QString className;
+    double confidence = 0.0;
+};
+
+struct VisionGestureDetection {
+    QString name;
+    double confidence = 0.0;
+};
+
+struct VisionSnapshot {
+    QString type = QStringLiteral("vision.snapshot");
+    QString schemaVersion = QStringLiteral("1.0");
+    QDateTime timestamp;
+    QString nodeId;
+    QString traceId;
+    QList<VisionObjectDetection> objects;
+    QList<VisionGestureDetection> gestures;
+    QString summary;
+};
+
 struct AgentToolSpec {
     QString name;
     QString description;
@@ -263,6 +284,11 @@ struct LocalResponseContext {
 
 Q_DECLARE_METATYPE(AiMessage)
 Q_DECLARE_METATYPE(QList<AiMessage>)
+Q_DECLARE_METATYPE(VisionObjectDetection)
+Q_DECLARE_METATYPE(QList<VisionObjectDetection>)
+Q_DECLARE_METATYPE(VisionGestureDetection)
+Q_DECLARE_METATYPE(QList<VisionGestureDetection>)
+Q_DECLARE_METATYPE(VisionSnapshot)
 Q_DECLARE_METATYPE(ModelInfo)
 Q_DECLARE_METATYPE(QList<ModelInfo>)
 Q_DECLARE_METATYPE(AiAvailability)

@@ -89,6 +89,24 @@ int clampWakeTriggerCooldownMs(int value)
 {
     return std::clamp(value, 250, 1600);
 }
+
+int clampVisionTimeoutMs(int value)
+{
+    return std::clamp(value, 500, 60000);
+}
+
+int clampVisionStaleThresholdMs(int value)
+{
+    return std::clamp(value, 100, 10000);
+}
+
+double clampVisionConfidence(double value, double fallback)
+{
+    if (std::isnan(value)) {
+        return fallback;
+    }
+    return std::clamp(value, 0.05, 1.0);
+}
 }
 
 AppSettings::AppSettings(QObject *parent)
@@ -154,6 +172,16 @@ bool AppSettings::load()
     m_mcpEnabled = parsed.value("mcpEnabled", false);
     m_mcpCatalogUrl = QString::fromStdString(parsed.value("mcpCatalogUrl", std::string{}));
     m_mcpServerUrl = QString::fromStdString(parsed.value("mcpServerUrl", std::string{}));
+    m_visionEnabled = parsed.value("visionEnabled", false);
+    m_visionEndpoint = QString::fromStdString(parsed.value("visionEndpoint", m_visionEndpoint.toStdString()));
+    if (m_visionEndpoint.trimmed().isEmpty()) {
+        m_visionEndpoint = QStringLiteral("ws://0.0.0.0:8765/vision");
+    }
+    m_visionTimeoutMs = clampVisionTimeoutMs(parsed.value("visionTimeoutMs", 5000));
+    m_visionStaleThresholdMs = clampVisionStaleThresholdMs(parsed.value("visionStaleThresholdMs", 2000));
+    m_visionContextAlwaysOn = parsed.value("visionContextAlwaysOn", false);
+    m_visionObjectsMinConfidence = clampVisionConfidence(parsed.value("visionObjectsMinConfidence", 0.60), 0.60);
+    m_visionGesturesMinConfidence = clampVisionConfidence(parsed.value("visionGesturesMinConfidence", 0.70), 0.70);
     m_tracePanelEnabled = parsed.value("tracePanelEnabled", true);
     m_whisperExecutable = QString::fromStdString(parsed.value("whisperExecutable", std::string{}));
     m_whisperModelPath = QString::fromStdString(parsed.value("whisperModelPath", std::string{}));
@@ -231,6 +259,13 @@ bool AppSettings::save() const
         {"mcpEnabled", m_mcpEnabled},
         {"mcpCatalogUrl", m_mcpCatalogUrl.toStdString()},
         {"mcpServerUrl", m_mcpServerUrl.toStdString()},
+        {"visionEnabled", m_visionEnabled},
+        {"visionEndpoint", m_visionEndpoint.toStdString()},
+        {"visionTimeoutMs", m_visionTimeoutMs},
+        {"visionStaleThresholdMs", m_visionStaleThresholdMs},
+        {"visionContextAlwaysOn", m_visionContextAlwaysOn},
+        {"visionObjectsMinConfidence", m_visionObjectsMinConfidence},
+        {"visionGesturesMinConfidence", m_visionGesturesMinConfidence},
         {"tracePanelEnabled", m_tracePanelEnabled},
         {"whisperExecutable", m_whisperExecutable.toStdString()},
         {"whisperModelPath", m_whisperModelPath.toStdString()},
@@ -380,6 +415,50 @@ QString AppSettings::mcpServerUrl() const { return m_mcpServerUrl; }
 void AppSettings::setMcpServerUrl(const QString &url)
 {
     m_mcpServerUrl = url.trimmed();
+    emit settingsChanged();
+}
+bool AppSettings::visionEnabled() const { return m_visionEnabled; }
+void AppSettings::setVisionEnabled(bool enabled)
+{
+    m_visionEnabled = enabled;
+    emit settingsChanged();
+}
+QString AppSettings::visionEndpoint() const { return m_visionEndpoint; }
+void AppSettings::setVisionEndpoint(const QString &endpoint)
+{
+    m_visionEndpoint = endpoint.trimmed().isEmpty()
+        ? QStringLiteral("ws://0.0.0.0:8765/vision")
+        : endpoint.trimmed();
+    emit settingsChanged();
+}
+int AppSettings::visionTimeoutMs() const { return m_visionTimeoutMs; }
+void AppSettings::setVisionTimeoutMs(int timeoutMs)
+{
+    m_visionTimeoutMs = clampVisionTimeoutMs(timeoutMs);
+    emit settingsChanged();
+}
+int AppSettings::visionStaleThresholdMs() const { return m_visionStaleThresholdMs; }
+void AppSettings::setVisionStaleThresholdMs(int thresholdMs)
+{
+    m_visionStaleThresholdMs = clampVisionStaleThresholdMs(thresholdMs);
+    emit settingsChanged();
+}
+bool AppSettings::visionContextAlwaysOn() const { return m_visionContextAlwaysOn; }
+void AppSettings::setVisionContextAlwaysOn(bool enabled)
+{
+    m_visionContextAlwaysOn = enabled;
+    emit settingsChanged();
+}
+double AppSettings::visionObjectsMinConfidence() const { return m_visionObjectsMinConfidence; }
+void AppSettings::setVisionObjectsMinConfidence(double confidence)
+{
+    m_visionObjectsMinConfidence = clampVisionConfidence(confidence, 0.60);
+    emit settingsChanged();
+}
+double AppSettings::visionGesturesMinConfidence() const { return m_visionGesturesMinConfidence; }
+void AppSettings::setVisionGesturesMinConfidence(double confidence)
+{
+    m_visionGesturesMinConfidence = clampVisionConfidence(confidence, 0.70);
     emit settingsChanged();
 }
 bool AppSettings::tracePanelEnabled() const { return m_tracePanelEnabled; }

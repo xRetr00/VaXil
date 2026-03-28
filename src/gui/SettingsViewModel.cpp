@@ -77,6 +77,41 @@ int SettingsViewModel::requestTimeoutMs() const
     return m_backend ? m_backend->requestTimeoutMs() : 120000;
 }
 
+bool SettingsViewModel::visionEnabled() const
+{
+    return m_backend && m_backend->visionEnabled();
+}
+
+QString SettingsViewModel::visionEndpoint() const
+{
+    return m_backend ? m_backend->visionEndpoint() : QStringLiteral("ws://0.0.0.0:8765/vision");
+}
+
+int SettingsViewModel::visionTimeoutMs() const
+{
+    return m_backend ? m_backend->visionTimeoutMs() : 5000;
+}
+
+int SettingsViewModel::visionStaleThresholdMs() const
+{
+    return m_backend ? m_backend->visionStaleThresholdMs() : 2000;
+}
+
+bool SettingsViewModel::visionContextAlwaysOn() const
+{
+    return m_backend && m_backend->visionContextAlwaysOn();
+}
+
+double SettingsViewModel::visionObjectsMinConfidence() const
+{
+    return m_backend ? m_backend->visionObjectsMinConfidence() : 0.60;
+}
+
+double SettingsViewModel::visionGesturesMinConfidence() const
+{
+    return m_backend ? m_backend->visionGesturesMinConfidence() : 0.70;
+}
+
 bool SettingsViewModel::clickThroughEnabled() const
 {
     return m_backend && m_backend->clickThroughEnabled();
@@ -471,6 +506,25 @@ void SettingsViewModel::saveAudioProcessing(bool aecEnabled, bool rnnoiseEnabled
 {
     if (m_backend) {
         m_backend->saveAudioProcessing(aecEnabled, rnnoiseEnabled, vadSensitivity);
+    }
+}
+
+void SettingsViewModel::saveVisionSettings(bool enabled,
+                                           const QString &endpoint,
+                                           int timeoutMs,
+                                           int staleThresholdMs,
+                                           bool contextAlwaysOn,
+                                           double objectsMinConfidence,
+                                           double gesturesMinConfidence)
+{
+    if (m_backend) {
+        m_backend->saveVisionSettings(enabled,
+                                      endpoint,
+                                      timeoutMs,
+                                      staleThresholdMs,
+                                      contextAlwaysOn,
+                                      objectsMinConfidence,
+                                      gesturesMinConfidence);
     }
 }
 
