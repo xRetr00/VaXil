@@ -659,4 +659,46 @@ if(JARVIS_BUILD_TESTS)
     add_test(NAME jarvis_vision_tests COMMAND jarvis_vision_tests)
     set_tests_properties(jarvis_vision_tests PROPERTIES ENVIRONMENT "PATH=${QT_BIN_DIR}${JARVIS_PATH_ENV_SEPARATOR}$ENV{PATH}")
     jarvis_copy_optional_runtime_libraries(jarvis_vision_tests)
+
+    qt_add_executable(jarvis_memory_tests
+        tests/MemoryManagerTests.cpp
+    )
+
+    target_link_libraries(jarvis_memory_tests
+        PRIVATE
+            jarvis_lib
+            Qt6::Test
+    )
+
+    add_test(NAME jarvis_memory_tests COMMAND jarvis_memory_tests)
+    set_tests_properties(jarvis_memory_tests PROPERTIES ENVIRONMENT "PATH=${QT_BIN_DIR}${JARVIS_PATH_ENV_SEPARATOR}$ENV{PATH}")
+    jarvis_copy_optional_runtime_libraries(jarvis_memory_tests)
+
+    qt_add_executable(jarvis_settings_tests
+        tests/AppSettingsTests.cpp
+    )
+
+    target_link_libraries(jarvis_settings_tests
+        PRIVATE
+            jarvis_lib
+            Qt6::Test
+    )
+
+    add_test(NAME jarvis_settings_tests COMMAND jarvis_settings_tests)
+    set_tests_properties(jarvis_settings_tests PROPERTIES ENVIRONMENT "PATH=${QT_BIN_DIR}${JARVIS_PATH_ENV_SEPARATOR}$ENV{PATH}")
+    jarvis_copy_optional_runtime_libraries(jarvis_settings_tests)
+
+    qt_add_executable(jarvis_skill_store_tests
+        tests/SkillStoreTests.cpp
+    )
+
+    target_link_libraries(jarvis_skill_store_tests
+        PRIVATE
+            jarvis_lib
+            Qt6::Test
+    )
+
+    add_test(NAME jarvis_skill_store_tests COMMAND jarvis_skill_store_tests)
+    set_tests_properties(jarvis_skill_store_tests PROPERTIES ENVIRONMENT "PATH=${QT_BIN_DIR}${JARVIS_PATH_ENV_SEPARATOR}$ENV{PATH}")
+    jarvis_copy_optional_runtime_libraries(jarvis_skill_store_tests)
 endif()
