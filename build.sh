@@ -111,6 +111,8 @@ install_linux_dependencies() {
         curl \
         ffmpeg \
         git \
+        libxkbcommon-x11-0 \
+        libxcb-cursor0 \
         ninja-build \
         pkg-config \
         python3 \
