@@ -137,7 +137,7 @@ ActionResult unsupported(const QString &featureName)
                        .arg(featureName, PlatformRuntime::platformLabel()));
 }
 
-class GenericComputerControlBackend final : public ComputerControlBackend
+class GenericComputerControlBackend : public ComputerControlBackend
 {
 public:
     ActionResult writeTextFile(const QString &path,

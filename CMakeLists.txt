@@ -528,9 +528,6 @@ if(WIN32)
             --no-translations
             --qmldir "${CMAKE_SOURCE_DIR}/src/gui/qml"
             "$<TARGET_FILE:jarvis>"
-        COMMAND "${CMAKE_COMMAND}" -E copy_if_different
-            "$<TARGET_FILE:jarvis_sherpa_wake_helper>"
-            "$<TARGET_FILE_DIR:jarvis>/jarvis_sherpa_wake_helper${CMAKE_EXECUTABLE_SUFFIX}"
         COMMENT "Deploying Qt runtime for jarvis"
     )
 endif()
