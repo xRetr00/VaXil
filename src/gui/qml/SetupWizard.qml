@@ -595,6 +595,28 @@ Window {
 
                         TextField { Layout.fillWidth: true; readOnly: true; text: "sherpa-onnx" }
 
+                        RowLayout {
+                            Layout.fillWidth: true
+
+                            Button {
+                                text: "Download Wake Runtime"
+                                visible: settingsVm.supportsAutoToolInstall
+                                onClicked: {
+                                    settingsVm.downloadTool("sherpa-onnx")
+                                    wizard.syncVoiceFieldsFromBackend()
+                                }
+                            }
+
+                            Button {
+                                text: "Download Wake Model"
+                                visible: settingsVm.supportsAutoToolInstall
+                                onClicked: {
+                                    settingsVm.downloadTool("sherpa-kws-model")
+                                    wizard.syncVoiceFieldsFromBackend()
+                                }
+                            }
+                        }
+
                         Text {
                             text: settingsVm.supportsAutoToolInstall
                                   ? "Model status: Managed runtime flow"
@@ -612,8 +634,8 @@ Window {
 
                         Text {
                             text: settingsVm.supportsAutoToolInstall
-                                  ? "The wake engine is managed automatically from the installed local tool stack."
-                                  : "Wake support stays optional until `sherpa-onnx` and the wake model files are configured manually."
+                                  ? "Install the sherpa runtime and wake model from here, then run Auto Detect so wake checks can pass."
+                                  : "Install sherpa-onnx and the wake model manually, then run Auto Detect."
                             color: "#7f97b7"
                             font.pixelSize: 13
                             wrapMode: Text.Wrap

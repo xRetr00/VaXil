@@ -122,6 +122,25 @@ has_any_executable() {
   return 1
 }
 
+whisper_local_bin_path() {
+  echo "${HOME}/.local/share/jarvis/tools/whisper/bin/whisper-cli"
+}
+
+ensure_whisper_on_path_from_local_install() {
+  local local_whisper
+  local local_whisper_dir
+
+  local_whisper="$(whisper_local_bin_path)"
+  if [[ -x "${local_whisper}" ]]; then
+    local_whisper_dir="$(dirname "${local_whisper}")"
+    export PATH="${local_whisper_dir}:${PATH}"
+    log_info "whisper.cpp already installed at ${local_whisper}; skipping reinstall."
+    return 0
+  fi
+
+  return 1
+}
+
 first_available_package() {
   local manager="$1"
   shift
@@ -229,6 +248,10 @@ ensure_linux_voice_tool() {
 }
 
 ensure_linux_whisper_source_build() {
+  if ensure_whisper_on_path_from_local_install; then
+    return
+  fi
+
   if has_any_executable whisper-cli whisper main; then
     return
   fi
@@ -286,6 +309,68 @@ ensure_linux_whisper_source_build() {
   install -m 0755 "${whisper_bin}" "${whisper_tools_root}/bin/whisper-cli"
   export PATH="${whisper_tools_root}/bin:${PATH}"
   log_info "whisper.cpp installed at ${whisper_tools_root}/bin/whisper-cli"
+}
+
+first_match_under_dir() {
+  local root="$1"
+  local pattern="$2"
+  find "${root}" -type f -name "${pattern}" 2>/dev/null | head -n1
+}
+
+ensure_linux_sherpa_wake_assets() {
+  local sherpa_root="${ROOT}/third_party/sherpa-onnx"
+  local sherpa_archive="${sherpa_root}/sherpa-onnx-v1.12.33-linux-x64-shared.tar.bz2"
+  local sherpa_url="https://github.com/k2-fsa/sherpa-onnx/releases/download/v1.12.33/sherpa-onnx-v1.12.33-linux-x64-shared.tar.bz2"
+
+  local wake_model_root="${ROOT}/third_party/sherpa-kws-model"
+  local wake_model_archive="${wake_model_root}/sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01.tar.bz2"
+  local wake_model_url="https://github.com/k2-fsa/sherpa-onnx/releases/download/kws-models/sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01.tar.bz2"
+
+  mkdir -p "${sherpa_root}" "${wake_model_root}"
+
+  local sherpa_header
+  sherpa_header="$(first_match_under_dir "${sherpa_root}" "cxx-api.h")"
+  if [[ -z "${sherpa_header}" ]]; then
+    if ! need_cmd curl; then
+      log_warn "Skipping sherpa-onnx runtime bootstrap because curl is unavailable."
+    elif ! need_cmd tar; then
+      log_warn "Skipping sherpa-onnx runtime bootstrap because tar is unavailable."
+    else
+      log_info "Bootstrapping sherpa-onnx runtime package for wake-word support..."
+      curl -fL "${sherpa_url}" -o "${sherpa_archive}"
+      tar -xf "${sherpa_archive}" -C "${sherpa_root}"
+      sherpa_header="$(first_match_under_dir "${sherpa_root}" "cxx-api.h")"
+      if [[ -n "${sherpa_header}" ]]; then
+        log_info "sherpa-onnx runtime ready: ${sherpa_header}"
+      else
+        log_warn "sherpa-onnx runtime extracted, but cxx-api.h was not found."
+      fi
+    fi
+  else
+    log_info "sherpa-onnx runtime already available."
+  fi
+
+  local wake_encoder
+  wake_encoder="$(first_match_under_dir "${wake_model_root}" "encoder-*.onnx")"
+  if [[ -z "${wake_encoder}" ]]; then
+    if ! need_cmd curl; then
+      log_warn "Skipping sherpa wake model bootstrap because curl is unavailable."
+    elif ! need_cmd tar; then
+      log_warn "Skipping sherpa wake model bootstrap because tar is unavailable."
+    else
+      log_info "Bootstrapping sherpa wake model package..."
+      curl -fL "${wake_model_url}" -o "${wake_model_archive}"
+      tar -xf "${wake_model_archive}" -C "${wake_model_root}"
+      wake_encoder="$(first_match_under_dir "${wake_model_root}" "encoder-*.onnx")"
+      if [[ -n "${wake_encoder}" ]]; then
+        log_info "sherpa wake model ready: ${wake_encoder}"
+      else
+        log_warn "sherpa wake model extracted, but encoder ONNX file was not found."
+      fi
+    fi
+  else
+    log_info "sherpa wake model already available."
+  fi
 }
 
 install_linux_dependencies() {
@@ -730,6 +815,8 @@ ensure_dependencies() {
   install_linux_dependencies "${manager}"
 
   # Auto-bootstrap optional voice executables when missing. Never reinstalls if already present.
+  ensure_whisper_on_path_from_local_install || true
+
   ensure_linux_voice_tool "${manager}" "whisper.cpp" \
     whisper-cli whisper main -- \
     whisper.cpp whisper-cpp
@@ -738,6 +825,8 @@ ensure_dependencies() {
   ensure_linux_voice_tool "${manager}" "piper" \
     piper -- \
     piper-tts piper
+
+  ensure_linux_sherpa_wake_assets
 }
 
 for arg in "$@"; do

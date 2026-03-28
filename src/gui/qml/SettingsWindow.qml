@@ -957,10 +957,26 @@ Window {
                         onActivated: settingsVm.setWakeEngineKind(currentText)
                     }
 
+                    RowLayout {
+                        Layout.fillWidth: true
+
+                        Button {
+                            text: "Download Wake Runtime"
+                            visible: settingsVm.supportsAutoToolInstall
+                            onClicked: settingsVm.downloadTool("sherpa-onnx")
+                        }
+
+                        Button {
+                            text: "Download Wake Model"
+                            visible: settingsVm.supportsAutoToolInstall
+                            onClicked: settingsVm.downloadTool("sherpa-kws-model")
+                        }
+                    }
+
                     Text {
                         text: settingsVm.supportsAutoToolInstall
-                              ? "The app uses sherpa-onnx only for wake detection."
-                              : "The app uses sherpa-onnx only for wake detection. Configure wake assets manually if you want wake-word support."
+                              ? "The app uses sherpa-onnx for wake detection. Install runtime + model, then use Auto Detect."
+                              : "The app uses sherpa-onnx for wake detection. Install wake assets manually, then use Auto Detect."
                         color: "#9ab0ca"
                         font.pixelSize: 12
                         wrapMode: Text.Wrap

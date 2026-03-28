@@ -2153,6 +2153,12 @@ QString AssistantController::resolveStartupBlockingIssue(bool *blocked) const
         }
     };
 
+#if defined(JARVIS_HAS_SHERPA_ONNX) && JARVIS_HAS_SHERPA_ONNX
+    const bool wakeEngineCompiled = true;
+#else
+    const bool wakeEngineCompiled = false;
+#endif
+
     if (!m_settings->initialSetupCompleted()) {
         setBlocked(true);
         return QStringLiteral("Initial setup is incomplete.");
@@ -2182,15 +2188,17 @@ QString AssistantController::resolveStartupBlockingIssue(bool *blocked) const
         return QStringLiteral("FFmpeg executable is missing.");
     }
 
-    const QString wakeRuntime = resolveWakeEngineRuntimePath();
-    if (wakeRuntime.isEmpty()) {
-        setBlocked(true);
-        return QStringLiteral("Wake runtime is missing.");
-    }
-    const QString wakeModel = resolveWakeEngineModelPath();
-    if (wakeModel.isEmpty()) {
-        setBlocked(true);
-        return QStringLiteral("Wake model is missing.");
+    if (wakeEngineCompiled) {
+        const QString wakeRuntime = resolveWakeEngineRuntimePath();
+        if (wakeRuntime.isEmpty()) {
+            setBlocked(true);
+            return QStringLiteral("Wake runtime is missing.");
+        }
+        const QString wakeModel = resolveWakeEngineModelPath();
+        if (wakeModel.isEmpty()) {
+            setBlocked(true);
+            return QStringLiteral("Wake model is missing.");
+        }
     }
 
     if (!m_modelCatalogResolved) {
@@ -2212,17 +2220,19 @@ QString AssistantController::resolveStartupBlockingIssue(bool *blocked) const
             : availability.status;
     }
 
-    if (!m_wakeStartRequested) {
-        setBlocked(false);
-        return QStringLiteral("Starting wake engine...");
-    }
-    if (!m_lastWakeError.trimmed().isEmpty()) {
-        setBlocked(true);
-        return m_lastWakeError;
-    }
-    if (!m_wakeEngineReady) {
-        setBlocked(false);
-        return QStringLiteral("Starting wake engine...");
+    if (wakeEngineCompiled) {
+        if (!m_wakeStartRequested) {
+            setBlocked(false);
+            return QStringLiteral("Starting wake engine...");
+        }
+        if (!m_lastWakeError.trimmed().isEmpty()) {
+            setBlocked(true);
+            return m_lastWakeError;
+        }
+        if (!m_wakeEngineReady) {
+            setBlocked(false);
+            return QStringLiteral("Starting wake engine...");
+        }
     }
 
     setBlocked(false);
@@ -2560,6 +2570,9 @@ void AssistantController::scheduleWakeMonitorRestart(int delayMs)
 
 bool AssistantController::canStartWakeMonitor() const
 {
+#if !defined(JARVIS_HAS_SHERPA_ONNX) || !JARVIS_HAS_SHERPA_ONNX
+    return false;
+#else
     return m_wakeMonitorEnabled
         && m_currentState != AssistantState::Listening
         && !isMicrophoneBlocked()
@@ -2567,6 +2580,7 @@ bool AssistantController::canStartWakeMonitor() const
         && !m_ttsEngine->isSpeaking()
         && !resolveWakeEngineRuntimePath().isEmpty()
         && !resolveWakeEngineModelPath().isEmpty();
+#endif
 }
 
 void AssistantController::reconfigureGestureActionRouter()
@@ -2598,8 +2612,12 @@ QString AssistantController::resolveWakeEngineRuntimePath() const
 {
     return firstExistingPath({
         QStringLiteral(JARVIS_SOURCE_DIR) + QStringLiteral("/third_party/sherpa-onnx/sherpa-onnx-v1.12.33-win-x64-shared-MD-Release-no-tts"),
+        QStringLiteral(JARVIS_SOURCE_DIR) + QStringLiteral("/third_party/sherpa-onnx/sherpa-onnx-v1.12.33-linux-x64-shared"),
+        QStringLiteral(JARVIS_SOURCE_DIR) + QStringLiteral("/third_party/sherpa-onnx"),
         QStandardPaths::writableLocation(QStandardPaths::AppDataLocation)
             + QStringLiteral("/third_party/sherpa-onnx/sherpa-onnx-v1.12.33-win-x64-shared-MD-Release-no-tts"),
+        QStandardPaths::writableLocation(QStandardPaths::AppDataLocation)
+            + QStringLiteral("/third_party/sherpa-onnx/sherpa-onnx-v1.12.33-linux-x64-shared"),
         QStandardPaths::writableLocation(QStandardPaths::AppDataLocation)
             + QStringLiteral("/third_party/sherpa-onnx")
     });
@@ -2609,8 +2627,11 @@ QString AssistantController::resolveWakeEngineModelPath() const
 {
     return firstExistingPath({
         QStringLiteral(JARVIS_SOURCE_DIR) + QStringLiteral("/third_party/sherpa-kws-model/sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01"),
+        QStringLiteral(JARVIS_SOURCE_DIR) + QStringLiteral("/third_party/sherpa-kws-model"),
         QStandardPaths::writableLocation(QStandardPaths::AppDataLocation)
             + QStringLiteral("/third_party/sherpa-kws-model/sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01"),
+        QStandardPaths::writableLocation(QStandardPaths::AppDataLocation)
+            + QStringLiteral("/third_party/sherpa-kws-model"),
         QStandardPaths::writableLocation(QStandardPaths::AppDataLocation)
             + QStringLiteral("/third_party/models/sherpa-kws/sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01")
     });
