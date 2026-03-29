@@ -116,6 +116,7 @@ Window {
         inputLevel: agentVm.audioLevel
         overlayVisible: agentVm.overlayVisible
         uiState: agentVm.uiState
+        wakeTriggerToken: agentVm.wakeTriggerToken
     }
 
     Shortcut {
@@ -141,17 +142,33 @@ Window {
     Item {
         anchors.fill: parent
 
-        Text {
+        Column {
             anchors.top: parent.top
             anchors.topMargin: root.pageMargin
             anchors.horizontalCenter: parent.horizontalCenter
-            text: agentVm.assistantName + "  |  " + microStatus()
-            color: root.textPrimaryColor
-            opacity: 0.78
-            style: Text.Outline
-            styleColor: root.textOutlineColor
-            font.pixelSize: Math.round(12 * root.dpiScale)
-            font.letterSpacing: 1.8
+            spacing: 4 * root.dpiScale
+
+            Text {
+                anchors.horizontalCenter: parent.horizontalCenter
+                text: "VAXIL ONLINE"
+                color: root.textPrimaryColor
+                opacity: 0.82
+                style: Text.Outline
+                styleColor: root.textOutlineColor
+                font.pixelSize: Math.round(11 * root.dpiScale)
+                font.letterSpacing: 2.4
+            }
+
+            Text {
+                anchors.horizontalCenter: parent.horizontalCenter
+                text: microStatus()
+                color: root.textMutedColor
+                opacity: 0.88
+                style: Text.Outline
+                styleColor: root.textOutlineColor
+                font.pixelSize: Math.round(12 * root.dpiScale)
+                font.letterSpacing: 1.6
+            }
         }
 
         Item {

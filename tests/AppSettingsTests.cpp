@@ -50,7 +50,9 @@ void AppSettingsTests::hasExpectedDefaults()
     QCOMPARE(settings.webSearchProvider(), QStringLiteral("brave"));
     QVERIFY(!settings.visionEnabled());
     QVERIFY(!settings.gestureEnabled());
-    QCOMPARE(settings.wakeWordPhrase(), QStringLiteral("Jarvis"));
+    QCOMPARE(settings.wakeWordPhrase(), QStringLiteral("Hey Vaxil"));
+    QVERIFY(settings.wakeWordEnabled());
+    QCOMPARE(settings.wakeWordSensitivity(), 0.80);
     QCOMPARE(settings.wakeEngineKind(), QStringLiteral("sherpa-onnx"));
     QCOMPARE(settings.ttsEngineKind(), QStringLiteral("piper"));
     QVERIFY(settings.aecEnabled());
@@ -147,14 +149,14 @@ void AppSettingsTests::clampWakeTriggerThresholdBelowMin()
 {
     AppSettings settings;
     settings.setWakeTriggerThreshold(0.0);
-    QCOMPARE(settings.wakeTriggerThreshold(), 0.10);
+    QCOMPARE(settings.wakeTriggerThreshold(), 0.50);
 }
 
 void AppSettingsTests::clampWakeTriggerThresholdAboveMax()
 {
     AppSettings settings;
     settings.setWakeTriggerThreshold(1.5);
-    QCOMPARE(settings.wakeTriggerThreshold(), 0.85);
+    QCOMPARE(settings.wakeTriggerThreshold(), 1.0);
 }
 
 void AppSettingsTests::voiceSpeedPreservesValidValue()
@@ -203,7 +205,7 @@ void AppSettingsTests::wakeWordPhraseDefaultsWhenEmpty()
 {
     AppSettings settings;
     settings.setWakeWordPhrase(QStringLiteral(""));
-    QCOMPARE(settings.wakeWordPhrase(), QStringLiteral("Jarvis"));
+    QCOMPARE(settings.wakeWordPhrase(), QStringLiteral("Hey Vaxil"));
 }
 
 void AppSettingsTests::wakeEngineKindDefaultsWhenEmpty()

@@ -85,6 +85,9 @@ Speech synthesis and output:
 Wake and audio processing:
 
 - wakeEngineKind
+- wake_word
+- wake_word_enabled
+- wake_word_sensitivity
 - wakeWordPhrase
 - wakeTriggerThreshold
 - wakeTriggerCooldownMs
@@ -103,7 +106,7 @@ Devices and UI:
 
 Current clamps in code:
 
-- wakeTriggerThreshold: 0.10 to 0.85
+- wakeTriggerThreshold: 0.50 to 1.0
 - wakeTriggerCooldownMs: 250 to 1600 ms
 - vadSensitivity: 0.05 to 0.95
 - conversationTemperature: 0.0 to 2.0
@@ -116,7 +119,10 @@ Current defaults:
 
 - wakeEngineKind: sherpa-onnx
 - ttsEngineKind: piper
-- wakeWordPhrase: Jarvis
+- wake_word: hey vaxil
+- wake_word_enabled: true
+- wake_word_sensitivity: 0.8
+- wakeWordPhrase: Hey Vaxil
 - requestTimeoutMs: 12000
 - selectedIntentModelId: intent-minilm-int8
 
@@ -150,7 +156,7 @@ Important downloadable entries include:
 ## Runtime Logs
 
 - bin/logs/startup.log
-- bin/logs/jarvis.log
+- bin/logs/vaxil.log
 - bin/logs/AI/*.log
 
 If behavior looks wrong, inspect these logs first.

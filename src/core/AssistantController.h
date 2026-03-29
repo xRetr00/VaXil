@@ -42,6 +42,7 @@ class AssistantController : public QObject
     Q_PROPERTY(QString responseText READ responseText NOTIFY responseTextChanged)
     Q_PROPERTY(QString statusText READ statusText NOTIFY statusTextChanged)
     Q_PROPERTY(float audioLevel READ audioLevel NOTIFY audioLevelChanged)
+    Q_PROPERTY(int wakeTriggerToken READ wakeTriggerToken NOTIFY wakeTriggerTokenChanged)
 
 public:
     AssistantController(
@@ -58,6 +59,7 @@ public:
     QString responseText() const;
     QString statusText() const;
     float audioLevel() const;
+    int wakeTriggerToken() const;
     bool startupReady() const;
     bool startupBlocked() const;
     QString startupBlockingIssue() const;
@@ -139,6 +141,7 @@ signals:
     void responseTextChanged();
     void statusTextChanged();
     void audioLevelChanged();
+    void wakeTriggerTokenChanged();
     void modelsChanged();
     void agentStateChanged();
     void agentTraceChanged();
@@ -179,6 +182,7 @@ private:
     void beginTtsExclusiveMode();
     void enterPostSpeechCooldown();
     bool isMicrophoneBlocked() const;
+    void noteWakeTrigger();
     void activateConversationSession();
     void refreshConversationSession();
     void endConversationSession();
@@ -267,6 +271,7 @@ private:
     QString m_responseText;
     QString m_statusText = QStringLiteral("Initializing");
     float m_audioLevel = 0.0f;
+    int m_wakeTriggerToken = 0;
     quint64 m_activeRequestId = 0;
     quint64 m_activeInputCaptureId = 0;
     quint64 m_activeSttRequestId = 0;

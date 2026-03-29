@@ -134,6 +134,7 @@ IntentResult IntentDetector::detect(const QString &input, const QString &workspa
         QStringLiteral("check logs"),
         QStringLiteral("look in the logs"),
         QStringLiteral("startup log"),
+        QStringLiteral("vaxil log"),
         QStringLiteral("jarvis log")
     });
     const bool weakReadRequest = containsAny(normalized, {
@@ -146,8 +147,11 @@ IntentResult IntentDetector::detect(const QString &input, const QString &workspa
         if (candidate.isEmpty() && containsAny(normalized, {QStringLiteral("startup log")})) {
             candidate = QDir(cleanWorkspace).absoluteFilePath(QStringLiteral("bin/logs/startup.log"));
         }
-        if (candidate.isEmpty() && containsAny(normalized, {QStringLiteral("jarvis log"), QStringLiteral("your own logs"), QStringLiteral("read logs"), QStringLiteral("check logs")})) {
-            candidate = QDir(cleanWorkspace).absoluteFilePath(QStringLiteral("bin/logs/jarvis.log"));
+        if (candidate.isEmpty() && containsAny(normalized, {QStringLiteral("vaxil log"), QStringLiteral("jarvis log"), QStringLiteral("your own logs"), QStringLiteral("read logs"), QStringLiteral("check logs")})) {
+            const QString vaxilLog = QDir(cleanWorkspace).absoluteFilePath(QStringLiteral("bin/logs/vaxil.log"));
+            candidate = QFileInfo::exists(vaxilLog)
+                ? vaxilLog
+                : QDir(cleanWorkspace).absoluteFilePath(QStringLiteral("bin/logs/jarvis.log"));
         }
         if (candidate.isEmpty() && containsAny(normalized, {QStringLiteral("ai log"), QStringLiteral("latest ai log")})) {
             candidate = latestLogPath(cleanWorkspace, QStringLiteral("bin/logs/AI"));

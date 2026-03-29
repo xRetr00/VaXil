@@ -11,8 +11,8 @@ QHash<QString, QStringList> defaultResponses()
 {
     return {
         {QStringLiteral("greeting_morning"), {
-             QStringLiteral("Good morning sir, How can I assist Mr {user_name}?"),
-             QStringLiteral("Good morning sir, How Is The Morning Boner {user_name}?"),
+             QStringLiteral("Good morning, {user_name}. How can I help?"),
+             QStringLiteral("Good morning, {user_name}. What do you need?"),
              QStringLiteral("Morning, {user_name}. How may I help?")
          }},
         {QStringLiteral("greeting_evening"), {
@@ -21,39 +21,39 @@ QHash<QString, QStringList> defaultResponses()
              QStringLiteral("Evening, {user_name}. How may I help?")
          }},
         {QStringLiteral("small_talk"), {
-             QStringLiteral("I'm here not there, {user_name}."),
+             QStringLiteral("I'm here, {user_name}."),
              QStringLiteral("Ready when you are, {user_name}."),
              QStringLiteral("How can I help, {user_name}?")
          }},
         {QStringLiteral("wakeword_ready"), {
-             QStringLiteral("Yes sir."),
-               QStringLiteral("I'm Here Sir."),
-               QStringLiteral("Ready To Launch Sir.")
+             QStringLiteral("Yes?"),
+             QStringLiteral("I'm listening."),
+             QStringLiteral("Ready.")
          }},
         {QStringLiteral("time_status"), {
-             QStringLiteral("It is {current_time}, {user_name}."),
-             QStringLiteral("The current time is {current_time} based on qantum clock in my back pocket, {user_name}."),
-             QStringLiteral("It is now {current_time}, Sir.")
+             QStringLiteral("It is {current_time}."),
+             QStringLiteral("The current time is {current_time}."),
+             QStringLiteral("It is now {current_time}.")
          }},
         {QStringLiteral("date_status"), {
-             QStringLiteral("Today is {current_date}, Sir."),
-             QStringLiteral("The date is {current_date}, Sir."),
-             QStringLiteral("It is {current_date} today, Sir.")
+             QStringLiteral("Today is {current_date}."),
+             QStringLiteral("The date is {current_date}."),
+             QStringLiteral("It is {current_date} today.")
          }},
         {QStringLiteral("ai_offline"), {
-             QStringLiteral("I'm currently unable to reach the AI core, Sir."),
-             QStringLiteral("My processing unit is offline at the moment, Sir."),
-             QStringLiteral("I can't reach the AI core right now, Sir.")
+             QStringLiteral("I'm currently unable to reach the AI core."),
+             QStringLiteral("The AI core is offline right now."),
+             QStringLiteral("I can't reach the AI core at the moment.")
          }},
         {QStringLiteral("error_timeout"), {
-             QStringLiteral("The AI core did not answer in time, Sir."),
-             QStringLiteral("That took too long to complete, Sir."),
-             QStringLiteral("The request timed out, Sir.")
+             QStringLiteral("The AI core did not answer in time."),
+             QStringLiteral("That took too long to complete."),
+             QStringLiteral("The request timed out.")
          }},
         {QStringLiteral("acknowledgement"), {
-             QStringLiteral("Understood, Sir. Working on {target}."),
-             QStringLiteral("All right, Sir. Handling {target}."),
-             QStringLiteral("Done, Sir. {target} is handled.")
+             QStringLiteral("Understood. Working on {target}."),
+             QStringLiteral("All right. Handling {target}."),
+             QStringLiteral("Done. {target} is handled.")
          }}
     };
 }

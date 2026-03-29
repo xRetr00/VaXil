@@ -14,6 +14,7 @@ class AgentViewModel : public QObject
     Q_PROPERTY(QString responseText READ responseText NOTIFY responseTextChanged)
     Q_PROPERTY(QString statusText READ statusText NOTIFY statusTextChanged)
     Q_PROPERTY(double audioLevel READ audioLevel NOTIFY audioLevelChanged)
+    Q_PROPERTY(int wakeTriggerToken READ wakeTriggerToken NOTIFY wakeTriggerTokenChanged)
     Q_PROPERTY(bool overlayVisible READ overlayVisible NOTIFY overlayVisibleChanged)
     Q_PROPERTY(double presenceOffsetX READ presenceOffsetX NOTIFY presenceOffsetChanged)
     Q_PROPERTY(double presenceOffsetY READ presenceOffsetY NOTIFY presenceOffsetChanged)
@@ -37,6 +38,7 @@ public:
     QString responseText() const;
     QString statusText() const;
     double audioLevel() const;
+    int wakeTriggerToken() const;
     bool overlayVisible() const;
     double presenceOffsetX() const;
     double presenceOffsetY() const;
@@ -56,6 +58,7 @@ signals:
     void responseTextChanged();
     void statusTextChanged();
     void audioLevelChanged();
+    void wakeTriggerTokenChanged();
     void overlayVisibleChanged();
     void presenceOffsetChanged();
     void profileChanged();

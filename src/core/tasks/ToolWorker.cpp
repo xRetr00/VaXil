@@ -62,7 +62,7 @@ NetworkFetchResult httpGet(const QUrl &url,
 
     QNetworkAccessManager manager;
     QNetworkRequest request(url);
-    request.setHeader(QNetworkRequest::UserAgentHeader, QStringLiteral("JARVIS/1.0"));
+    request.setHeader(QNetworkRequest::UserAgentHeader, QStringLiteral("VAXIL/1.0"));
     for (const auto &header : headers) {
         request.setRawHeader(header.first, header.second);
     }

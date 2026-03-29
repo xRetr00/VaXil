@@ -367,7 +367,11 @@ bool MemoryManager::shouldReject(const MemoryEntry &entry) const
         return true;
     }
 
-    if (entry.value.size() > 2000 || entry.value.count(QLatin1Char('\n')) > 20) {
+    const int lineCount = entry.value.isEmpty()
+        ? 0
+        : entry.value.split(QLatin1Char('\n'), Qt::KeepEmptyParts).size();
+
+    if (entry.value.size() > 2000 || lineCount > 20) {
         return true;
     }
 

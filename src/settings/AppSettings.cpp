@@ -18,7 +18,7 @@ constexpr double kMaxVoicePitch = 0.97;
 constexpr double kDefaultVoicePitch = 0.93;
 constexpr double kLegacyPreciseThresholdDefault = 0.30;
 constexpr int kLegacyPreciseCooldownDefault = 750;
-constexpr double kSherpaWakeThresholdDefault = 0.18;
+constexpr double kSherpaWakeThresholdDefault = 0.80;
 constexpr int kSherpaWakeCooldownDefault = 450;
 
 QString settingsFilePath()
@@ -67,7 +67,7 @@ double clampVoicePitch(double value)
 
 double clampWakeTriggerThreshold(double value)
 {
-    return std::clamp(value, 0.10, 0.85);
+    return std::clamp(value, 0.50, 1.0);
 }
 
 double clampTemperature(double value)
@@ -226,7 +226,11 @@ bool AppSettings::load()
             ? kSherpaWakeCooldownDefault
             : legacyCooldownMs;
     }
-    m_wakeTriggerThreshold = clampWakeTriggerThreshold(wakeTriggerThreshold);
+    const double wakeWordSensitivity = parsed.contains("wake_word_sensitivity")
+        ? parsed.at("wake_word_sensitivity").get<double>()
+        : (wakeTriggerThreshold < 0.50 ? kSherpaWakeThresholdDefault : wakeTriggerThreshold);
+    m_wakeWordSensitivity = clampWakeTriggerThreshold(wakeWordSensitivity);
+    m_wakeTriggerThreshold = m_wakeWordSensitivity;
     m_wakeTriggerCooldownMs = clampWakeTriggerCooldownMs(wakeTriggerCooldownMs);
     m_ffmpegExecutable = QString::fromStdString(parsed.value("ffmpegExecutable", std::string{}));
     m_ttsEngineKind = QString::fromStdString(parsed.value("ttsEngineKind", m_ttsEngineKind.toStdString()));
@@ -237,7 +241,13 @@ bool AppSettings::load()
     m_selectedAudioOutputDeviceId = QString::fromStdString(parsed.value("selectedAudioOutputDeviceId", std::string{}));
     m_clickThroughEnabled = parsed.value("clickThroughEnabled", true);
     m_initialSetupCompleted = parsed.value("initialSetupCompleted", false);
-    m_wakeWordPhrase = QString::fromStdString(parsed.value("wakeWordPhrase", m_wakeWordPhrase.toStdString()));
+    m_wakeWordPhrase = QString::fromStdString(parsed.value(
+        "wake_word",
+        parsed.value("wakeWordPhrase", m_wakeWordPhrase.toStdString())));
+    if (m_wakeWordPhrase.trimmed().isEmpty()) {
+        m_wakeWordPhrase = QStringLiteral("Hey Vaxil");
+    }
+    m_wakeWordEnabled = parsed.value("wake_word_enabled", true);
     m_wakeEngineKind = QString::fromStdString(parsed.value("wakeEngineKind", m_wakeEngineKind.toStdString()));
     emit settingsChanged();
     if (hasLegacyWakeSettings) {
@@ -304,6 +314,9 @@ bool AppSettings::save() const
         {"selectedAudioOutputDeviceId", m_selectedAudioOutputDeviceId.toStdString()},
         {"clickThroughEnabled", m_clickThroughEnabled},
         {"initialSetupCompleted", m_initialSetupCompleted},
+        {"wake_word", m_wakeWordPhrase.toStdString()},
+        {"wake_word_enabled", m_wakeWordEnabled},
+        {"wake_word_sensitivity", m_wakeWordSensitivity},
         {"wakeWordPhrase", m_wakeWordPhrase.toStdString()},
         {"wakeEngineKind", m_wakeEngineKind.toStdString()}
     };
@@ -522,7 +535,12 @@ void AppSettings::setRnnoiseEnabled(bool enabled) { m_rnnoiseEnabled = enabled; 
 double AppSettings::vadSensitivity() const { return m_vadSensitivity; }
 void AppSettings::setVadSensitivity(double sensitivity) { m_vadSensitivity = clampVadSensitivity(sensitivity); emit settingsChanged(); }
 double AppSettings::wakeTriggerThreshold() const { return m_wakeTriggerThreshold; }
-void AppSettings::setWakeTriggerThreshold(double threshold) { m_wakeTriggerThreshold = clampWakeTriggerThreshold(threshold); emit settingsChanged(); }
+void AppSettings::setWakeTriggerThreshold(double threshold)
+{
+    m_wakeTriggerThreshold = clampWakeTriggerThreshold(threshold);
+    m_wakeWordSensitivity = m_wakeTriggerThreshold;
+    emit settingsChanged();
+}
 int AppSettings::wakeTriggerCooldownMs() const { return m_wakeTriggerCooldownMs; }
 void AppSettings::setWakeTriggerCooldownMs(int cooldownMs) { m_wakeTriggerCooldownMs = clampWakeTriggerCooldownMs(cooldownMs); emit settingsChanged(); }
 QString AppSettings::ffmpegExecutable() const { return m_ffmpegExecutable; }
@@ -550,7 +568,20 @@ void AppSettings::setInitialSetupCompleted(bool completed) { m_initialSetupCompl
 QString AppSettings::wakeWordPhrase() const { return m_wakeWordPhrase; }
 void AppSettings::setWakeWordPhrase(const QString &wakeWordPhrase)
 {
-    m_wakeWordPhrase = wakeWordPhrase.trimmed().isEmpty() ? QStringLiteral("Jarvis") : wakeWordPhrase.trimmed();
+    m_wakeWordPhrase = wakeWordPhrase.trimmed().isEmpty() ? QStringLiteral("Hey Vaxil") : wakeWordPhrase.trimmed();
+    emit settingsChanged();
+}
+bool AppSettings::wakeWordEnabled() const { return m_wakeWordEnabled; }
+void AppSettings::setWakeWordEnabled(bool enabled)
+{
+    m_wakeWordEnabled = enabled;
+    emit settingsChanged();
+}
+double AppSettings::wakeWordSensitivity() const { return m_wakeWordSensitivity; }
+void AppSettings::setWakeWordSensitivity(double sensitivity)
+{
+    m_wakeWordSensitivity = clampWakeTriggerThreshold(sensitivity);
+    m_wakeTriggerThreshold = m_wakeWordSensitivity;
     emit settingsChanged();
 }
 QString AppSettings::wakeEngineKind() const { return m_wakeEngineKind; }

@@ -24,7 +24,7 @@ SettingsViewModel::SettingsViewModel(BackendFacade *backend, QObject *parent)
 
 QString SettingsViewModel::assistantName() const
 {
-    return m_backend ? m_backend->assistantName() : QStringLiteral("J.A.R.V.I.S");
+    return m_backend ? m_backend->assistantName() : QStringLiteral("Vaxil");
 }
 
 QString SettingsViewModel::userName() const
@@ -304,7 +304,7 @@ QString SettingsViewModel::toolsRoot() const
 
 QString SettingsViewModel::wakeWordPhrase() const
 {
-    return m_backend ? m_backend->wakeWordPhrase() : QStringLiteral("Jarvis");
+    return m_backend ? m_backend->wakeWordPhrase() : QStringLiteral("Hey Vaxil");
 }
 
 bool SettingsViewModel::agentEnabled() const

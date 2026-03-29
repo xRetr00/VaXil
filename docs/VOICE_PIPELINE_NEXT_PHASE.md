@@ -46,7 +46,7 @@ src/
 - `PiperTtsEngine` now uses `QAudioSink` instead of `QMediaPlayer`, and emits far-end frames for future AEC integration.
 - `ToolManager` scans the local tool root, downloads known source/model assets asynchronously over HTTPS, tracks progress, and verifies SHA-256 when a manifest entry provides one.
 - Setup and settings QML expose audio-processing toggles, wake/TTS engine selectors, and a tools status panel with install progress.
-- `SherpaWakeWordEngine` is integrated and uses `jarvis_sherpa_wake_helper` for wake detection when `wakeEngineKind=sherpa-onnx`.
+- `SherpaWakeWordEngine` is integrated and uses the legacy-named `jarvis_sherpa_wake_helper` for transcript-driven wake detection when `wakeEngineKind=sherpa-onnx`.
 
 ## Current Runtime Status
 
@@ -55,9 +55,7 @@ src/
   - OpenAI-compatible backend requests,
   - Whisper STT requests,
   - Piper synthesis/playback.
-- Wake detection supports both:
-  - `sherpa-onnx` via `SherpaWakeWordEngine` + helper process,
-  - `sherpa-onnx` via `SherpaWakeWordEngine`.
+- Wake detection supports `sherpa-onnx` via `SherpaWakeWordEngine` and its helper process.
 - `AudioProcessingChain` currently uses:
   - far-end subtraction placeholder for AEC,
   - threshold-based suppression,
@@ -161,7 +159,7 @@ Recommended follow-up:
 Silero's ONNX model fits the current `AudioProcessingChain` interface well once ONNX Runtime is linked:
 
 ```cpp
-Ort::Env env(ORT_LOGGING_LEVEL_WARNING, "jarvis-vad");
+Ort::Env env(ORT_LOGGING_LEVEL_WARNING, "vaxil-vad");
 Ort::SessionOptions options;
 options.SetIntraOpNumThreads(1);
 Ort::Session session(env, vadModelPath.toStdWString().c_str(), options);

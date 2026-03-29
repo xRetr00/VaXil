@@ -106,7 +106,7 @@ std::array<float, kIntentClassCount> softmax(const float *scores, int count)
 struct IntentEngine::Impl
 {
 #if JARVIS_HAS_ONNXRUNTIME
-    Ort::Env env{ORT_LOGGING_LEVEL_WARNING, "jarvis-intent"};
+    Ort::Env env{ORT_LOGGING_LEVEL_WARNING, "vaxil-intent"};
     Ort::SessionOptions sessionOptions;
     std::unique_ptr<Ort::Session> session;
     Ort::MemoryInfo memoryInfo = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
@@ -296,7 +296,7 @@ IntentResult IntentEngine::classifyWithHeuristics(const QString &text) const
         listScore += 0.18f;
     }
 
-    if (contains(QStringLiteral("read file")) || contains(QStringLiteral("open file")) || contains(QStringLiteral("read the log")) || contains(QStringLiteral("read logs")) || contains(QStringLiteral("read your own logs")) || contains(QStringLiteral("startup log")) || contains(QStringLiteral("jarvis log"))) {
+    if (contains(QStringLiteral("read file")) || contains(QStringLiteral("open file")) || contains(QStringLiteral("read the log")) || contains(QStringLiteral("read logs")) || contains(QStringLiteral("read your own logs")) || contains(QStringLiteral("startup log")) || contains(QStringLiteral("vaxil log")) || contains(QStringLiteral("jarvis log"))) {
         readScore += 0.94f;
     }
     if ((contains(QStringLiteral("read")) && contains(QStringLiteral("file"))) || (contains(QStringLiteral("read")) && contains(QStringLiteral("log")))) {

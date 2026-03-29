@@ -12,7 +12,7 @@ function Ensure-Dir([string]$Path) {
 function Download-File([string]$Url, [string]$Destination) {
     Write-Host "Downloading $Url"
     Ensure-Dir ([System.IO.Path]::GetDirectoryName($Destination))
-    Invoke-WebRequest -Headers @{ "User-Agent" = "jarvis-bootstrap" } -Uri $Url -OutFile $Destination
+    Invoke-WebRequest -Headers @{ "User-Agent" = "vaxil-bootstrap" } -Uri $Url -OutFile $Destination
 }
 
 function Expand-Zip([string]$ArchivePath, [string]$Destination) {

@@ -462,7 +462,7 @@ public:
                            QStringLiteral("duration_seconds must be between 1 and 86400."));
         }
 
-        const QString effectiveTitle = title.trimmed().isEmpty() ? QStringLiteral("JARVIS Timer") : title.trimmed();
+        const QString effectiveTitle = title.trimmed().isEmpty() ? QStringLiteral("VAXIL Timer") : title.trimmed();
         const QString effectiveMessage = message.trimmed().isEmpty()
             ? QStringLiteral("Timer finished after %1 seconds.").arg(durationSeconds)
             : message.trimmed();

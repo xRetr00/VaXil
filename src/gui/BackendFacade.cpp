@@ -675,7 +675,7 @@ NetworkFetchResult httpGet(const QUrl &url,
 
     QNetworkAccessManager manager;
     QNetworkRequest request(url);
-    request.setHeader(QNetworkRequest::UserAgentHeader, QStringLiteral("JARVIS/1.0"));
+    request.setHeader(QNetworkRequest::UserAgentHeader, QStringLiteral("VAXIL/1.0"));
     for (const auto &header : headers) {
         request.setRawHeader(header.first, header.second);
     }
@@ -1016,6 +1016,7 @@ BackendFacade::BackendFacade(
     connect(m_assistantController, &AssistantController::responseTextChanged, this, &BackendFacade::responseTextChanged);
     connect(m_assistantController, &AssistantController::statusTextChanged, this, &BackendFacade::statusTextChanged);
     connect(m_assistantController, &AssistantController::audioLevelChanged, this, &BackendFacade::audioLevelChanged);
+    connect(m_assistantController, &AssistantController::wakeTriggerTokenChanged, this, &BackendFacade::wakeTriggerTokenChanged);
     connect(m_assistantController, &AssistantController::modelsChanged, this, [this]() {
         emit modelsChanged();
         emit selectedModelChanged();
@@ -1062,6 +1063,7 @@ QString BackendFacade::transcript() const { return m_assistantController->transc
 QString BackendFacade::responseText() const { return m_assistantController->responseText(); }
 QString BackendFacade::statusText() const { return m_assistantController->statusText(); }
 double BackendFacade::audioLevel() const { return m_assistantController->audioLevel(); }
+int BackendFacade::wakeTriggerToken() const { return m_assistantController->wakeTriggerToken(); }
 QStringList BackendFacade::models() const { return m_assistantController->availableModelIds(); }
 QString BackendFacade::selectedModel() const { return m_assistantController->selectedModel(); }
 QStringList BackendFacade::voicePresetNames() const
@@ -2093,7 +2095,7 @@ bool BackendFacade::autoDetectVoiceTools()
             ? QStringLiteral("Voice tools detected and fields populated.")
             : PlatformRuntime::currentCapabilities().supportsAutoToolInstall
                 ? QStringLiteral("Some voice tools are still missing.")
-                : QStringLiteral("Some voice tools are still missing. Point JARVIS to existing binaries and model files."));
+                : QStringLiteral("Some voice tools are still missing. Point Vaxil to existing binaries and model files."));
 
     m_settings->save();
     emit settingsChanged();

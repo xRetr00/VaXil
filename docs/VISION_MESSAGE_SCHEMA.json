@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://jarvis.local/schemas/vision.snapshot.json",
-  "title": "JARVIS Vision Snapshot",
+  "$id": "https://vaxil.local/schemas/vision.snapshot.json",
+  "title": "VAXIL Vision Snapshot",
   "type": "object",
   "additionalProperties": false,
   "required": [

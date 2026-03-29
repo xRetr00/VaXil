@@ -291,7 +291,7 @@ private:
         const QHostAddress bindAddress = hostAddressForUrl(url);
         const quint16 port = static_cast<quint16>(url.port(kDefaultVisionPort));
 
-        m_server = new QWebSocketServer(QStringLiteral("JARVIS Vision Ingest"),
+        m_server = new QWebSocketServer(QStringLiteral("VAXIL Vision Ingest"),
                                         QWebSocketServer::NonSecureMode,
                                         this);
         connect(m_server, &QWebSocketServer::newConnection, this, &Worker::handleNewConnection);

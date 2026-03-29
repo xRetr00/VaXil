@@ -17,10 +17,10 @@ from websockets.exceptions import ConnectionClosed
 from schema import VisionGesture, VisionObject, VisionSnapshotMessage
 
 
-LOGGER = logging.getLogger("jarvis.vision_node")
+LOGGER = logging.getLogger("vaxil.vision_node")
 
 
-DEBUG_WINDOW_NAME = "JARVIS Vision Debug"
+DEBUG_WINDOW_NAME = "VAXIL Vision Debug"
 SNAPSHOT_KEEPALIVE_SEC = 1.5
 MIN_HAND_SCALE = 0.10
 EXTENDED_FLAG_THRESHOLD = 0.55

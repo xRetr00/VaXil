@@ -21,7 +21,7 @@ private slots:
 void LocalResponseEngineTests::classifiesGreeting()
 {
     IntentRouter router;
-    QCOMPARE(router.classify(QStringLiteral("good morning jarvis")), LocalIntent::Greeting);
+    QCOMPARE(router.classify(QStringLiteral("good morning vaxil")), LocalIntent::Greeting);
 }
 
 void LocalResponseEngineTests::classifiesCommand()
@@ -54,7 +54,7 @@ void LocalResponseEngineTests::rendersWakeWordReady()
     QVERIFY(engine.initialize());
 
     const QString text = engine.wakeWordReady({
-        .assistantName = QStringLiteral("JARVIS"),
+        .assistantName = QStringLiteral("Vaxil"),
         .userName = QStringLiteral("Alex"),
         .timeOfDay = QStringLiteral("morning"),
         .systemState = QStringLiteral("IDLE"),
@@ -62,7 +62,7 @@ void LocalResponseEngineTests::rendersWakeWordReady()
         .addressingStyle = QStringLiteral("direct"),
         .currentTime = QStringLiteral("09:30"),
         .currentDate = QStringLiteral("Monday, March 24, 2026"),
-        .wakeWord = QStringLiteral("Jarvis")
+        .wakeWord = QStringLiteral("Hey Vaxil")
     });
 
     QVERIFY(!text.trimmed().isEmpty());
@@ -76,7 +76,7 @@ void LocalResponseEngineTests::rendersCurrentTime()
     QVERIFY(engine.initialize());
 
     const QString text = engine.currentTimeResponse({
-        .assistantName = QStringLiteral("JARVIS"),
+        .assistantName = QStringLiteral("Vaxil"),
         .userName = QStringLiteral("Alex"),
         .timeOfDay = QStringLiteral("morning"),
         .systemState = QStringLiteral("IDLE"),
@@ -84,7 +84,7 @@ void LocalResponseEngineTests::rendersCurrentTime()
         .addressingStyle = QStringLiteral("direct"),
         .currentTime = QStringLiteral("09:30"),
         .currentDate = QStringLiteral("Monday, March 24, 2026"),
-        .wakeWord = QStringLiteral("Jarvis")
+        .wakeWord = QStringLiteral("Hey Vaxil")
     });
 
     QVERIFY(text.contains(QStringLiteral("09:30")));
@@ -112,7 +112,7 @@ void LocalResponseEngineTests::localResponsesDoNotExposeInternalPromptText()
     QVERIFY(engine.initialize());
 
     const QString text = engine.respondToIntent(LocalIntent::SmallTalk, {
-        .assistantName = QStringLiteral("JARVIS"),
+        .assistantName = QStringLiteral("Vaxil"),
         .userName = QStringLiteral("Shehreef"),
         .timeOfDay = QStringLiteral("afternoon"),
         .systemState = QStringLiteral("IDLE"),

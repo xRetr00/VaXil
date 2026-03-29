@@ -73,6 +73,6 @@ if "%RUN_TESTS%"=="1" (
 
 echo.
 echo [OK] Build complete.
-echo [OK] Executable: "%ROOT%\bin\jarvis.exe"
+echo [OK] Vaxil executable: "%ROOT%\bin\jarvis.exe"
 echo [OK] Logs:       "%ROOT%\bin\logs"
 exit /b 0

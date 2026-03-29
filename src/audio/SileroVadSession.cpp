@@ -16,7 +16,7 @@ constexpr int kStateSize = 2 * 1 * 128;
 struct SileroVadSession::Impl
 {
 #if JARVIS_HAS_ONNXRUNTIME
-    Ort::Env env{ORT_LOGGING_LEVEL_WARNING, "jarvis-silero-vad"};
+    Ort::Env env{ORT_LOGGING_LEVEL_WARNING, "vaxil-silero-vad"};
     Ort::SessionOptions sessionOptions;
     std::unique_ptr<Ort::Session> session;
     std::array<float, kWindowSamples> input{};

@@ -27,9 +27,9 @@ QString writableFallbackConfigRoot()
 IdentityProfileService::IdentityProfileService(QObject *parent)
     : QObject(parent)
     , m_identity({
-          .assistantName = QStringLiteral("JARVIS"),
-          .personality = QStringLiteral("calm, intelligent, reliable"),
-          .tone = QStringLiteral("concise, confident, minimal verbosity"),
+          .assistantName = QStringLiteral("Vaxil"),
+          .personality = QStringLiteral("precise, calm, and highly capable"),
+          .tone = QStringLiteral("concise, confident, non-robotic"),
           .addressingStyle = QStringLiteral("direct")
       })
 {

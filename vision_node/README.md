@@ -1,6 +1,6 @@
 # Vision Node
 
-Standalone laptop-side Python service for distributed JARVIS vision ingestion.
+Standalone laptop-side Python service for distributed Vaxil vision ingestion.
 
 ## Responsibilities
 

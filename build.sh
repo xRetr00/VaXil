@@ -906,5 +906,5 @@ fi
 
 echo
 echo "[OK] Build complete."
-echo "[OK] Executable: ${ROOT}/bin/jarvis"
+echo "[OK] Vaxil executable: ${ROOT}/bin/jarvis"
 echo "[OK] Logs:       ${ROOT}/bin/logs"

@@ -18,6 +18,7 @@ AgentViewModel::AgentViewModel(BackendFacade *backend, QObject *parent)
     connect(m_backend, &BackendFacade::responseTextChanged, this, &AgentViewModel::responseTextChanged);
     connect(m_backend, &BackendFacade::statusTextChanged, this, &AgentViewModel::statusTextChanged);
     connect(m_backend, &BackendFacade::audioLevelChanged, this, &AgentViewModel::audioLevelChanged);
+    connect(m_backend, &BackendFacade::wakeTriggerTokenChanged, this, &AgentViewModel::wakeTriggerTokenChanged);
     connect(m_backend, &BackendFacade::overlayVisibleChanged, this, &AgentViewModel::overlayVisibleChanged);
     connect(m_backend, &BackendFacade::presenceOffsetChanged, this, &AgentViewModel::presenceOffsetChanged);
     connect(m_backend, &BackendFacade::profileChanged, this, &AgentViewModel::profileChanged);
@@ -53,6 +54,11 @@ double AgentViewModel::audioLevel() const
     return m_backend ? m_backend->audioLevel() : 0.0;
 }
 
+int AgentViewModel::wakeTriggerToken() const
+{
+    return m_backend ? m_backend->wakeTriggerToken() : 0;
+}
+
 bool AgentViewModel::overlayVisible() const
 {
     return m_backend && m_backend->overlayVisible();
@@ -70,7 +76,7 @@ double AgentViewModel::presenceOffsetY() const
 
 QString AgentViewModel::assistantName() const
 {
-    return m_backend ? m_backend->assistantName() : QStringLiteral("J.A.R.V.I.S");
+    return m_backend ? m_backend->assistantName() : QStringLiteral("Vaxil");
 }
 
 QString AgentViewModel::userName() const

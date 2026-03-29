@@ -48,7 +48,7 @@ void AiServicesTests::promptAdapterInjectsIdentityAndProfile()
         {},
         {},
         {
-            .assistantName = QStringLiteral("JARVIS"),
+            .assistantName = QStringLiteral("Vaxil"),
             .personality = QStringLiteral("calm"),
             .tone = QStringLiteral("confident"),
             .addressingStyle = QStringLiteral("direct")
@@ -56,7 +56,7 @@ void AiServicesTests::promptAdapterInjectsIdentityAndProfile()
         profile,
         ReasoningMode::Balanced);
 
-    QVERIFY(messages.first().content.contains(QStringLiteral("You are JARVIS")));
+    QVERIFY(messages.first().content.contains(QStringLiteral("You are Vaxil")));
     QVERIFY(messages.first().content.contains(QStringLiteral("user name: Alex")));
     QVERIFY(messages.first().content.contains(QStringLiteral("theme = dark")));
 }
@@ -70,7 +70,7 @@ void AiServicesTests::promptAdapterInjectsRuntimeContext()
         {},
         {},
         {
-            .assistantName = QStringLiteral("JARVIS"),
+            .assistantName = QStringLiteral("Vaxil"),
             .personality = QStringLiteral("calm"),
             .tone = QStringLiteral("confident"),
             .addressingStyle = QStringLiteral("direct")
@@ -79,7 +79,7 @@ void AiServicesTests::promptAdapterInjectsRuntimeContext()
         ReasoningMode::Balanced);
 
     QVERIFY(messages.first().content.contains(QStringLiteral("Current runtime context:")));
-    QVERIFY(messages.first().content.contains(QStringLiteral("wake phrase: Jarvis")));
+    QVERIFY(messages.first().content.contains(QStringLiteral("wake phrase: Hey Vaxil")));
     QVERIFY(messages.first().content.contains(QStringLiteral("timezone:")));
     QVERIFY(messages.first().content.contains(QStringLiteral("Spoken-safe output only")));
 }
@@ -93,7 +93,7 @@ void AiServicesTests::promptAdapterInjectsVisionContext()
         {},
         {},
         {
-            .assistantName = QStringLiteral("JARVIS"),
+            .assistantName = QStringLiteral("Vaxil"),
             .personality = QStringLiteral("calm"),
             .tone = QStringLiteral("confident"),
             .addressingStyle = QStringLiteral("direct")

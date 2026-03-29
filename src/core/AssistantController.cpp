@@ -16,7 +16,6 @@
 #include <QTimer>
 #include <QTime>
 #include <QUrl>
-#include <QVector>
 
 #include <nlohmann/json.hpp>
 
@@ -49,6 +48,7 @@
 #include "vision/GestureStateMachine.h"
 #include "vision/VisionContextGate.h"
 #include "vision/WorldStateCache.h"
+#include "wakeword/WakeWordDetector.h"
 #include "wakeword/SherpaWakeWordEngine.h"
 #include "wakeword/WakeWordEngine.h"
 #include "workers/VoicePipelineRuntime.h"
@@ -62,7 +62,7 @@ QString stateToString(AssistantState state)
     case AssistantState::Listening:
         return QStringLiteral("LISTENING");
     case AssistantState::Processing:
-        return QStringLiteral("PROCESSING");
+        return QStringLiteral("THINKING");
     case AssistantState::Speaking:
         return QStringLiteral("SPEAKING");
     }
@@ -77,113 +77,6 @@ QString normalizeForRouting(QString text)
         text = text.trimmed();
     }
     return text;
-}
-
-QString normalizeWakeToken(const QString &value)
-{
-    QString normalized = value.toLower();
-    normalized.remove(QRegularExpression(QStringLiteral("[^a-z0-9]")));
-    return normalized;
-}
-
-int editDistance(const QString &left, const QString &right)
-{
-    const int leftSize = left.size();
-    const int rightSize = right.size();
-    QVector<int> costs(rightSize + 1);
-    for (int j = 0; j <= rightSize; ++j) {
-        costs[j] = j;
-    }
-
-    for (int i = 1; i <= leftSize; ++i) {
-        int previousDiagonal = costs[0];
-        costs[0] = i;
-        for (int j = 1; j <= rightSize; ++j) {
-            const int temp = costs[j];
-            const int substitution = previousDiagonal + (left.at(i - 1) == right.at(j - 1) ? 0 : 1);
-            const int insertion = costs[j] + 1;
-            const int deletion = costs[j - 1] + 1;
-            costs[j] = std::min({substitution, insertion, deletion});
-            previousDiagonal = temp;
-        }
-    }
-
-    return costs[rightSize];
-}
-
-bool matchesWakeWordToken(const QString &token, const QString &wakeWord)
-{
-    const QString normalizedToken = normalizeWakeToken(token);
-    const QString normalizedWakeWord = normalizeWakeToken(wakeWord);
-    if (normalizedToken.isEmpty() || normalizedWakeWord.isEmpty()) {
-        return false;
-    }
-
-    const QStringList candidates = {
-        normalizedWakeWord,
-        QStringLiteral("jervis"),
-        QStringLiteral("jervus"),
-        QStringLiteral("jarviss")
-    };
-
-    for (const QString &candidate : candidates) {
-        if (normalizedToken == candidate) {
-            return true;
-        }
-
-        const int distance = editDistance(normalizedToken, candidate);
-        if (distance <= 2 && normalizedToken.size() >= std::max(3, static_cast<int>(candidate.size()) - 2)) {
-            return true;
-        }
-    }
-
-    return false;
-}
-
-bool extractWakeWordPayload(const QString &input, const QString &wakeWord, QString *payload)
-{
-    const QString trimmed = input.trimmed();
-    if (trimmed.isEmpty() || wakeWord.trimmed().isEmpty()) {
-        if (payload) {
-            *payload = trimmed;
-        }
-        return false;
-    }
-
-    const QStringList words = trimmed.split(QRegularExpression(QStringLiteral("\\s+")), Qt::SkipEmptyParts);
-    if (words.isEmpty()) {
-        if (payload) {
-            *payload = {};
-        }
-        return false;
-    }
-
-    int index = 0;
-    while (index < words.size()) {
-        const QString filler = normalizeWakeToken(words.at(index));
-        if (filler == QStringLiteral("hey")
-            || filler == QStringLiteral("hi")
-            || filler == QStringLiteral("hello")
-            || filler == QStringLiteral("ok")
-            || filler == QStringLiteral("okay")
-            || filler == QStringLiteral("yo")) {
-            ++index;
-            continue;
-        }
-        break;
-    }
-
-    if (index >= words.size() || !matchesWakeWordToken(words.at(index), wakeWord)) {
-        if (payload) {
-            *payload = trimmed;
-        }
-        return false;
-    }
-
-    if (payload) {
-        *payload = normalizeForRouting(words.mid(index + 1).join(QStringLiteral(" ")));
-    }
-    return true;
 }
 
 bool isCurrentTimeQuery(const QString &input)
@@ -443,6 +336,7 @@ bool isExplicitAgentWorldQuery(const QString &input)
         QStringLiteral("read your own logs"),
         QStringLiteral("read logs"),
         QStringLiteral("startup log"),
+        QStringLiteral("vaxil log"),
         QStringLiteral("jarvis log"),
         QStringLiteral("correct tools available"),
         QStringLiteral("what are the tools"),
@@ -623,7 +517,7 @@ QString sanitizeSimpleFileName(QString fileName)
     fileName.remove(QRegularExpression(QStringLiteral("[\\\\/:*?\"<>|]")));
     fileName.remove(QRegularExpression(QStringLiteral("\\s+")));
     if (fileName.isEmpty()) {
-        return QStringLiteral("jarvis_note.txt");
+        return QStringLiteral("vaxil_note.txt");
     }
     if (!fileName.contains(QChar::fromLatin1('.'))) {
         fileName += QStringLiteral(".txt");
@@ -688,7 +582,7 @@ bool buildDeterministicComputerTask(const QString &input, AgentTask *task, QStri
         task->type = QStringLiteral("computer_set_timer");
         task->args = QJsonObject{
             {QStringLiteral("duration_seconds"), timerSeconds},
-            {QStringLiteral("title"), QStringLiteral("JARVIS Timer")},
+            {QStringLiteral("title"), QStringLiteral("VAXIL Timer")},
             {QStringLiteral("message"), QStringLiteral("Time is up.")}
         };
         task->priority = 88;
@@ -705,7 +599,7 @@ bool buildDeterministicComputerTask(const QString &input, AgentTask *task, QStri
         const QString fileName = sanitizeSimpleFileName(fileMatch.captured(2));
         QString content = fileMatch.captured(3).trimmed();
         if (content.isEmpty()) {
-            content = QStringLiteral("Created by JARVIS.");
+            content = QStringLiteral("Created by Vaxil.");
         }
 
         task->type = QStringLiteral("computer_write_file");
@@ -886,7 +780,7 @@ bool asksForDetailedAnswer(const QString &input)
 QString extractWebSearchQuery(QString input)
 {
     input = input.trimmed();
-    input.remove(QRegularExpression(QStringLiteral("^(yeah|yes|okay|ok|please|jarvis)\\s*,?\\s*"),
+    input.remove(QRegularExpression(QStringLiteral("^(yeah|yes|okay|ok|please|vaxil|jarvis)\\s*,?\\s*"),
                                     QRegularExpression::CaseInsensitiveOption));
     input.remove(QRegularExpression(QStringLiteral("^(can you|could you|would you|please)\\s+"),
                                     QRegularExpression::CaseInsensitiveOption));
@@ -1013,6 +907,7 @@ IntentType expectedAgentIntentForQuery(const QString &input)
             QStringLiteral("read your own logs"),
             QStringLiteral("read logs"),
             QStringLiteral("startup log"),
+            QStringLiteral("vaxil log"),
             QStringLiteral("jarvis log")
         })) {
         return IntentType::READ_FILE;
@@ -1438,6 +1333,7 @@ QString AssistantController::transcript() const { return m_transcript; }
 QString AssistantController::responseText() const { return m_responseText; }
 QString AssistantController::statusText() const { return m_statusText; }
 float AssistantController::audioLevel() const { return m_audioLevel; }
+int AssistantController::wakeTriggerToken() const { return m_wakeTriggerToken; }
 bool AssistantController::startupReady() const { return m_startupReady; }
 bool AssistantController::startupBlocked() const { return m_startupBlocked; }
 QString AssistantController::startupBlockingIssue() const { return m_startupBlockingIssue; }
@@ -1504,14 +1400,14 @@ void AssistantController::submitText(const QString &text)
     m_lastPromptForAiLog = trimmed;
     invalidateWakeMonitorResume();
 
-    const QString wakeWord = m_settings->wakeWordPhrase().trimmed().isEmpty()
-        ? QStringLiteral("Jarvis")
-        : m_settings->wakeWordPhrase().trimmed();
-    QString routedInput = trimmed;
-    const bool wakeDetected = extractWakeWordPayload(trimmed, wakeWord, &routedInput);
+    const bool wakeDetected = WakeWordDetector::isWakeWordDetected(trimmed);
+    QString routedInput = wakeDetected
+        ? normalizeForRouting(WakeWordDetector::stripWakeWordPrefix(trimmed))
+        : trimmed;
     const QString effectiveInput = routedInput.isEmpty() ? trimmed : routedInput;
 
     if (wakeDetected) {
+        noteWakeTrigger();
         activateConversationSession();
     } else if (m_conversationSessionActive) {
         refreshConversationSession();
@@ -1527,7 +1423,7 @@ void AssistantController::submitText(const QString &text)
     setDuplexState(DuplexState::Processing);
     setStatus(QStringLiteral("Processing request"));
     if (m_loggingService) {
-        m_loggingService->info(QStringLiteral("submitText received. raw=\"%1\" wakeDetected=%2 routed=\"%3\"")
+        m_loggingService->info(QStringLiteral("[VAXIL] Processing... raw=\"%1\" wakeDetected=%2 routed=\"%3\"")
             .arg(trimmed.left(240))
             .arg(wakeDetected ? QStringLiteral("true") : QStringLiteral("false"))
             .arg(routedInput.left(240)));
@@ -1773,6 +1669,15 @@ void AssistantController::interruptSpeechAndListen()
 
 void AssistantController::startWakeMonitor()
 {
+    if (!m_settings->wakeWordEnabled()) {
+        m_wakeMonitorEnabled = false;
+        m_wakeStartRequested = false;
+        m_wakeEngineReady = true;
+        m_lastWakeError.clear();
+        updateStartupState();
+        return;
+    }
+
     m_wakeMonitorEnabled = true;
     m_wakeStartRequested = true;
     m_wakeEngineReady = false;
@@ -2083,11 +1988,8 @@ void AssistantController::bindWakeWordEngineSignals()
             return;
         }
 
-        if (m_currentState == AssistantState::Speaking || m_currentState == AssistantState::Processing || m_ttsEngine->isSpeaking()) {
-            if (m_loggingService) {
-                m_loggingService->info(QStringLiteral("Wake trigger ignored while assistant is busy."));
-            }
-            return;
+        if (m_ttsEngine->isSpeaking()) {
+            m_ttsEngine->clear();
         }
 
         pauseWakeMonitor();
@@ -2100,9 +2002,14 @@ void AssistantController::bindWakeWordEngineSignals()
             m_responseText.clear();
             emit responseTextChanged();
         }
+        noteWakeTrigger();
         activateConversationSession();
         m_followUpListeningAfterWakeAck = true;
         m_lastPromptForAiLog = m_settings->wakeWordPhrase();
+        if (m_loggingService) {
+            m_loggingService->info(QStringLiteral("[VAXIL] Wake word detected"));
+            m_loggingService->info(QStringLiteral("[VAXIL] Listening..."));
+        }
         deliverLocalResponse(
             m_localResponseEngine->wakeWordReady(buildLocalResponseContext()),
             QStringLiteral("Listening"),
@@ -2158,6 +2065,7 @@ QString AssistantController::resolveStartupBlockingIssue(bool *blocked) const
 #else
     const bool wakeEngineCompiled = false;
 #endif
+    const bool wakeEngineRequired = wakeEngineCompiled && m_settings->wakeWordEnabled();
 
     if (!m_settings->initialSetupCompleted()) {
         setBlocked(true);
@@ -2188,7 +2096,7 @@ QString AssistantController::resolveStartupBlockingIssue(bool *blocked) const
         return QStringLiteral("FFmpeg executable is missing.");
     }
 
-    if (wakeEngineCompiled) {
+    if (wakeEngineRequired) {
         const QString wakeRuntime = resolveWakeEngineRuntimePath();
         if (wakeRuntime.isEmpty()) {
             setBlocked(true);
@@ -2220,7 +2128,7 @@ QString AssistantController::resolveStartupBlockingIssue(bool *blocked) const
             : availability.status;
     }
 
-    if (wakeEngineCompiled) {
+    if (wakeEngineRequired) {
         if (!m_wakeStartRequested) {
             setBlocked(false);
             return QStringLiteral("Starting wake engine...");
@@ -2295,6 +2203,12 @@ void AssistantController::enterPostSpeechCooldown()
 bool AssistantController::isMicrophoneBlocked() const
 {
     return m_duplexState == DuplexState::TtsExclusive || m_duplexState == DuplexState::Cooldown;
+}
+
+void AssistantController::noteWakeTrigger()
+{
+    ++m_wakeTriggerToken;
+    emit wakeTriggerTokenChanged();
 }
 
 void AssistantController::activateConversationSession()
@@ -2466,7 +2380,7 @@ int AssistantController::maxConversationSessionMisses() const
 QString AssistantController::buildSttPrompt() const
 {
     const QString wakeWord = m_settings->wakeWordPhrase().trimmed().isEmpty()
-        ? QStringLiteral("Jarvis")
+        ? QStringLiteral("Hey Vaxil")
         : m_settings->wakeWordPhrase().trimmed();
     return QStringLiteral(
         "%1. Everyday English speech. Common topics include time, date, settings, files, logs, web search, memory, timers, and general conversation. Output only what the speaker says.")
@@ -2574,6 +2488,7 @@ bool AssistantController::canStartWakeMonitor() const
     return false;
 #else
     return m_wakeMonitorEnabled
+        && m_settings->wakeWordEnabled()
         && m_currentState != AssistantState::Listening
         && !isMicrophoneBlocked()
         && m_audioCaptureMode == AudioCaptureMode::None
@@ -2662,6 +2577,7 @@ bool AssistantController::startAudioCapture(AudioCaptureMode mode, bool announce
         m_loggingService->info(QStringLiteral("Audio capture started. mode=direct device=\"%1\" sensitivity=%2")
             .arg(m_settings->selectedAudioInputDeviceId())
             .arg(m_settings->micSensitivity(), 0, 'f', 3));
+        m_loggingService->info(QStringLiteral("[VAXIL] Listening..."));
     }
     if (announceListening) {
         setDuplexState(DuplexState::Listening);

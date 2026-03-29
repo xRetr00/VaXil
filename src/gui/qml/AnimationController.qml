@@ -11,11 +11,13 @@ Item {
     property real inputLevel: 0.0
     property bool overlayVisible: false
     property int uiState: -1
+    property int wakeTriggerToken: 0
 
     property real time: 0.0
     property real stateMorph: effectiveUiState
     property real targetInput: clamp(inputLevel * 9.5, 0.0, 1.0)
     property real smoothedInput: targetInput
+    property real wakeFlash: 0.0
     property real speakingTarget: clamp(
         executingAmount * (0.44
                            + 0.24 * wave(time * 7.8)
@@ -37,30 +39,36 @@ Item {
     readonly property real executingAmount: stateWeight(stateExecuting)
     readonly property real inputBoost: clamp(smoothedInput * 1.04, 0.0, 1.0)
     readonly property real breathing: wave(time * (0.72 + thinkingAmount * 0.42 + executingAmount * 0.24))
+    readonly property real listeningPulse: wave(time * (2.8 + inputBoost * 5.2))
     readonly property real thinkingDrift: wave(time * 1.36 + 0.7)
     readonly property real executionDrive: wave(time * 6.4 + smoothedInput * 4.2)
     readonly property real orbitalRotation: (time * (10 + thinkingAmount * 28 + executingAmount * 18)) % 360
     readonly property real orbScale: 0.94
         + idleAmount * (0.03 + breathing * 0.02)
-        + listeningAmount * (0.05 + inputBoost * 0.08)
+        + listeningAmount * (0.06 + inputBoost * 0.08 + listeningPulse * 0.03)
         + thinkingAmount * (0.08 + thinkingDrift * 0.03)
         + executingAmount * (0.09 + speakingSignal * 0.07)
+        + wakeFlash * 0.08
     readonly property real distortion: 0.06
         + idleAmount * 0.02
-        + listeningAmount * (0.18 + inputBoost * 0.24)
+        + listeningAmount * (0.21 + inputBoost * 0.24 + listeningPulse * 0.08)
         + thinkingAmount * 0.2
         + executingAmount * (0.12 + speakingSignal * 0.2)
+        + wakeFlash * 0.12
     readonly property real glow: 0.24
         + idleAmount * 0.1
-        + listeningAmount * (0.14 + inputBoost * 0.18)
+        + listeningAmount * (0.18 + inputBoost * 0.18 + listeningPulse * 0.1)
         + thinkingAmount * 0.22
         + executingAmount * (0.24 + speakingSignal * 0.18)
+        + wakeFlash * 0.34
     readonly property real auraPulse: 0.28
         + breathing * 0.16
+        + listeningAmount * listeningPulse * 0.12
         + thinkingDrift * 0.12
         + speakingSignal * 0.24
         + inputBoost * 0.18
-    readonly property real flicker: wave(time * 14.0 + inputBoost * 6.5 + executingAmount * 2.0)
+        + wakeFlash * 0.18
+    readonly property real flicker: clamp(wave(time * (14.0 + listeningAmount * 9.0) + inputBoost * 6.5 + executingAmount * 2.0) + wakeFlash * 0.45, 0.0, 1.0)
     readonly property real listeningVibrationX: listeningAmount
         * (0.45 + inputBoost * 1.3)
         * (Math.sin(time * 46.0) + Math.sin(time * 73.0 + 0.9)) * 0.5
@@ -98,6 +106,10 @@ Item {
         stateMorph = effectiveUiState
     }
 
+    onWakeTriggerTokenChanged: {
+        wakeFlashAnimation.restart()
+    }
+
     NumberAnimation on time {
         from: 0
         to: 20000
@@ -124,6 +136,29 @@ Item {
         NumberAnimation {
             duration: 140
             easing.type: Easing.OutCubic
+        }
+    }
+
+    SequentialAnimation {
+        id: wakeFlashAnimation
+        running: false
+
+        NumberAnimation {
+            target: root
+            property: "wakeFlash"
+            from: 0.0
+            to: 1.0
+            duration: 70
+            easing.type: Easing.OutCubic
+        }
+
+        NumberAnimation {
+            target: root
+            property: "wakeFlash"
+            from: 1.0
+            to: 0.0
+            duration: 280
+            easing.type: Easing.OutQuad
         }
     }
 

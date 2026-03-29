@@ -31,8 +31,8 @@ Item {
     readonly property real reactivePulse: clamp(auraPulse, 0.0, 1.0)
     readonly property real reactiveSpeaking: clamp(speakingLevel, 0.0, 1.0)
     readonly property real reactiveFlicker: clamp(flicker, 0.0, 1.0)
-    readonly property real effectScale: Math.max(0.7, orbScale * (0.98 + reactivePulse * 0.04))
-    readonly property real effectOpacity: clamp(0.88 + reactiveGlow * 0.12, 0.0, 1.0)
+    readonly property real effectScale: Math.max(0.72, orbScale * (0.98 + reactivePulse * 0.05 + reactiveGlow * 0.02))
+    readonly property real effectOpacity: clamp(0.86 + reactiveGlow * 0.16, 0.0, 1.0)
 
     function clamp(value, minValue, maxValue) {
         return Math.max(minValue, Math.min(maxValue, value))

@@ -434,7 +434,7 @@ Window {
                         Text {
                             Layout.fillWidth: true
                             visible: !settingsVm.supportsAutoToolInstall
-                            text: "Linux setup uses manual dependency selection. Point JARVIS to installed `whisper`, `piper`, `ffmpeg`, and model files."
+                            text: "Linux setup uses manual dependency selection. Point Vaxil to installed `whisper`, `piper`, `ffmpeg`, and model files."
                             color: "#9ab0ca"
                             font.pixelSize: 12
                             wrapMode: Text.Wrap
@@ -637,7 +637,7 @@ Window {
                         }
 
                         Text {
-                            text: "JARVIS uses the local sherpa-onnx wake stack. Microphone input stays gated while TTS is playing."
+                            text: "Vaxil uses the local sherpa-onnx wake stack. Microphone input stays gated while TTS is playing."
                             color: "#9ab0ca"
                             font.pixelSize: 14
                             wrapMode: Text.Wrap
@@ -658,7 +658,7 @@ Window {
                                   ? settingsVm.toolInstallStatus
                                   : (settingsVm.supportsAutoToolInstall
                                       ? "Use Auto Detect after installing tools so the current local paths are populated."
-                                      : "Use Auto Detect after installing tools so JARVIS can resolve the current local paths.")
+                                      : "Use Auto Detect after installing tools so Vaxil can resolve the current local paths.")
                             color: "#9ab0ca"
                             font.pixelSize: 12
                             wrapMode: Text.Wrap
@@ -712,7 +712,7 @@ Window {
                             }
 
                             Button {
-                                text: "Test Jarvis"
+                                text: "Test Vaxil"
                                 onClicked: {
                                     if (!settingsVm.runSetupScenario(
                                             userNameField.text,

@@ -9,7 +9,7 @@ from service import VisionNodeConfig, VisionNodeService
 
 
 def parse_args() -> VisionNodeConfig:
-    parser = argparse.ArgumentParser(description="JARVIS distributed vision node")
+    parser = argparse.ArgumentParser(description="VAXIL distributed vision node")
     parser.add_argument("--server-url", required=True, help="WebSocket server URL exposed by the main PC")
     parser.add_argument("--node-id", default="laptop-vision-node", help="Stable node identifier")
     parser.add_argument("--camera-index", type=int, default=0, help="OpenCV camera index")

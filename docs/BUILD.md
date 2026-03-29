@@ -1,4 +1,4 @@
-# Build JARVIS
+# Build Vaxil
 
 ## Prerequisites
 
@@ -131,7 +131,7 @@ ctest --test-dir build-linux-release --output-on-failure
 - LM Studio should expose the OpenAI-compatible API on `http://localhost:1234`
 - The app discovers models from `/v1/models`
 - Voice generation starts only when sentence boundaries are detected from streamed output
-- The application builds and deploys `jarvis_sherpa_wake_helper` next to the main `jarvis` executable, using the platform's executable suffix when applicable
+- The application builds and deploys `jarvis_sherpa_wake_helper` next to the main `jarvis` executable; the helper and binary names are still legacy for compatibility
 - `windeployqt` runs as a post-build step on Windows to stage Qt runtime files
 - On Linux/X11, the Qt xcb platform plugin requires runtime packages such as `libxcb-cursor0`; `build.sh` installs these via apt
 - On Linux, `build.sh` also attempts to auto-install `whisper.cpp` and `piper` executables from distro packages when missing

@@ -264,7 +264,7 @@ bool JarvisApplication::initialize()
                     : QStringLiteral("Running in tray. Use the tray icon to toggle the overlay.");
                 qInfo() << "Startup complete. App is running in the tray." << readyMessage;
                 m_trayIcon->showMessage(
-                    QStringLiteral("J.A.R.V.I.S"),
+                    QStringLiteral("Vaxil"),
                     readyMessage,
                     QSystemTrayIcon::Information,
                     5000);
@@ -290,7 +290,7 @@ bool JarvisApplication::initialize()
             if (issueChanged || cooldownElapsed) {
                 qWarning() << "Startup blocked:" << issue;
                 m_trayIcon->showMessage(
-                    QStringLiteral("J.A.R.V.I.S"),
+                    QStringLiteral("Vaxil"),
                     issue.isEmpty() ? QStringLiteral("Startup is blocked. Open setup to fix the missing components.") : issue,
                     QSystemTrayIcon::Warning,
                     7000);

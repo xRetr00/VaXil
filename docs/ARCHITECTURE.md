@@ -1,8 +1,8 @@
-# Architecture Overview
+# Vaxil Architecture Overview
 
 ## Runtime Model
 
-J.A.R.V.I.S is a tray-first desktop assistant with three main windows loaded by a single QQmlApplicationEngine:
+Vaxil is a tray-first desktop assistant with three main windows loaded by a single QQmlApplicationEngine:
 
 - OverlayWindow: ambient orb, status, toast feedback
 - SettingsWindow: full runtime configuration
@@ -81,10 +81,10 @@ Core orchestration starts in src/app/JarvisApplication.cpp and wires all service
 
 - SherpaWakeWordEngine:
   - Default wake engine path
-  - Starts jarvis_sherpa_wake_helper and consumes detection events
+  - Starts `jarvis_sherpa_wake_helper` and consumes partial/final transcript events
 - SherpaWakeWordEngine:
   - Only wake path used by the application
-  - Uses moving average + consecutive frame gating for stable detection
+  - Uses streaming Sherpa transcription plus transcript-based wake matching
 - AudioInputService:
   - Captures PCM audio for transcription with VAD framing
 - AudioProcessingChain:
@@ -126,7 +126,7 @@ This keeps QML declarative and pushes behavior to C++.
 ## Logging and Observability
 
 - startup.log: bootstrap and Qt log handler output
-- jarvis.log: rotating structured app logs via spdlog
+- vaxil.log: rotating structured app logs via spdlog
 - logs/AI/*.log: one file per prompt/response exchange
 
 Agent traces and background-task results are also surfaced through BackendFacade for UI diagnostics.

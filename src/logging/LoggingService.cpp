@@ -23,7 +23,7 @@ bool LoggingService::initialize()
 {
     const auto root = QCoreApplication::applicationDirPath() + QStringLiteral("/logs");
     QDir().mkpath(root);
-    m_logFilePath = root + QStringLiteral("/jarvis.log");
+    m_logFilePath = root + QStringLiteral("/vaxil.log");
 
     try {
         auto fileSink = std::make_shared<spdlog::sinks::rotating_file_sink_mt>(
@@ -32,7 +32,7 @@ bool LoggingService::initialize()
             3);
         auto consoleSink = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
         std::vector<spdlog::sink_ptr> sinks{consoleSink, fileSink};
-        m_logger = std::make_shared<spdlog::logger>("jarvis", sinks.begin(), sinks.end());
+        m_logger = std::make_shared<spdlog::logger>("vaxil", sinks.begin(), sinks.end());
         spdlog::register_logger(m_logger);
         m_logger->set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%l] %v");
         m_logger->set_level(spdlog::level::info);

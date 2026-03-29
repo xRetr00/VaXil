@@ -67,18 +67,18 @@ int main(int argc, char *argv[])
     Q_INIT_RESOURCE(resources);
     QQuickStyle::setStyle(QStringLiteral("Basic"));
     QApplication::setQuitOnLastWindowClosed(false);
-    QApplication::setApplicationDisplayName(QStringLiteral("J.A.R.V.I.S"));
+    QApplication::setApplicationDisplayName(QStringLiteral("Vaxil"));
     QApplication::setApplicationName(QStringLiteral("J.A.R.V.I.S"));
     QApplication::setOrganizationName(QStringLiteral("J.A.R.V.I.S"));
     app.setWindowIcon(QIcon(QStringLiteral(":/qt/qml/JARVIS/gui/assets/icon.ico")));
     qInstallMessageHandler(qtMessageLogger);
 
-    bootstrapLog(QStringLiteral("J.A.R.V.I.S bootstrap starting"));
+    bootstrapLog(QStringLiteral("VAXIL bootstrap starting"));
     bootstrapLog(QStringLiteral("Executable directory: %1").arg(QCoreApplication::applicationDirPath()));
 
     JarvisApplication jarvis;
     if (!jarvis.initialize()) {
-        bootstrapLog(QStringLiteral("Initialization failed. Check startup.log and jarvis.log."));
+        bootstrapLog(QStringLiteral("Initialization failed. Check startup.log and vaxil.log."));
         return 1;
     }
 

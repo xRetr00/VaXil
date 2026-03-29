@@ -1,27 +1,21 @@
 #include "wakeword/SherpaWakeWordEngine.h"
 
 #include <QCoreApplication>
+#include <QDateTime>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
 #include <QProcessEnvironment>
-#include <QSet>
-#include <QRegularExpression>
-#include <QStandardPaths>
 #include <QStringList>
 
 #include "logging/LoggingService.h"
 #include "platform/PlatformRuntime.h"
 #include "settings/AppSettings.h"
-
-#if JARVIS_HAS_SHERPA_ONNX
-#include <sentencepiece_processor.h>
-#endif
+#include "wakeword/WakeWordDetector.h"
 
 namespace {
 constexpr int kMinCooldownMs = 250;
 constexpr int kMaxCooldownMs = 1600;
-constexpr int kKeywordSegmentationCandidates = 6;
 
 QString firstExisting(const QStringList &candidates)
 {
@@ -32,31 +26,6 @@ QString firstExisting(const QStringList &candidates)
     }
 
     return {};
-}
-
-QString normalizeWakePhrase(const QString &phrase)
-{
-    QString normalized = phrase.trimmed().toUpper();
-    normalized.replace(QRegularExpression(QStringLiteral("\\s+")), QStringLiteral(" "));
-    normalized.remove(QRegularExpression(QStringLiteral("[^A-Z0-9 ]")));
-    return normalized.trimmed();
-}
-
-QStringList wakePhraseVariants(const QString &phrase)
-{
-    const QString normalized = normalizeWakePhrase(phrase);
-    if (normalized.isEmpty()) {
-        return {QStringLiteral("JARVIS"), QStringLiteral("HEY JARVIS")};
-    }
-
-    QStringList variants;
-    variants << normalized;
-    if (!normalized.startsWith(QStringLiteral("HEY "))) {
-        variants << QStringLiteral("HEY %1").arg(normalized);
-    }
-
-    variants.removeDuplicates();
-    return variants;
 }
 }
 
@@ -95,11 +64,11 @@ bool SherpaWakeWordEngine::start(
         return false;
     }
     if (!QFileInfo::exists(modelPath)) {
-        emit errorOccurred(QStringLiteral("sherpa-onnx keyword spotting model is missing"));
+        emit errorOccurred(QStringLiteral("sherpa-onnx wake model is missing"));
         return false;
     }
 
-    m_threshold = std::clamp(threshold, 0.10f, 0.85f);
+    m_threshold = std::clamp(threshold, 0.50f, 1.0f);
     m_cooldownMs = std::clamp(cooldownMs, kMinCooldownMs, kMaxCooldownMs);
     m_preferredDeviceId = preferredDeviceId;
     m_runtimeRoot = QFileInfo(enginePath).absoluteFilePath();
@@ -118,23 +87,19 @@ bool SherpaWakeWordEngine::start(
         QStringLiteral("joiner-epoch-12-avg-2-chunk-16-left-64.onnx")
     });
     m_tokensPath = QDir(m_modelRoot).filePath(QStringLiteral("tokens.txt"));
+    m_bpeModelPath = QDir(m_modelRoot).filePath(QStringLiteral("bpe.model"));
 
     if (m_helperPath.isEmpty()) {
         emit errorOccurred(QStringLiteral("Wake helper executable is missing"));
         return false;
     }
     if (m_encoderPath.isEmpty() || m_decoderPath.isEmpty() || m_joinerPath.isEmpty() || !QFileInfo::exists(m_tokensPath)) {
-        emit errorOccurred(QStringLiteral("sherpa-onnx keyword model files are incomplete"));
-        return false;
-    }
-
-    QString errorText;
-    if (!writeKeywordsFile(m_modelRoot, &m_keywordsFilePath, &errorText)) {
-        emit errorOccurred(errorText);
+        emit errorOccurred(QStringLiteral("sherpa-onnx wake model files are incomplete"));
         return false;
     }
 
     m_paused = false;
+    m_lastTranscriptWakeMs = 0;
     return startHelperProcess();
 #endif
 }
@@ -188,12 +153,13 @@ void SherpaWakeWordEngine::stop()
     m_stderrBuffer.clear();
     m_runtimeRoot.clear();
     m_modelRoot.clear();
-    m_keywordsFilePath.clear();
     m_encoderPath.clear();
     m_decoderPath.clear();
     m_joinerPath.clear();
     m_tokensPath.clear();
+    m_bpeModelPath.clear();
     m_helperPath.clear();
+    m_lastTranscriptWakeMs = 0;
     m_helperProcess = nullptr;
     m_stopRequested = false;
 }
@@ -259,11 +225,13 @@ bool SherpaWakeWordEngine::startHelperProcess()
         QStringLiteral("--decoder"), m_decoderPath,
         QStringLiteral("--joiner"), m_joinerPath,
         QStringLiteral("--tokens"), m_tokensPath,
-        QStringLiteral("--keywords-file"), m_keywordsFilePath,
         QStringLiteral("--threshold"), QString::number(m_threshold, 'f', 2),
         QStringLiteral("--cooldown-ms"), QString::number(m_cooldownMs),
         QStringLiteral("--warmup-ms"), QString::number(m_activationWarmupMs)
     };
+    if (QFileInfo::exists(m_bpeModelPath)) {
+        args << QStringLiteral("--bpe-model") << m_bpeModelPath;
+    }
     if (!m_preferredDeviceId.trimmed().isEmpty()) {
         args << QStringLiteral("--device-id") << m_preferredDeviceId.trimmed();
     }
@@ -324,11 +292,11 @@ bool SherpaWakeWordEngine::startHelperProcess()
     }
 
     if (m_loggingService) {
-        m_loggingService->info(QStringLiteral("Starting sherpa-onnx wake helper. helper=\"%1\" model=\"%2\" threshold=%3 cooldownMs=%4 wakeWord=\"%5\"")
+        m_loggingService->info(QStringLiteral("[VAXIL] Starting sherpa wake helper. helper=\"%1\" model=\"%2\" sensitivity=%3 cooldownMs=%4 wakeWord=\"%5\"")
             .arg(m_helperPath, m_modelRoot)
             .arg(m_threshold, 0, 'f', 2)
             .arg(m_cooldownMs)
-            .arg(m_settings ? m_settings->wakeWordPhrase() : QStringLiteral("Jarvis")));
+            .arg(m_settings ? m_settings->wakeWordPhrase() : QStringLiteral("Hey Vaxil")));
     }
     return true;
 }
@@ -349,13 +317,17 @@ void SherpaWakeWordEngine::consumeHelperStdout()
         if (text == QStringLiteral("READY")) {
             m_ready = true;
             if (m_loggingService) {
-                m_loggingService->info(QStringLiteral("sherpa-onnx wake engine started. runtime=\"%1\" model=\"%2\" threshold=%3 cooldownMs=%4 wakeWord=\"%5\"")
+                m_loggingService->info(QStringLiteral("[VAXIL] Sherpa wake engine started. runtime=\"%1\" model=\"%2\" sensitivity=%3 cooldownMs=%4 wakeWord=\"%5\"")
                     .arg(m_runtimeRoot, m_modelRoot)
                     .arg(m_threshold, 0, 'f', 2)
                     .arg(m_cooldownMs)
-                    .arg(m_settings ? m_settings->wakeWordPhrase() : QStringLiteral("Jarvis")));
+                    .arg(m_settings ? m_settings->wakeWordPhrase() : QStringLiteral("Hey Vaxil")));
             }
             emit engineReady();
+        } else if (text.startsWith(QStringLiteral("PARTIAL:"), Qt::CaseInsensitive)) {
+            handleTranscriptEvent(text.mid(QStringLiteral("PARTIAL:").size()).trimmed(), false);
+        } else if (text.startsWith(QStringLiteral("FINAL:"), Qt::CaseInsensitive)) {
+            handleTranscriptEvent(text.mid(QStringLiteral("FINAL:").size()).trimmed(), true);
         } else if (text.startsWith(QStringLiteral("DETECTED:"), Qt::CaseInsensitive)) {
             if (!m_paused && m_ready) {
                 emit probabilityUpdated(1.0f);
@@ -443,107 +415,27 @@ QString SherpaWakeWordEngine::resolveModelFile(const QString &rootPath, const QS
     return firstExisting(candidates);
 }
 
-bool SherpaWakeWordEngine::writeKeywordsFile(const QString &modelPath, QString *keywordsPath, QString *errorText) const
+void SherpaWakeWordEngine::handleTranscriptEvent(const QString &transcript, bool isFinal)
 {
-#if !JARVIS_HAS_SHERPA_ONNX
-    Q_UNUSED(modelPath);
-    Q_UNUSED(keywordsPath);
-    if (errorText) {
-        *errorText = QStringLiteral("sentencepiece support is unavailable");
-    }
-    return false;
-#else
-    const QString bpeModel = QDir(modelPath).filePath(QStringLiteral("bpe.model"));
-    if (!QFileInfo::exists(bpeModel)) {
-        if (errorText) {
-            *errorText = QStringLiteral("sherpa-onnx BPE model is missing");
-        }
-        return false;
+    Q_UNUSED(isFinal);
+    if (m_paused || !m_ready || transcript.trimmed().isEmpty()) {
+        return;
     }
 
-    sentencepiece::SentencePieceProcessor processor;
-    const auto loadStatus = processor.Load(bpeModel.toStdString());
-    if (!loadStatus.ok()) {
-        if (errorText) {
-            *errorText = QStringLiteral("Failed to load sentencepiece wake model: %1")
-                .arg(QString::fromStdString(loadStatus.ToString()));
-        }
-        return false;
+    if (!WakeWordDetector::isWakeWordDetected(transcript)) {
+        return;
     }
 
-    const QString displayPhrase = (m_settings && !m_settings->wakeWordPhrase().trimmed().isEmpty())
-        ? m_settings->wakeWordPhrase().trimmed()
-        : QStringLiteral("Jarvis");
-
-    QStringList lines;
-    QSet<QString> emittedLines;
-    for (const QString &variant : wakePhraseVariants(displayPhrase)) {
-        const std::string variantUtf8 = variant.toStdString();
-        std::vector<std::string> pieces;
-        const auto encodeStatus = processor.Encode(variantUtf8, &pieces);
-        if (!encodeStatus.ok() || pieces.empty()) {
-            if (errorText) {
-                *errorText = QStringLiteral("Failed to encode wake phrase \"%1\": %2")
-                    .arg(variant, QString::fromStdString(encodeStatus.ToString()));
-            }
-            return false;
-        }
-
-        auto addKeywordPieces = [&](const std::vector<std::string> &keywordPieces) {
-            if (keywordPieces.empty()) {
-                return;
-            }
-
-            QStringList linePieces;
-            linePieces.reserve(static_cast<qsizetype>(keywordPieces.size()));
-            for (const std::string &piece : keywordPieces) {
-                linePieces.push_back(QString::fromStdString(piece));
-            }
-
-            const QString line = QStringLiteral("%1 @%2").arg(linePieces.join(QChar::fromLatin1(' ')), displayPhrase);
-            if (!emittedLines.contains(line)) {
-                emittedLines.insert(line);
-                lines.push_back(line);
-            }
-        };
-
-        addKeywordPieces(pieces);
-
-        std::vector<std::vector<std::string>> nbestPieces;
-        const auto nbestStatus = processor.NBestEncode(variantUtf8, kKeywordSegmentationCandidates, &nbestPieces);
-        if (nbestStatus.ok()) {
-            for (const auto &candidate : nbestPieces) {
-                addKeywordPieces(candidate);
-            }
-        }
+    const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
+    if ((nowMs - m_lastTranscriptWakeMs) < m_cooldownMs) {
+        return;
     }
 
-    if (lines.isEmpty()) {
-        if (errorText) {
-            *errorText = QStringLiteral("No encoded keyword variants were generated for the wake phrase");
-        }
-        return false;
+    m_lastTranscriptWakeMs = nowMs;
+    if (m_loggingService) {
+        m_loggingService->info(QStringLiteral("[VAXIL] Wake word detected. transcript=\"%1\"")
+            .arg(transcript.left(120)));
     }
-
-    const QString wakeDir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + QStringLiteral("/wake");
-    QDir().mkpath(wakeDir);
-    const QString outputPath = wakeDir + QStringLiteral("/sherpa_keywords.txt");
-    QFile file(outputPath);
-    if (!file.open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate)) {
-        if (errorText) {
-            *errorText = QStringLiteral("Failed to write sherpa-onnx keywords file");
-        }
-        return false;
-    }
-
-    file.write(lines.join(QChar::fromLatin1('\n')).toUtf8());
-    file.write("\n");
-    file.close();
-
-    if (keywordsPath) {
-        *keywordsPath = outputPath;
-    }
-
-    return true;
-#endif
+    emit probabilityUpdated(1.0f);
+    emit wakeWordDetected();
 }

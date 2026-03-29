@@ -264,7 +264,7 @@ QList<AiMessage> PromptAdapter::buildConversationMessages(
     const QString &visionContext) const
 {
     QString systemPrompt =
-        QStringLiteral("You are %1, a %2 desktop AI assistant. "
+        QStringLiteral("You are %1, a %2 AI assistant. "
                        "Maintain a %3 tone and a %4 addressing style. "
                        "Primary goals: accuracy, usefulness, and calm delivery. "
                        "Sound natural and capable. Use normal phrasing and contractions when they fit. "
@@ -287,7 +287,7 @@ QList<AiMessage> PromptAdapter::buildConversationMessages(
     systemPrompt += QStringLiteral("\n- naming rule: always use the user name when directly addressing the user.");
     systemPrompt += QStringLiteral("\nCurrent runtime context:");
     systemPrompt += QStringLiteral("\n%1").arg(currentTimeContext());
-    systemPrompt += QStringLiteral("\n- wake phrase: Jarvis");
+    systemPrompt += QStringLiteral("\n- wake phrase: Hey Vaxil");
     if (!visionContext.trimmed().isEmpty()) {
         systemPrompt += QStringLiteral("\n- current scene summary: %1").arg(visionContext.trimmed());
     }
@@ -369,7 +369,7 @@ QList<AiMessage> PromptAdapter::buildHybridAgentMessages(
     const QString userName = resolvedUserName(userProfile);
     QString systemPrompt;
     systemPrompt += QStringLiteral("<identity>");
-    systemPrompt += QStringLiteral("\nYou are %1, a %2 desktop assistant.").arg(identity.assistantName, identity.personality);
+    systemPrompt += QStringLiteral("\nYou are %1, a %2 AI assistant.").arg(identity.assistantName, identity.personality);
     systemPrompt += QStringLiteral("\nTone: %1. Addressing style: %2.").arg(identity.tone, identity.addressingStyle);
     systemPrompt += QStringLiteral("\nSpeak naturally, briefly, and like a capable person.");
     systemPrompt += QStringLiteral("\nUser name: %1").arg(userName.isEmpty() ? QStringLiteral("unknown") : userName);
@@ -427,14 +427,14 @@ QString PromptAdapter::buildAgentInstructions(
     const QString userName = resolvedUserName(userProfile);
     QString instructions;
     instructions += QStringLiteral("<identity>");
-    instructions += QStringLiteral("\nYou are %1, a %2 desktop assistant.").arg(identity.assistantName, identity.personality);
+    instructions += QStringLiteral("\nYou are %1, a %2 AI assistant.").arg(identity.assistantName, identity.personality);
     instructions += QStringLiteral("\nTone: %1. Addressing style: %2.").arg(identity.tone, identity.addressingStyle);
     instructions += QStringLiteral("\nSpeak like a capable person, not a chatbot. Use normal phrasing and contractions when they sound natural.");
     instructions += QStringLiteral("\nUser name: %1").arg(userName.isEmpty() ? QStringLiteral("unknown") : userName);
     instructions += QStringLiteral("\nUser preferences: %1").arg(profilePreferencesText(userProfile));
     instructions += QStringLiteral("\nRuntime:");
     instructions += QStringLiteral("\n%1").arg(currentTimeContext());
-    instructions += QStringLiteral("\n- wake phrase: Jarvis");
+    instructions += QStringLiteral("\n- wake phrase: Hey Vaxil");
     instructions += QStringLiteral("\n</identity>\n");
     instructions += buildAgentWorldContext(intent, availableTools, memory, workspaceRoot, visionContext);
     instructions += QStringLiteral("\n<agent_mode>");
@@ -615,7 +615,7 @@ QString PromptAdapter::buildFewShotExamples(IntentType intent) const
                        "User: open config.json\n"
                        "Assistant: {\"intent\":\"READ_FILE\",\"message\":\"Okay, I'm opening that file now. You'll see the content in the panel.\",\"background_tasks\":[{\"type\":\"file_read\",\"args\":{\"path\":\"D:/J.A.R.V.I.S/config/config.json\"},\"priority\":95}]}\n"
                        "User: read your own logs\n"
-                       "Assistant: {\"intent\":\"READ_FILE\",\"message\":\"Okay, I'm opening the logs now. You'll see them in the panel.\",\"background_tasks\":[{\"type\":\"file_read\",\"args\":{\"path\":\"D:/J.A.R.V.I.S/bin/logs/jarvis.log\"},\"priority\":95}]}\n"
+                       "Assistant: {\"intent\":\"READ_FILE\",\"message\":\"Okay, I'm opening the logs now. You'll see them in the panel.\",\"background_tasks\":[{\"type\":\"file_read\",\"args\":{\"path\":\"D:/J.A.R.V.I.S/bin/logs/vaxil.log\"},\"priority\":95}]}\n"
                        "User: search the web for the latest AI news\n"
                        "Assistant: {\"intent\":\"GENERAL_CHAT\",\"message\":\"All right, I'm searching the web now. The results will appear in the panel.\",\"background_tasks\":[{\"type\":\"web_search\",\"args\":{\"query\":\"latest AI news\"},\"priority\":85}]}\n"
                        "User: search the internet for OpenAI release updates\n"
@@ -623,7 +623,7 @@ QString PromptAdapter::buildFewShotExamples(IntentType intent) const
                        "User: open YouTube\n"
                        "Assistant: {\"intent\":\"GENERAL_CHAT\",\"message\":\"All right, I'm opening YouTube now.\",\"background_tasks\":[{\"type\":\"computer_open_url\",\"args\":{\"url\":\"https://www.youtube.com/\"},\"priority\":90}]}\n"
                        "User: set a timer for 10 minutes\n"
-                       "Assistant: {\"intent\":\"GENERAL_CHAT\",\"message\":\"Okay, I'm setting that timer now.\",\"background_tasks\":[{\"type\":\"computer_set_timer\",\"args\":{\"duration_seconds\":600,\"title\":\"JARVIS Timer\",\"message\":\"Your 10 minute timer is done.\"},\"priority\":88}]}\n"
+                       "Assistant: {\"intent\":\"GENERAL_CHAT\",\"message\":\"Okay, I'm setting that timer now.\",\"background_tasks\":[{\"type\":\"computer_set_timer\",\"args\":{\"duration_seconds\":600,\"title\":\"VAXIL Timer\",\"message\":\"Your 10 minute timer is done.\"},\"priority\":88}]}\n"
                        "User: create a file on my desktop called notes.txt with hello\n"
                        "Assistant: {\"intent\":\"WRITE_FILE\",\"message\":\"All right, I'm creating that file now.\",\"background_tasks\":[{\"type\":\"computer_write_file\",\"args\":{\"path\":\"notes.txt\",\"base_dir\":\"desktop\",\"content\":\"hello\"},\"priority\":92}]}\n"
                        "User: remember that I like short answers\n"

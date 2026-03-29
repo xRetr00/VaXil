@@ -240,6 +240,13 @@ Window {
                     }
 
                     Text {
+                        text: "VAXIL ONLINE"
+                        color: "#8bd6ff"
+                        font.pixelSize: 12
+                        font.letterSpacing: 2.1
+                    }
+
+                    Text {
                         text: "Control surface for the local core, voice pipeline, and overlay behavior."
                         color: "#8ea8c8"
                         font.pixelSize: 15

@@ -182,6 +182,10 @@ public:
 
     QString wakeWordPhrase() const;
     void setWakeWordPhrase(const QString &wakeWordPhrase);
+    bool wakeWordEnabled() const;
+    void setWakeWordEnabled(bool enabled);
+    double wakeWordSensitivity() const;
+    void setWakeWordSensitivity(double sensitivity);
 
     QString wakeEngineKind() const;
     void setWakeEngineKind(const QString &kind);
@@ -236,7 +240,7 @@ private:
     bool m_aecEnabled = true;
     bool m_rnnoiseEnabled = false;
     double m_vadSensitivity = 0.55;
-    double m_wakeTriggerThreshold = 0.18;
+    double m_wakeTriggerThreshold = 0.80;
     int m_wakeTriggerCooldownMs = 450;
     QString m_ffmpegExecutable;
     QString m_ttsEngineKind = QStringLiteral("piper");
@@ -247,6 +251,8 @@ private:
     QString m_selectedAudioOutputDeviceId;
     bool m_clickThroughEnabled = true;
     bool m_initialSetupCompleted = false;
-    QString m_wakeWordPhrase = QStringLiteral("Jarvis");
+    QString m_wakeWordPhrase = QStringLiteral("Hey Vaxil");
+    bool m_wakeWordEnabled = true;
+    double m_wakeWordSensitivity = 0.80;
     QString m_wakeEngineKind = QStringLiteral("sherpa-onnx");
 };

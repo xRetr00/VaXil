@@ -1,18 +1,18 @@
-# J.A.R.V.I.S
+# Vaxil
 
 <p align="center">
-  <img src="assets/logo.png" alt="J.A.R.V.I.S logo" width="300" />
+  <img src="assets/logo.png" alt="Vaxil logo" width="300" />
 </p>
 
 
 Local-first desktop voice assistant built with Qt 6 and modern C++.
 
-Jarvis runs in the system tray, listens for a wake phrase, transcribes speech locally, routes requests to a local OpenAI-compatible backend, and speaks replies through local TTS.
+Vaxil runs in the system tray, listens for a wake phrase, transcribes speech locally, routes requests to a local OpenAI-compatible backend, and speaks replies through local TTS.
 
 ## Highlights
 
 - Local-first voice pipeline:
-  - Wake word detection with Sherpa ONNX keyword spotting
+  - Wake word detection with Sherpa ONNX streaming transcription + transcript matching
   - STT via whisper.cpp (runtime worker path)
   - TTS via Piper with worker-based playback
 - OpenAI-compatible AI backend support (LM Studio style endpoint)
@@ -94,7 +94,7 @@ build.bat
 
 3. Run:
 
-- Executable: bin/jarvis.exe
+- Executable: bin/jarvis.exe (legacy binary name retained for compatibility)
 - Logs: bin/logs
 
 ## Quick Start (Linux)
@@ -110,7 +110,7 @@ build.bat
 
 3. Run:
 
-- Executable: `bin/jarvis`
+- Executable: `bin/jarvis` (legacy binary name retained for compatibility)
 - Logs: `bin/logs`
 
 ## First Run
@@ -129,10 +129,18 @@ On first launch, the Setup wizard opens automatically.
    - Linux: select existing binaries and model files manually
 4. Wake Word:
   - wake engine kind (`sherpa-onnx`)
-  - sherpa keyword-spotting model root
-  - wake threshold and cooldown tuning
+  - sherpa streaming wake model root
+  - wake sensitivity and cooldown tuning
 5. Final Check:
    - run setup tests and complete setup
+
+## Wake Word
+
+Vaxil uses Sherpa-based speech recognition for always-on wake monitoring.
+
+- Wake phrase: `Hey Vaxil`
+- Accepted close variants: `Hey Vaksil`, `Hey Vaxel`, and `Vaxil`
+- Detection is transcript-based with lightweight normalization and safe fuzzy matching
 
 ## Runtime Data and Paths
 
@@ -147,7 +155,7 @@ On first launch, the Setup wizard opens automatically.
 - User profile:
   - config/user_profile.json
 - Main logs:
-  - bin/logs/jarvis.log
+  - bin/logs/vaxil.log
 - Startup logs:
   - bin/logs/startup.log
 - AI exchange logs:

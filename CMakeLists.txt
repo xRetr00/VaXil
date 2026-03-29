@@ -228,6 +228,7 @@ set(JARVIS_SOURCES
     src/vision/GestureActionRouter.cpp
     src/vision/VisionContextGate.cpp
     src/vision/WorldStateCache.cpp
+    src/wakeword/WakeWordDetector.cpp
     src/wakeword/SherpaWakeWordEngine.cpp
     src/workers/AiBackendWorker.cpp
     src/workers/SpeechInputWorker.cpp
@@ -289,6 +290,7 @@ set(JARVIS_HEADERS
     src/vision/GestureActionRouter.h
     src/vision/VisionContextGate.h
     src/vision/WorldStateCache.h
+    src/wakeword/WakeWordDetector.h
     src/wakeword/SherpaWakeWordEngine.h
     src/wakeword/WakeWordEngine.h
     src/workers/AiBackendWorker.h
@@ -498,6 +500,8 @@ endfunction()
 
 qt_add_executable(jarvis_sherpa_wake_helper
     src/wakeword/SherpaWakeHelperMain.cpp
+    src/wakeword/WakeWordDetector.cpp
+    src/wakeword/WakeWordDetector.h
 )
 
 target_link_libraries(jarvis_sherpa_wake_helper
@@ -687,6 +691,20 @@ if(JARVIS_BUILD_TESTS)
     add_test(NAME jarvis_settings_tests COMMAND jarvis_settings_tests)
     set_tests_properties(jarvis_settings_tests PROPERTIES ENVIRONMENT "PATH=${QT_BIN_DIR}${JARVIS_PATH_ENV_SEPARATOR}$ENV{PATH}")
     jarvis_copy_optional_runtime_libraries(jarvis_settings_tests)
+
+    qt_add_executable(jarvis_wakeword_tests
+        tests/WakeWordDetectorTests.cpp
+    )
+
+    target_link_libraries(jarvis_wakeword_tests
+        PRIVATE
+            jarvis_lib
+            Qt6::Test
+    )
+
+    add_test(NAME jarvis_wakeword_tests COMMAND jarvis_wakeword_tests)
+    set_tests_properties(jarvis_wakeword_tests PROPERTIES ENVIRONMENT "PATH=${QT_BIN_DIR}${JARVIS_PATH_ENV_SEPARATOR}$ENV{PATH}")
+    jarvis_copy_optional_runtime_libraries(jarvis_wakeword_tests)
 
     qt_add_executable(jarvis_skill_store_tests
         tests/SkillStoreTests.cpp
