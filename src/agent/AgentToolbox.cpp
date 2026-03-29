@@ -592,7 +592,7 @@ AgentToolResult AgentToolbox::executeSkillCreate(const AgentToolCall &call, cons
 AgentToolResult AgentToolbox::failedResult(const AgentToolCall &call, const QString &message) const
 {
     if (m_loggingService) {
-        m_loggingService->warn(QStringLiteral("Agent tool failed. tool=\"%1\" message=\"%2\"").arg(call.name, message.left(240)));
+        m_loggingService->warnFor(QStringLiteral("tools_mcp"), QStringLiteral("Agent tool failed. tool=\"%1\" message=\"%2\"").arg(call.name, message.left(240)));
     }
     return {
         .callId = call.id,
@@ -605,7 +605,7 @@ AgentToolResult AgentToolbox::failedResult(const AgentToolCall &call, const QStr
 AgentToolResult AgentToolbox::successResult(const AgentToolCall &call, const QString &message) const
 {
     if (m_loggingService) {
-        m_loggingService->info(QStringLiteral("Agent tool completed. tool=\"%1\"").arg(call.name));
+        m_loggingService->infoFor(QStringLiteral("tools_mcp"), QStringLiteral("Agent tool completed. tool=\"%1\"").arg(call.name));
     }
     return {
         .callId = call.id,

@@ -28,7 +28,7 @@ void TaskDispatcher::enqueue(const AgentTask &incomingTask)
 
     if (isDuplicate(task)) {
         if (m_loggingService) {
-            m_loggingService->info(QStringLiteral("[TaskDispatcher] deduplicated %1 id=%2").arg(task.type).arg(task.id));
+            m_loggingService->infoFor(QStringLiteral("tools_mcp"), QStringLiteral("[TaskDispatcher] deduplicated %1 id=%2").arg(task.type).arg(task.id));
         }
         return;
     }
@@ -48,7 +48,7 @@ void TaskDispatcher::enqueue(const AgentTask &incomingTask)
     });
 
     if (m_loggingService) {
-        m_loggingService->info(QStringLiteral("[TaskDispatcher] queued %1 id=%2").arg(task.type).arg(task.id));
+        m_loggingService->infoFor(QStringLiteral("tools_mcp"), QStringLiteral("[TaskDispatcher] queued %1 id=%2").arg(task.type).arg(task.id));
     }
 
     dispatchNext();
@@ -105,7 +105,7 @@ void TaskDispatcher::cancelPreviousTask(const QString &type)
     }
 
     if (m_loggingService) {
-        m_loggingService->info(QStringLiteral("[TaskDispatcher] canceled previous %1 id=%2").arg(type).arg(previousTaskId));
+        m_loggingService->infoFor(QStringLiteral("tools_mcp"), QStringLiteral("[TaskDispatcher] canceled previous %1 id=%2").arg(type).arg(previousTaskId));
     }
 }
 
@@ -130,7 +130,7 @@ void TaskDispatcher::handleTaskStarted(int taskId, const QString &type)
     }
 
     if (m_loggingService) {
-        m_loggingService->info(QStringLiteral("[ToolWorker] started id=%1 type=%2").arg(taskId).arg(type));
+        m_loggingService->infoFor(QStringLiteral("tools_mcp"), QStringLiteral("[ToolWorker] started id=%1 type=%2").arg(taskId).arg(type));
     }
 }
 
@@ -159,7 +159,7 @@ void TaskDispatcher::handleTaskFinished(int taskId, const QJsonObject &result)
     }
 
     if (m_loggingService) {
-        m_loggingService->info(QStringLiteral("[ToolWorker] finished id=%1").arg(taskId));
+        m_loggingService->infoFor(QStringLiteral("tools_mcp"), QStringLiteral("[ToolWorker] finished id=%1").arg(taskId));
     }
 
     emit taskResultReady(normalizedResult);

@@ -303,7 +303,7 @@ void ToolWorker::processTask(const AgentTask &task)
 
     if (const auto cached = cachedResultFor(task); cached.has_value()) {
         if (m_loggingService) {
-            m_loggingService->info(QStringLiteral("[ToolWorker] cache hit id=%1 type=%2").arg(task.id).arg(task.type));
+            m_loggingService->infoFor(QStringLiteral("tools_mcp"), QStringLiteral("[ToolWorker] cache hit id=%1 type=%2").arg(task.id).arg(task.type));
         }
 
         QJsonObject cachedResult = *cached;
@@ -324,7 +324,7 @@ void ToolWorker::processTask(const AgentTask &task)
     }
 
     if (m_loggingService) {
-        m_loggingService->info(QStringLiteral("[ToolWorker] executed %1 id=%2").arg(task.type).arg(task.id));
+        m_loggingService->infoFor(QStringLiteral("tools_mcp"), QStringLiteral("[ToolWorker] executed %1 id=%2").arg(task.type).arg(task.id));
     }
 
     QJsonObject result;

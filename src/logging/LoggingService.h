@@ -23,6 +23,9 @@ public:
     void info(const QString &message) const;
     void warn(const QString &message) const;
     void error(const QString &message) const;
+    void infoFor(const QString &channel, const QString &message) const;
+    void warnFor(const QString &channel, const QString &message) const;
+    void errorFor(const QString &channel, const QString &message) const;
     void logVisionSnapshot(const VisionSnapshot &snapshot, const QString &source = QStringLiteral("vision_ingest")) const;
     void logVisionStatus(const QString &message,
                          const QString &rateLimitKey = QStringLiteral("vision_status"),
@@ -43,8 +46,15 @@ public:
 
 private:
     bool shouldLogRateLimited(const QString &key, int intervalMs) const;
+    std::shared_ptr<spdlog::logger> loggerForChannel(const QString &channel) const;
 
     std::shared_ptr<spdlog::logger> m_logger;
+    std::shared_ptr<spdlog::logger> m_aiLogger;
+    std::shared_ptr<spdlog::logger> m_toolsMcpLogger;
+    std::shared_ptr<spdlog::logger> m_visionLogger;
+    std::shared_ptr<spdlog::logger> m_wakeLogger;
+    std::shared_ptr<spdlog::logger> m_ttsLogger;
+    std::shared_ptr<spdlog::logger> m_sttLogger;
     QString m_logFilePath;
     mutable QHash<QString, qint64> m_rateLimitedLogTimes;
     mutable QMutex m_rateLimitMutex;

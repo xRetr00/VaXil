@@ -58,7 +58,7 @@ quint64 WhisperSttEngine::transcribePcm(const QByteArray &pcmData, const QString
     if (m_settings->whisperExecutable().isEmpty()) {
         const QString message = QStringLiteral("whisper.cpp executable is not configured");
         if (m_loggingService) {
-            m_loggingService->error(message);
+            m_loggingService->errorFor(QStringLiteral("stt"), message);
         }
         emit transcriptionFailed(requestId, message);
         return requestId;
@@ -67,7 +67,7 @@ quint64 WhisperSttEngine::transcribePcm(const QByteArray &pcmData, const QString
     if (m_settings->whisperModelPath().isEmpty()) {
         const QString message = QStringLiteral("whisper.cpp model file is not configured");
         if (m_loggingService) {
-            m_loggingService->error(message);
+            m_loggingService->errorFor(QStringLiteral("stt"), message);
         }
         emit transcriptionFailed(requestId, message);
         return requestId;
@@ -76,7 +76,7 @@ quint64 WhisperSttEngine::transcribePcm(const QByteArray &pcmData, const QString
     if (!QFileInfo::exists(m_settings->whisperModelPath())) {
         const QString message = QStringLiteral("whisper.cpp model file is missing");
         if (m_loggingService) {
-            m_loggingService->error(QStringLiteral("%1: %2").arg(message, m_settings->whisperModelPath()));
+            m_loggingService->errorFor(QStringLiteral("stt"), QStringLiteral("%1: %2").arg(message, m_settings->whisperModelPath()));
         }
         emit transcriptionFailed(requestId, message);
         return requestId;
@@ -86,14 +86,14 @@ quint64 WhisperSttEngine::transcribePcm(const QByteArray &pcmData, const QString
     if (waveFile.isEmpty() || !QFileInfo::exists(waveFile)) {
         const QString message = QStringLiteral("whisper.cpp input WAV could not be created");
         if (m_loggingService) {
-            m_loggingService->error(message);
+            m_loggingService->errorFor(QStringLiteral("stt"), message);
         }
         emit transcriptionFailed(requestId, message);
         return requestId;
     }
 
     if (m_loggingService) {
-        m_loggingService->info(
+        m_loggingService->infoFor(QStringLiteral("stt"),
             QStringLiteral("Starting whisper.cpp transcription. executable=\"%1\" model=\"%2\" input=\"%3\" bytes=%4 prompt=\"%5\" suppressNonSpeech=%6")
                 .arg(m_settings->whisperExecutable(), m_settings->whisperModelPath(), waveFile)
                 .arg(pcmData.size())
@@ -122,7 +122,7 @@ quint64 WhisperSttEngine::transcribePcm(const QByteArray &pcmData, const QString
                                          waveFile,
                                          stderrText);
         if (m_loggingService) {
-            m_loggingService->error(message);
+            m_loggingService->errorFor(QStringLiteral("stt"), message);
         }
 
         if (error == QProcess::FailedToStart && !process->property("jarvis_failure_notified").toBool()) {
@@ -150,7 +150,7 @@ quint64 WhisperSttEngine::transcribePcm(const QByteArray &pcmData, const QString
 
         if (superseded) {
             if (m_loggingService) {
-                m_loggingService->info(QStringLiteral("whisper.cpp transcription superseded before completion. input=\"%1\"")
+                m_loggingService->infoFor(QStringLiteral("stt"), QStringLiteral("whisper.cpp transcription superseded before completion. input=\"%1\"")
                                            .arg(waveFile));
             }
             return;
@@ -163,7 +163,7 @@ quint64 WhisperSttEngine::transcribePcm(const QByteArray &pcmData, const QString
         if (status != QProcess::NormalExit || exitCode != 0) {
             const QString uiMessage = QStringLiteral("whisper.cpp failed to transcribe input");
             if (m_loggingService) {
-                m_loggingService->error(
+                m_loggingService->errorFor(QStringLiteral("stt"),
                     QStringLiteral("whisper.cpp failed. exitCode=%1 status=%2 executable=\"%3\" model=\"%4\" input=\"%5\" stdout=\"%6\" stderr=\"%7\"")
                         .arg(exitCode)
                         .arg(status == QProcess::NormalExit ? QStringLiteral("normal") : QStringLiteral("crashed"))
@@ -176,7 +176,7 @@ quint64 WhisperSttEngine::transcribePcm(const QByteArray &pcmData, const QString
 
         const QString text = stdoutText;
         if (m_loggingService) {
-            m_loggingService->info(
+            m_loggingService->infoFor(QStringLiteral("stt"),
                 QStringLiteral("whisper.cpp transcription completed. input=\"%1\" output_chars=%2")
                     .arg(waveFile)
                     .arg(text.size()));
@@ -186,9 +186,9 @@ quint64 WhisperSttEngine::transcribePcm(const QByteArray &pcmData, const QString
                     || lowered.contains(QStringLiteral("failed"))
                     || lowered.contains(QStringLiteral("exception"));
                 if (looksLikeFailure) {
-                    m_loggingService->warn(QStringLiteral("whisper.cpp stderr: %1").arg(stderrText));
+                    m_loggingService->warnFor(QStringLiteral("stt"), QStringLiteral("whisper.cpp stderr: %1").arg(stderrText));
                 } else {
-                    m_loggingService->info(QStringLiteral("whisper.cpp stderr: %1").arg(stderrText));
+                    m_loggingService->infoFor(QStringLiteral("stt"), QStringLiteral("whisper.cpp stderr: %1").arg(stderrText));
                 }
             }
         }
@@ -225,7 +225,7 @@ void WhisperSttEngine::stopActiveProcesses(const QString &reason, bool waitForEx
 
         process->setProperty("jarvis_superseded", true);
         if (m_loggingService) {
-            m_loggingService->info(QStringLiteral("Stopping prior whisper.cpp transcription. reason=\"%1\"").arg(reason));
+            m_loggingService->infoFor(QStringLiteral("stt"), QStringLiteral("Stopping prior whisper.cpp transcription. reason=\"%1\"").arg(reason));
         }
         process->terminate();
         if (waitForExit) {
@@ -258,7 +258,7 @@ QString WhisperSttEngine::writeWaveFile(const QByteArray &pcmData) const
     }
 
     if (m_loggingService) {
-        m_loggingService->error(QStringLiteral("Failed to write whisper.cpp input WAV: %1").arg(path));
+        m_loggingService->errorFor(QStringLiteral("stt"), QStringLiteral("Failed to write whisper.cpp input WAV: %1").arg(path));
     }
     return {};
 }

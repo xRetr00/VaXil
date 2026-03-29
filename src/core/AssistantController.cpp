@@ -1167,7 +1167,7 @@ void AssistantController::initialize()
         }
         if (isLikelySttArtifactTranscript(transcript)) {
             if (m_loggingService) {
-                m_loggingService->info(QStringLiteral("Ignoring STT artifact transcription. text=\"%1\"").arg(transcript.left(120)));
+                m_loggingService->infoFor(QStringLiteral("stt"), QStringLiteral("Ignoring STT artifact transcription. text=\"%1\"").arg(transcript.left(120)));
             }
             handleConversationSessionMiss(QStringLiteral("No speech detected"));
             return;
@@ -1215,14 +1215,14 @@ void AssistantController::initialize()
 
     connect(m_ttsEngine, &TtsEngine::playbackStarted, this, [this]() {
         if (m_loggingService) {
-            m_loggingService->info(QStringLiteral("TTS playback started."));
+            m_loggingService->infoFor(QStringLiteral("tts"), QStringLiteral("TTS playback started."));
         }
         beginTtsExclusiveMode();
         emit speakingRequested();
     });
     connect(m_ttsEngine, &TtsEngine::playbackFinished, this, [this]() {
         if (m_loggingService) {
-            m_loggingService->info(QStringLiteral("TTS playback finished."));
+            m_loggingService->infoFor(QStringLiteral("tts"), QStringLiteral("TTS playback finished."));
         }
         enterPostSpeechCooldown();
         if (m_followUpListeningAfterWakeAck || conversationSessionShouldContinue()) {
@@ -1707,7 +1707,7 @@ void AssistantController::startWakeMonitor()
             m_settings->selectedAudioInputDeviceId())) {
         m_wakeEngineReady = false;
         if (m_loggingService) {
-            m_loggingService->warn(QStringLiteral("Wake monitor could not start."));
+            m_loggingService->warnFor(QStringLiteral("wake_engine"), QStringLiteral("Wake monitor could not start."));
         }
         updateStartupState();
         return;
@@ -1735,7 +1735,7 @@ void AssistantController::stopWakeMonitor()
         m_wakeWordEngine->stop();
     }
     if (m_loggingService) {
-        m_loggingService->info(QStringLiteral("Wake monitor stopped."));
+        m_loggingService->infoFor(QStringLiteral("wake_engine"), QStringLiteral("Wake monitor stopped."));
     }
     updateStartupState();
 }
@@ -2007,8 +2007,8 @@ void AssistantController::bindWakeWordEngineSignals()
         m_followUpListeningAfterWakeAck = true;
         m_lastPromptForAiLog = m_settings->wakeWordPhrase();
         if (m_loggingService) {
-            m_loggingService->info(QStringLiteral("[VAXIL] Wake word detected"));
-            m_loggingService->info(QStringLiteral("[VAXIL] Listening..."));
+            m_loggingService->infoFor(QStringLiteral("wake_engine"), QStringLiteral("[VAXIL] Wake word detected"));
+            m_loggingService->infoFor(QStringLiteral("wake_engine"), QStringLiteral("[VAXIL] Listening..."));
         }
         deliverLocalResponse(
             m_localResponseEngine->wakeWordReady(buildLocalResponseContext()),
@@ -2020,7 +2020,7 @@ void AssistantController::bindWakeWordEngineSignals()
         m_lastWakeError = message;
         updateStartupState();
         if (m_loggingService) {
-            m_loggingService->error(QStringLiteral("%1 wake engine error: %2").arg(wakeEngineDisplayName(), message));
+            m_loggingService->errorFor(QStringLiteral("wake_engine"), QStringLiteral("%1 wake engine error: %2").arg(wakeEngineDisplayName(), message));
         }
         setStatus(message);
     });
@@ -2577,7 +2577,7 @@ bool AssistantController::startAudioCapture(AudioCaptureMode mode, bool announce
         m_loggingService->info(QStringLiteral("Audio capture started. mode=direct device=\"%1\" sensitivity=%2")
             .arg(m_settings->selectedAudioInputDeviceId())
             .arg(m_settings->micSensitivity(), 0, 'f', 3));
-        m_loggingService->info(QStringLiteral("[VAXIL] Listening..."));
+        m_loggingService->infoFor(QStringLiteral("wake_engine"), QStringLiteral("[VAXIL] Listening..."));
     }
     if (announceListening) {
         setDuplexState(DuplexState::Listening);

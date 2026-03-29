@@ -120,7 +120,7 @@ void SherpaWakeWordEngine::pause()
         }
     }
     if (m_loggingService) {
-        m_loggingService->info(QStringLiteral("sherpa-onnx wake detection paused."));
+        m_loggingService->infoFor(QStringLiteral("wake_engine"), QStringLiteral("sherpa-onnx wake detection paused."));
     }
 }
 
@@ -292,7 +292,7 @@ bool SherpaWakeWordEngine::startHelperProcess()
     }
 
     if (m_loggingService) {
-        m_loggingService->info(QStringLiteral("[VAXIL] Starting sherpa wake helper. helper=\"%1\" model=\"%2\" sensitivity=%3 cooldownMs=%4 wakeWord=\"%5\"")
+        m_loggingService->infoFor(QStringLiteral("wake_engine"), QStringLiteral("[VAXIL] Starting sherpa wake helper. helper=\"%1\" model=\"%2\" sensitivity=%3 cooldownMs=%4 wakeWord=\"%5\"")
             .arg(m_helperPath, m_modelRoot)
             .arg(m_threshold, 0, 'f', 2)
             .arg(m_cooldownMs)
@@ -317,7 +317,7 @@ void SherpaWakeWordEngine::consumeHelperStdout()
         if (text == QStringLiteral("READY")) {
             m_ready = true;
             if (m_loggingService) {
-                m_loggingService->info(QStringLiteral("[VAXIL] Sherpa wake engine started. runtime=\"%1\" model=\"%2\" sensitivity=%3 cooldownMs=%4 wakeWord=\"%5\"")
+                m_loggingService->infoFor(QStringLiteral("wake_engine"), QStringLiteral("[VAXIL] Sherpa wake engine started. runtime=\"%1\" model=\"%2\" sensitivity=%3 cooldownMs=%4 wakeWord=\"%5\"")
                     .arg(m_runtimeRoot, m_modelRoot)
                     .arg(m_threshold, 0, 'f', 2)
                     .arg(m_cooldownMs)
@@ -339,7 +339,7 @@ void SherpaWakeWordEngine::consumeHelperStdout()
                 emit errorOccurred(message);
             }
         } else if (!text.isEmpty() && m_loggingService) {
-            m_loggingService->info(QStringLiteral("sherpa wake helper: %1").arg(text));
+            m_loggingService->infoFor(QStringLiteral("wake_engine"), QStringLiteral("sherpa wake helper: %1").arg(text));
         }
 
         newlineIndex = m_stdoutBuffer.indexOf('\n');
@@ -359,7 +359,7 @@ void SherpaWakeWordEngine::consumeHelperStderr()
         m_stderrBuffer.remove(0, newlineIndex + 1);
         const QString text = QString::fromUtf8(line);
         if (!text.isEmpty() && m_loggingService) {
-            m_loggingService->warn(QStringLiteral("sherpa wake helper stderr: %1").arg(text));
+            m_loggingService->warnFor(QStringLiteral("wake_engine"), QStringLiteral("sherpa wake helper stderr: %1").arg(text));
         }
         newlineIndex = m_stderrBuffer.indexOf('\n');
     }
@@ -438,7 +438,7 @@ void SherpaWakeWordEngine::handleTranscriptEvent(const QString &transcript, bool
 
     m_lastTranscriptWakeMs = nowMs;
     if (m_loggingService) {
-        m_loggingService->info(QStringLiteral("[VAXIL] Wake word detected. transcript=\"%1\"")
+        m_loggingService->infoFor(QStringLiteral("wake_engine"), QStringLiteral("[VAXIL] Wake word detected. transcript=\"%1\"")
             .arg(transcript.left(120)));
     }
     emit probabilityUpdated(1.0f);

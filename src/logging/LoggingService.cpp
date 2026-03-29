@@ -14,6 +14,59 @@
 #include <spdlog/sinks/stdout_color_sinks.h>
 #include <spdlog/spdlog.h>
 
+namespace {
+QString normalizeChannel(QString channel)
+{
+    channel = channel.trimmed().toLower();
+    if (channel == QStringLiteral("tools") || channel == QStringLiteral("mcp")) {
+        return QStringLiteral("tools_mcp");
+    }
+    return channel;
+}
+
+QString detectChannelFromMessage(const QString &message)
+{
+    const QString lowered = message.toLower();
+
+    if (lowered.contains(QStringLiteral("mcp"))
+        || lowered.contains(QStringLiteral("[toolworker]"))
+        || lowered.contains(QStringLiteral("[taskdispatcher]"))
+        || lowered.contains(QStringLiteral("agent tool"))) {
+        return QStringLiteral("tools_mcp");
+    }
+
+    if (lowered.contains(QStringLiteral("whisper"))
+        || lowered.contains(QStringLiteral(" transcription"))
+        || lowered.contains(QStringLiteral("stt"))) {
+        return QStringLiteral("stt");
+    }
+
+    if (lowered.contains(QStringLiteral("tts"))
+        || lowered.contains(QStringLiteral("piper"))) {
+        return QStringLiteral("tts");
+    }
+
+    if (lowered.contains(QStringLiteral("wake"))
+        || lowered.contains(QStringLiteral("sherpa"))) {
+        return QStringLiteral("wake_engine");
+    }
+
+    if (lowered.contains(QStringLiteral("vision"))) {
+        return QStringLiteral("vision");
+    }
+
+    if (lowered.contains(QStringLiteral("ai backend"))
+        || lowered.contains(QStringLiteral("agent request"))
+        || lowered.contains(QStringLiteral("conversation request"))
+        || lowered.contains(QStringLiteral("command extraction"))
+        || lowered.contains(QStringLiteral("local ai"))) {
+        return QStringLiteral("ai");
+    }
+
+    return {};
+}
+}
+
 LoggingService::LoggingService(QObject *parent)
     : QObject(parent)
 {
@@ -26,6 +79,19 @@ bool LoggingService::initialize()
     m_logFilePath = root + QStringLiteral("/vaxil.log");
 
     try {
+        const auto makeFileLogger = [&root](const QString &name, const QString &fileName) {
+            const QString absolutePath = root + QStringLiteral("/") + fileName;
+            auto sink = std::make_shared<spdlog::sinks::rotating_file_sink_mt>(
+                absolutePath.toStdString(),
+                1024 * 1024 * 5,
+                3);
+            auto logger = std::make_shared<spdlog::logger>(name.toStdString(), sink);
+            logger->set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%l] %v");
+            logger->set_level(spdlog::level::info);
+            logger->flush_on(spdlog::level::info);
+            return logger;
+        };
+
         auto fileSink = std::make_shared<spdlog::sinks::rotating_file_sink_mt>(
             m_logFilePath.toStdString(),
             1024 * 1024 * 5,
@@ -37,6 +103,13 @@ bool LoggingService::initialize()
         m_logger->set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%l] %v");
         m_logger->set_level(spdlog::level::info);
         m_logger->flush_on(spdlog::level::info);
+
+        m_aiLogger = makeFileLogger(QStringLiteral("vaxil_ai"), QStringLiteral("ai.log"));
+        m_toolsMcpLogger = makeFileLogger(QStringLiteral("vaxil_tools_mcp"), QStringLiteral("tools_mcp.log"));
+        m_visionLogger = makeFileLogger(QStringLiteral("vaxil_vision"), QStringLiteral("vision.log"));
+        m_wakeLogger = makeFileLogger(QStringLiteral("vaxil_wake"), QStringLiteral("wake_engine.log"));
+        m_ttsLogger = makeFileLogger(QStringLiteral("vaxil_tts"), QStringLiteral("tts.log"));
+        m_sttLogger = makeFileLogger(QStringLiteral("vaxil_stt"), QStringLiteral("stt.log"));
         return true;
     } catch (...) {
         return false;
@@ -45,23 +118,75 @@ bool LoggingService::initialize()
 
 void LoggingService::info(const QString &message) const
 {
-    if (m_logger) {
-        m_logger->info(message.toStdString());
-    }
+    infoFor(detectChannelFromMessage(message), message);
 }
 
 void LoggingService::warn(const QString &message) const
 {
-    if (m_logger) {
-        m_logger->warn(message.toStdString());
-    }
+    warnFor(detectChannelFromMessage(message), message);
 }
 
 void LoggingService::error(const QString &message) const
 {
+    errorFor(detectChannelFromMessage(message), message);
+}
+
+void LoggingService::infoFor(const QString &channel, const QString &message) const
+{
+    if (m_logger) {
+        m_logger->info(message.toStdString());
+    }
+
+    if (const auto logger = loggerForChannel(channel); logger) {
+        logger->info(message.toStdString());
+    }
+}
+
+void LoggingService::warnFor(const QString &channel, const QString &message) const
+{
+    if (m_logger) {
+        m_logger->warn(message.toStdString());
+    }
+
+    if (const auto logger = loggerForChannel(channel); logger) {
+        logger->warn(message.toStdString());
+    }
+}
+
+void LoggingService::errorFor(const QString &channel, const QString &message) const
+{
     if (m_logger) {
         m_logger->error(message.toStdString());
     }
+
+    if (const auto logger = loggerForChannel(channel); logger) {
+        logger->error(message.toStdString());
+    }
+}
+
+std::shared_ptr<spdlog::logger> LoggingService::loggerForChannel(const QString &channel) const
+{
+    const QString normalized = normalizeChannel(channel);
+    if (normalized == QStringLiteral("ai")) {
+        return m_aiLogger;
+    }
+    if (normalized == QStringLiteral("tools_mcp")) {
+        return m_toolsMcpLogger;
+    }
+    if (normalized == QStringLiteral("vision")) {
+        return m_visionLogger;
+    }
+    if (normalized == QStringLiteral("wake_engine")) {
+        return m_wakeLogger;
+    }
+    if (normalized == QStringLiteral("tts")) {
+        return m_ttsLogger;
+    }
+    if (normalized == QStringLiteral("stt")) {
+        return m_sttLogger;
+    }
+
+    return nullptr;
 }
 
 bool LoggingService::shouldLogRateLimited(const QString &key, int intervalMs) const
@@ -102,7 +227,7 @@ void LoggingService::logVisionSnapshot(const VisionSnapshot &snapshot, const QSt
                                .arg(gesture.confidence, 0, 'f', 2));
     }
 
-    info(QStringLiteral("Vision snapshot received. source=\"%1\" node=\"%2\" trace=\"%3\" summary=\"%4\" objects=[%5] gestures=[%6]")
+    infoFor(QStringLiteral("vision"), QStringLiteral("Vision snapshot received. source=\"%1\" node=\"%2\" trace=\"%3\" summary=\"%4\" objects=[%5] gestures=[%6]")
              .arg(source,
                   snapshot.nodeId,
                   snapshot.traceId,
@@ -116,7 +241,7 @@ void LoggingService::logVisionStatus(const QString &message, const QString &rate
     if (!shouldLogRateLimited(rateLimitKey, intervalMs)) {
         return;
     }
-    info(message);
+    infoFor(QStringLiteral("vision"), message);
 }
 
 void LoggingService::logVisionDrop(const QString &reason,
@@ -128,7 +253,7 @@ void LoggingService::logVisionDrop(const QString &reason,
         return;
     }
 
-    info(QStringLiteral("Vision snapshot dropped. snapshot_dropped_reason=\"%1\" detail=\"%2\"")
+    infoFor(QStringLiteral("vision"), QStringLiteral("Vision snapshot dropped. snapshot_dropped_reason=\"%1\" detail=\"%2\"")
              .arg(reason.trimmed().isEmpty() ? QStringLiteral("unknown") : reason.trimmed(),
                   detail.trimmed()));
 }
@@ -165,6 +290,9 @@ bool LoggingService::logAiExchange(const QString &prompt, const QString &respons
 
     if (m_logger) {
         m_logger->info(QStringLiteral("AI exchange log written: %1").arg(path).toStdString());
+    }
+    if (m_aiLogger) {
+        m_aiLogger->info(QStringLiteral("AI exchange log written: %1").arg(path).toStdString());
     }
     return true;
 }
@@ -226,6 +354,9 @@ bool LoggingService::logAgentExchange(const QString &prompt,
 
     if (m_logger) {
         m_logger->info(QStringLiteral("Agent exchange log written: %1").arg(path).toStdString());
+    }
+    if (m_aiLogger) {
+        m_aiLogger->info(QStringLiteral("Agent exchange log written: %1").arg(path).toStdString());
     }
     return true;
 }
