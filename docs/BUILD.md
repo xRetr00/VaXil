@@ -131,11 +131,11 @@ ctest --test-dir build-linux-release --output-on-failure
 - LM Studio should expose the OpenAI-compatible API on `http://localhost:1234`
 - The app discovers models from `/v1/models`
 - Voice generation starts only when sentence boundaries are detected from streamed output
-- The application builds and deploys `jarvis_sherpa_wake_helper` next to the main `jarvis` executable; the helper and binary names are still legacy for compatibility
+- The application builds and deploys `vaxil_wake_helper` next to the main `vaxil` executable
 - `windeployqt` runs as a post-build step on Windows to stage Qt runtime files
 - On Linux/X11, the Qt xcb platform plugin requires runtime packages such as `libxcb-cursor0`; `build.sh` installs these via apt
 - On Linux, `build.sh` also attempts to auto-install `whisper.cpp` and `piper` executables from distro packages when missing
-- If `whisper.cpp` is unavailable in distro repos, `build.sh` falls back to source build and installs `whisper-cli` to `~/.local/share/jarvis/tools/whisper/bin/whisper-cli`
+- If `whisper.cpp` is unavailable in distro repos, `build.sh` falls back to source build and installs `whisper-cli` to `~/.local/share/vaxil/tools/whisper/bin/whisper-cli`
 - Automatic tool downloads are supported on managed platforms; if unavailable in your environment, configure existing `whisper`, `piper`, `ffmpeg`, and optional wake assets manually
 - The default premium voice profile targets a calm English delivery:
   - preferred Piper voice families: `en_GB-*` medium voices, especially `en_GB-alba-medium`

@@ -94,7 +94,7 @@ build.bat
 
 3. Run:
 
-- Executable: bin/jarvis.exe (legacy binary name retained for compatibility)
+- Executable: bin/vaxil.exe
 - Logs: bin/logs
 
 ## Quick Start (Linux)
@@ -110,7 +110,7 @@ build.bat
 
 3. Run:
 
-- Executable: `bin/jarvis` (legacy binary name retained for compatibility)
+- Executable: `bin/vaxil`
 - Logs: `bin/logs`
 
 ## First Run

@@ -46,7 +46,7 @@ src/
 - `PiperTtsEngine` now uses `QAudioSink` instead of `QMediaPlayer`, and emits far-end frames for future AEC integration.
 - `ToolManager` scans the local tool root, downloads known source/model assets asynchronously over HTTPS, tracks progress, and verifies SHA-256 when a manifest entry provides one.
 - Setup and settings QML expose audio-processing toggles, wake/TTS engine selectors, and a tools status panel with install progress.
-- `SherpaWakeWordEngine` is integrated and uses the legacy-named `jarvis_sherpa_wake_helper` for transcript-driven wake detection when `wakeEngineKind=sherpa-onnx`.
+- `SherpaWakeWordEngine` is integrated and uses `vaxil_wake_helper` for transcript-driven wake detection when `wakeEngineKind=sherpa-onnx`.
 
 ## Current Runtime Status
 
@@ -261,7 +261,7 @@ Current status: integrated for wake detection. Ongoing work should focus on mode
 
 `ToolManager` downloads to:
 
-- `%AppData%/JARVIS/third_party`
+- `%AppData%/Vaxil/third_party`
 
 Current manifest support:
 

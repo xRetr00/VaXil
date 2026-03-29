@@ -397,12 +397,17 @@ void SherpaWakeWordEngine::handleHelperFinished(int exitCode, QProcess::ExitStat
 
 QString SherpaWakeWordEngine::resolveHelperExecutablePath() const
 {
-    const QString helperName = PlatformRuntime::helperExecutableName(QStringLiteral("jarvis_sherpa_wake_helper"));
+    const QString helperName = PlatformRuntime::helperExecutableName(QStringLiteral("vaxil_wake_helper"));
+    const QString legacyHelperName = PlatformRuntime::helperExecutableName(QStringLiteral("jarvis_sherpa_wake_helper"));
     return firstExisting({
         QCoreApplication::applicationDirPath() + QStringLiteral("/") + helperName,
+        QCoreApplication::applicationDirPath() + QStringLiteral("/") + legacyHelperName,
         QStringLiteral(JARVIS_SOURCE_DIR) + QStringLiteral("/bin/") + helperName,
+        QStringLiteral(JARVIS_SOURCE_DIR) + QStringLiteral("/bin/") + legacyHelperName,
         QStringLiteral(JARVIS_SOURCE_DIR) + QStringLiteral("/build-release/") + helperName,
-        QStringLiteral(JARVIS_SOURCE_DIR) + QStringLiteral("/build/") + helperName
+        QStringLiteral(JARVIS_SOURCE_DIR) + QStringLiteral("/build-release/") + legacyHelperName,
+        QStringLiteral(JARVIS_SOURCE_DIR) + QStringLiteral("/build/") + helperName,
+        QStringLiteral(JARVIS_SOURCE_DIR) + QStringLiteral("/build/") + legacyHelperName
     });
 }
 

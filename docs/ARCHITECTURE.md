@@ -81,7 +81,7 @@ Core orchestration starts in src/app/JarvisApplication.cpp and wires all service
 
 - SherpaWakeWordEngine:
   - Default wake engine path
-  - Starts `jarvis_sherpa_wake_helper` and consumes partial/final transcript events
+  - Starts `vaxil_wake_helper` and consumes partial/final transcript events
 - SherpaWakeWordEngine:
   - Only wake path used by the application
   - Uses streaming Sherpa transcription plus transcript-based wake matching

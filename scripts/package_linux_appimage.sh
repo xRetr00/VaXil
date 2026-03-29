@@ -19,8 +19,8 @@ rm -rf "${APPDIR}"
 mkdir -p "${APPDIR}/usr/bin"
 mkdir -p "${APPDIR}/usr/share/applications"
 mkdir -p "${APPDIR}/usr/share/icons/hicolor/512x512/apps"
-cp "${ROOT}/bin/jarvis" "${APPDIR}/usr/bin/"
-cp "${ROOT}/bin/jarvis_sherpa_wake_helper" "${APPDIR}/usr/bin/" || true
+cp "${ROOT}/bin/vaxil" "${APPDIR}/usr/bin/"
+cp "${ROOT}/bin/vaxil_wake_helper" "${APPDIR}/usr/bin/" || true
 cp "${ROOT}/assets/logo.png" "${APPDIR}/usr/share/icons/hicolor/512x512/apps/vaxil.png"
 
 cat > "${DESKTOP_FILE}" <<'EOF'
@@ -28,7 +28,7 @@ cat > "${DESKTOP_FILE}" <<'EOF'
 Type=Application
 Name=Vaxil
 Comment=Local-first desktop AI assistant
-Exec=jarvis
+Exec=vaxil
 Icon=vaxil
 Categories=Utility;AudioVideo;
 Terminal=false

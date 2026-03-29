@@ -92,7 +92,7 @@ bool LocalResponseEngine::initialize()
 {
     m_responses = defaultResponses();
 
-    QFile file(QStringLiteral(":/qt/qml/JARVIS/gui/data/local_responses.json"));
+    QFile file(QStringLiteral(":/qt/qml/VAXIL/gui/data/local_responses.json"));
     if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
         return !m_responses.isEmpty();
     }

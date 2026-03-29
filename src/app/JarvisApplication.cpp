@@ -134,7 +134,7 @@ bool JarvisApplication::initialize()
     m_settingsViewModel = std::make_unique<SettingsViewModel>(m_backendFacade.get());
     m_taskViewModel = std::make_unique<TaskViewModel>(m_backendFacade.get());
     m_engine = std::make_unique<QQmlApplicationEngine>();
-    const QIcon appIcon(QStringLiteral(":/qt/qml/JARVIS/gui/assets/icon.ico"));
+    const QIcon appIcon(QStringLiteral(":/qt/qml/VAXIL/gui/assets/icon.ico"));
     m_trayIcon = std::make_unique<QSystemTrayIcon>(appIcon.isNull() ? qApp->style()->standardIcon(QStyle::SP_ComputerIcon) : appIcon, this);
 
     m_engine->rootContext()->setContextProperty(QStringLiteral("backend"), m_backendFacade.get());
@@ -142,10 +142,10 @@ bool JarvisApplication::initialize()
     m_engine->rootContext()->setContextProperty(QStringLiteral("settingsVm"), m_settingsViewModel.get());
     m_engine->rootContext()->setContextProperty(QStringLiteral("taskVm"), m_taskViewModel.get());
     qInfo() << "Loading QML windows";
-    m_engine->load(QUrl(QStringLiteral("qrc:/qt/qml/JARVIS/gui/qml/OverlayWindow.qml")));
-    m_engine->load(QUrl(QStringLiteral("qrc:/qt/qml/JARVIS/gui/qml/SettingsWindow.qml")));
-    m_engine->load(QUrl(QStringLiteral("qrc:/qt/qml/JARVIS/gui/qml/SetupWizard.qml")));
-    m_engine->load(QUrl(QStringLiteral("qrc:/qt/qml/JARVIS/gui/qml/ToolsHubWindow.qml")));
+    m_engine->load(QUrl(QStringLiteral("qrc:/qt/qml/VAXIL/gui/qml/OverlayWindow.qml")));
+    m_engine->load(QUrl(QStringLiteral("qrc:/qt/qml/VAXIL/gui/qml/SettingsWindow.qml")));
+    m_engine->load(QUrl(QStringLiteral("qrc:/qt/qml/VAXIL/gui/qml/SetupWizard.qml")));
+    m_engine->load(QUrl(QStringLiteral("qrc:/qt/qml/VAXIL/gui/qml/ToolsHubWindow.qml")));
     if (m_engine->rootObjects().isEmpty()) {
         qCritical() << "QML load failed: no root objects were created";
         return false;

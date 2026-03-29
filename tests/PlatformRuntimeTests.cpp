@@ -38,14 +38,18 @@ void PlatformRuntimeTests::reportsExpectedCapabilities()
 void PlatformRuntimeTests::usesExpectedExecutableNames()
 {
 #if defined(Q_OS_WIN)
-    QCOMPARE(PlatformRuntime::helperExecutableName(QStringLiteral("jarvis_sherpa_wake_helper")),
-             QStringLiteral("jarvis_sherpa_wake_helper.exe"));
+    QCOMPARE(PlatformRuntime::helperExecutableName(QStringLiteral("vaxil_wake_helper")),
+             QStringLiteral("vaxil_wake_helper.exe"));
+    QCOMPARE(PlatformRuntime::executableName(QStringLiteral("vaxil")),
+             QStringLiteral("vaxil.exe"));
     QVERIFY(PlatformRuntime::whisperExecutableNames().contains(QStringLiteral("whisper-cli.exe")));
     QVERIFY(PlatformRuntime::piperExecutableNames().contains(QStringLiteral("piper.exe")));
     QVERIFY(PlatformRuntime::ffmpegExecutableNames().contains(QStringLiteral("ffmpeg.exe")));
 #elif defined(Q_OS_LINUX)
-    QCOMPARE(PlatformRuntime::helperExecutableName(QStringLiteral("jarvis_sherpa_wake_helper")),
-             QStringLiteral("jarvis_sherpa_wake_helper"));
+    QCOMPARE(PlatformRuntime::helperExecutableName(QStringLiteral("vaxil_wake_helper")),
+             QStringLiteral("vaxil_wake_helper"));
+    QCOMPARE(PlatformRuntime::executableName(QStringLiteral("vaxil")),
+             QStringLiteral("vaxil"));
     QVERIFY(PlatformRuntime::whisperExecutableNames().contains(QStringLiteral("whisper-cli")));
     QVERIFY(PlatformRuntime::piperExecutableNames().contains(QStringLiteral("piper")));
     QVERIFY(PlatformRuntime::ffmpegExecutableNames().contains(QStringLiteral("ffmpeg")));

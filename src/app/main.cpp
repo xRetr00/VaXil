@@ -70,7 +70,7 @@ int main(int argc, char *argv[])
     QApplication::setApplicationDisplayName(QStringLiteral("Vaxil"));
     QApplication::setApplicationName(QStringLiteral("Vaxil AI Assistant"));
     QApplication::setOrganizationName(QStringLiteral("xRetro Labs"));
-    app.setWindowIcon(QIcon(QStringLiteral(":/qt/qml/JARVIS/gui/assets/icon.ico")));
+    app.setWindowIcon(QIcon(QStringLiteral(":/qt/qml/VAXIL/gui/assets/icon.ico")));
     qInstallMessageHandler(qtMessageLogger);
 
     bootstrapLog(QStringLiteral("VAXIL bootstrap starting"));

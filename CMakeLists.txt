@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.27)
 
-project(JARVIS VERSION 1.0.0 LANGUAGES C CXX)
+project(Vaxil VERSION 1.0.0 LANGUAGES C CXX)
 
 include(FetchContent)
 if(WIN32)
@@ -26,7 +26,7 @@ set(JARVIS_SHERPA_C_API_SHARED_LIBRARY "")
 set(JARVIS_SHERPA_CXX_API_SHARED_LIBRARY "")
 set(JARVIS_ONNXRUNTIME_PROVIDER_SHARED_LIBRARY "")
 
-option(JARVIS_BUILD_TESTS "Build JARVIS tests" ON)
+option(JARVIS_BUILD_TESTS "Build Vaxil tests" ON)
 set(JARVIS_ONNXRUNTIME_ROOT "" CACHE PATH "Path to a local ONNX Runtime package root")
 set(JARVIS_SHERPA_ROOT "" CACHE PATH "Path to a local sherpa-onnx package root")
 set(JARVIS_SENTENCEPIECE_ROOT "${CMAKE_SOURCE_DIR}/third_party/sentencepiece" CACHE PATH "Path to a local sentencepiece source tree")
@@ -310,7 +310,7 @@ add_library(jarvis_lib STATIC
 
 qt_add_shaders(jarvis_lib "jarvis_shaders"
     PREFIX
-        "/qt/qml/JARVIS/gui/shaders"
+        "/qt/qml/VAXIL/gui/shaders"
     FILES
         src/gui/shaders/orb.frag
         src/gui/shaders/text_shimmer.frag
@@ -514,6 +514,7 @@ target_compile_definitions(jarvis_sherpa_wake_helper PRIVATE JARVIS_SOURCE_DIR="
 set(JARVIS_WAKE_HELPER_HAS_SHERPA_ONNX 0)
 set_target_properties(jarvis_sherpa_wake_helper PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/bin"
+    OUTPUT_NAME "vaxil_wake_helper"
 )
 
 if(TARGET jarvis_sherpa_onnx_cxx_api)
@@ -533,7 +534,7 @@ set(JARVIS_APP_SOURCES
 )
 
 if(WIN32)
-    list(APPEND JARVIS_APP_SOURCES src/app/jarvis.rc)
+    list(APPEND JARVIS_APP_SOURCES src/app/vaxil.rc)
 endif()
 
 qt_add_executable(jarvis
@@ -544,6 +545,7 @@ target_link_libraries(jarvis PRIVATE jarvis_lib)
 add_dependencies(jarvis jarvis_sherpa_wake_helper)
 set_target_properties(jarvis PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/bin"
+    OUTPUT_NAME "vaxil"
 )
 
 if(WIN32)
@@ -572,7 +574,7 @@ if(WIN32)
             --no-translations
             --qmldir "${CMAKE_SOURCE_DIR}/src/gui/qml"
             "$<TARGET_FILE:jarvis>"
-        COMMENT "Deploying Qt runtime for jarvis"
+        COMMENT "Deploying Qt runtime for Vaxil"
     )
 endif()
 jarvis_copy_optional_runtime_libraries(jarvis)

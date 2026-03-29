@@ -1982,6 +1982,9 @@ bool BackendFacade::autoDetectVoiceTools()
 {
     const QString appDataRoot = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
     const QString toolsRoot = appDataRoot + QStringLiteral("/tools");
+    const QString linuxUserToolsRoot = PlatformRuntime::isLinux()
+        ? QDir::homePath() + QStringLiteral("/.local/share/vaxil/tools")
+        : QString{};
     const QString linuxLegacyToolsRoot = PlatformRuntime::isLinux()
         ? QDir::homePath() + QStringLiteral("/.local/share/jarvis/tools")
         : QString{};
@@ -1996,6 +1999,10 @@ bool BackendFacade::autoDetectVoiceTools()
         {
             repoRoot + QStringLiteral("/tools/whisper/") + whisperNames.value(0),
             repoRoot + QStringLiteral("/tools/whisper/") + whisperNames.value(1),
+            linuxUserToolsRoot + QStringLiteral("/whisper/") + whisperNames.value(0),
+            linuxUserToolsRoot + QStringLiteral("/whisper/") + whisperNames.value(1),
+            linuxUserToolsRoot + QStringLiteral("/whisper/bin/") + whisperNames.value(0),
+            linuxUserToolsRoot + QStringLiteral("/whisper/bin/") + whisperNames.value(1),
             appDataRoot + QStringLiteral("/tools/whisper/") + whisperNames.value(0),
             appDataRoot + QStringLiteral("/tools/whisper/") + whisperNames.value(1),
             appDataRoot + QStringLiteral("/tools/whisper/Release/") + whisperNames.value(0),
@@ -2013,6 +2020,9 @@ bool BackendFacade::autoDetectVoiceTools()
         }
         if (whisper.isEmpty()) {
             whisper = findFileRecursive(repoRoot + QStringLiteral("/tools"), name);
+        }
+        if (whisper.isEmpty() && !linuxUserToolsRoot.isEmpty()) {
+            whisper = findFileRecursive(linuxUserToolsRoot, name);
         }
         if (whisper.isEmpty() && !linuxLegacyToolsRoot.isEmpty()) {
             whisper = findFileRecursive(linuxLegacyToolsRoot, name);

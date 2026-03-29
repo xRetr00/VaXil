@@ -1,5 +1,5 @@
 <RCC>
-    <qresource prefix="/qt/qml/JARVIS/gui">
+    <qresource prefix="/qt/qml/VAXIL/gui">
         <file alias="qml/OverlayWindow.qml">qml/OverlayWindow.qml</file>
         <file alias="qml/OrbRenderer.qml">qml/OrbRenderer.qml</file>
         <file alias="qml/ToastWidget.qml">qml/ToastWidget.qml</file>

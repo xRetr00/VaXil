@@ -55,7 +55,7 @@ Item {
     ShaderEffect {
         anchors.fill: parent
         blending: true
-        fragmentShader: "qrc:/qt/qml/JARVIS/gui/shaders/src/gui/shaders/orb.frag.qsb"
+        fragmentShader: "qrc:/qt/qml/VAXIL/gui/shaders/src/gui/shaders/orb.frag.qsb"
         property real time: root.time
         property vector2d resolution: Qt.vector2d(width, height)
         property real audioLevel: root.reactiveAudio

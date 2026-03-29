@@ -123,7 +123,7 @@ has_any_executable() {
 }
 
 whisper_local_bin_path() {
-  echo "${HOME}/.local/share/jarvis/tools/whisper/bin/whisper-cli"
+  echo "${HOME}/.local/share/vaxil/tools/whisper/bin/whisper-cli"
 }
 
 ensure_whisper_on_path_from_local_install() {
@@ -267,7 +267,7 @@ ensure_linux_whisper_source_build() {
   fi
 
   local whisper_version="v1.8.4"
-  local whisper_tools_root="${HOME}/.local/share/jarvis/tools/whisper"
+  local whisper_tools_root="${HOME}/.local/share/vaxil/tools/whisper"
   local whisper_src_root="${whisper_tools_root}/src"
   local whisper_archive="${whisper_tools_root}/whisper-${whisper_version}.tar.gz"
   local whisper_build_dir=""
@@ -287,7 +287,7 @@ ensure_linux_whisper_source_build() {
     return
   fi
 
-  whisper_build_dir="${whisper_src_dir}/build-jarvis"
+  whisper_build_dir="${whisper_src_dir}/build-vaxil"
   cmake -S "${whisper_src_dir}" -B "${whisper_build_dir}" -DCMAKE_BUILD_TYPE=Release -DWHISPER_BUILD_TESTS=OFF -DWHISPER_BUILD_EXAMPLES=ON
 
   if ! cmake --build "${whisper_build_dir}" --parallel --target whisper-cli; then
@@ -540,10 +540,10 @@ aqt_install_required_modules() {
 }
 
 install_qt_with_aqt() {
-  local qt_version="${JARVIS_QT_VERSION:-${DEFAULT_AQT_QT_VERSION}}"
-  local qt_root="${JARVIS_QT_ROOT:-${HOME}/Qt}"
+  local qt_version="${VAXIL_QT_VERSION:-${JARVIS_QT_VERSION:-${DEFAULT_AQT_QT_VERSION}}}"
+  local qt_root="${VAXIL_QT_ROOT:-${JARVIS_QT_ROOT:-${HOME}/Qt}}"
   local qt_dir="${qt_root}/${qt_version}/gcc_64"
-  local aqt_venv_dir="${JARVIS_AQT_VENV_DIR:-${HOME}/.cache/jarvis/aqt-venv}"
+  local aqt_venv_dir="${VAXIL_AQT_VENV_DIR:-${JARVIS_AQT_VENV_DIR:-${HOME}/.cache/vaxil/aqt-venv}}"
   local aqt_python="${aqt_venv_dir}/bin/python"
 
   if [[ -f "${qt_dir}/lib/cmake/Qt6/Qt6Config.cmake" ]]; then
@@ -906,5 +906,5 @@ fi
 
 echo
 echo "[OK] Build complete."
-echo "[OK] Vaxil executable: ${ROOT}/bin/jarvis"
+echo "[OK] Vaxil executable: ${ROOT}/bin/vaxil"
 echo "[OK] Logs:       ${ROOT}/bin/logs"
