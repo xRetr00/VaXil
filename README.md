@@ -1,7 +1,7 @@
-# Vaxil
+# VaXil
 
 <p align="center">
-  <img src="assets/logo.png" alt="Vaxil logo" width="300" />
+  <img src="assets/banner.png" alt="Vaxil logo" width="300" />
 </p>
 
 

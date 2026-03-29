@@ -68,8 +68,8 @@ int main(int argc, char *argv[])
     QQuickStyle::setStyle(QStringLiteral("Basic"));
     QApplication::setQuitOnLastWindowClosed(false);
     QApplication::setApplicationDisplayName(QStringLiteral("Vaxil"));
-    QApplication::setApplicationName(QStringLiteral("J.A.R.V.I.S"));
-    QApplication::setOrganizationName(QStringLiteral("J.A.R.V.I.S"));
+    QApplication::setApplicationName(QStringLiteral("Vaxil AI Assistant"));
+    QApplication::setOrganizationName(QStringLiteral("xRetro Labs"));
     app.setWindowIcon(QIcon(QStringLiteral(":/qt/qml/JARVIS/gui/assets/icon.ico")));
     qInstallMessageHandler(qtMessageLogger);
 
