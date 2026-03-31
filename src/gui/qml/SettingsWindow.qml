@@ -13,7 +13,7 @@ Window {
     minimumHeight: 720
     visible: false
     title: settingsVm.assistantName + " Control Surface"
-    color: "#050912"
+    color: "#04070d"
 
     property real dpiScale: Math.max(1.0, Screen.devicePixelRatio)
     property string braveValidationMessage: ""
@@ -172,26 +172,35 @@ Window {
 
     Rectangle {
         anchors.fill: parent
-        color: "#050912"
-    }
-
-    Rectangle {
-        anchors.top: parent.top
-        anchors.left: parent.left
-        anchors.right: parent.right
-        height: 220
-        color: "#0a1324"
+        gradient: Gradient {
+            GradientStop { position: 0.0; color: "#1a2430" }
+            GradientStop { position: 0.35; color: "#0f151d" }
+            GradientStop { position: 0.72; color: "#070b11" }
+            GradientStop { position: 1.0; color: "#04070c" }
+        }
     }
 
     Rectangle {
         anchors.top: parent.top
         anchors.horizontalCenter: parent.horizontalCenter
-        anchors.topMargin: -90
+        anchors.topMargin: -150
+        width: 520
+        height: 520
+        radius: 260
+        color: "#50def4ff"
+        opacity: 0.10
+    }
+
+    Rectangle {
+        anchors.top: parent.top
+        anchors.right: parent.right
+        anchors.topMargin: 40
+        anchors.rightMargin: -120
         width: 360
         height: 360
         radius: 180
-        color: "#1c2f5e"
-        opacity: 0.14
+        color: "#1cffffff"
+        opacity: 0.08
     }
 
     ScrollView {
@@ -203,13 +212,15 @@ Window {
             width: parent.width
             spacing: 18
 
-            Rectangle {
+            JarvisUi.VisionGlassPanel {
                 width: parent.width
                 height: 220
                 radius: 34
-                color: "#9e08111d"
-                border.width: 1
-                border.color: "#20314e"
+                panelColor: "#16182022"
+                innerColor: "#1c1f2830"
+                outlineColor: "#24ffffff"
+                highlightColor: "#18ffffff"
+                shadowOpacity: 0.28
 
                 JarvisUi.OrbRenderer {
                     anchors.left: parent.left
@@ -237,21 +248,21 @@ Window {
 
                     Text {
                         text: settingsVm.assistantName
-                        color: "#eff7ff"
+                        color: "#f3f7ff"
                         font.pixelSize: 34
                         font.weight: Font.Medium
                     }
 
                     Text {
                         text: "VAXIL ONLINE"
-                        color: "#8bd6ff"
+                        color: "#d9e7f8"
                         font.pixelSize: 12
-                        font.letterSpacing: 2.1
+                        font.letterSpacing: 1.7
                     }
 
                     Text {
                         text: "Control surface for the local core, voice pipeline, and overlay behavior."
-                        color: "#8ea8c8"
+                        color: "#ced9e8"
                         font.pixelSize: 15
                         wrapMode: Text.Wrap
                     }
@@ -259,34 +270,38 @@ Window {
                     Row {
                         spacing: 10
 
-                        Rectangle {
+                        JarvisUi.VisionGlassPanel {
                             width: 132
                             height: 32
                             radius: 16
-                            color: "#0f1d31"
-                            border.width: 1
-                            border.color: "#284564"
+                            panelColor: "#171b2326"
+                            innerColor: "#1d212a30"
+                            outlineColor: "#18ffffff"
+                            highlightColor: "#0dffffff"
+                            shadowOpacity: 0.14
 
                             Text {
                                 anchors.centerIn: parent
                                 text: settingsVm.selectedModel.length > 0 ? settingsVm.selectedModel : "No model"
-                                color: "#d9ecff"
+                                color: "#eef4ff"
                                 font.pixelSize: 12
                             }
                         }
 
-                        Rectangle {
+                        JarvisUi.VisionGlassPanel {
                             width: 120
                             height: 32
                             radius: 16
-                            color: "#0f1d31"
-                            border.width: 1
-                            border.color: "#284564"
+                            panelColor: "#171b2326"
+                            innerColor: "#1d212a30"
+                            outlineColor: "#18ffffff"
+                            highlightColor: "#0dffffff"
+                            shadowOpacity: 0.14
 
                             Text {
                                 anchors.centerIn: parent
                                 text: settingsVm.autoRoutingEnabled ? "Auto routing" : "Manual routing"
-                                color: "#d9ecff"
+                                color: "#eef4ff"
                                 font.pixelSize: 12
                             }
                         }
@@ -299,13 +314,15 @@ Window {
                 }
             }
 
-            Rectangle {
+            JarvisUi.VisionGlassPanel {
                 width: parent.width
                 implicitHeight: identityColumn.implicitHeight + 44
                 radius: 30
-                color: "#9208111d"
-                border.width: 1
-                border.color: "#1d2f4d"
+                panelColor: "#16192022"
+                innerColor: "#1d212b2f"
+                outlineColor: "#20ffffff"
+                highlightColor: "#16ffffff"
+                shadowOpacity: 0.22
 
                 ColumnLayout {
                     id: identityColumn
@@ -344,13 +361,15 @@ Window {
                 }
             }
 
-            Rectangle {
+            JarvisUi.VisionGlassPanel {
                 width: parent.width
                 implicitHeight: aiCoreColumn.implicitHeight + 44
                 radius: 30
-                color: "#9208111d"
-                border.width: 1
-                border.color: "#1d2f4d"
+                panelColor: "#16192022"
+                innerColor: "#1d212b2f"
+                outlineColor: "#20ffffff"
+                highlightColor: "#16ffffff"
+                shadowOpacity: 0.22
 
                 ColumnLayout {
                     id: aiCoreColumn
@@ -515,13 +534,15 @@ Window {
                 }
             }
 
-            Rectangle {
+            JarvisUi.VisionGlassPanel {
                 width: parent.width
                 implicitHeight: agentRuntimeColumn.implicitHeight + 44
                 radius: 30
-                color: "#9208111d"
-                border.width: 1
-                border.color: "#1d2f4d"
+                panelColor: "#16192022"
+                innerColor: "#1d212b2f"
+                outlineColor: "#20ffffff"
+                highlightColor: "#16ffffff"
+                shadowOpacity: 0.22
 
                 ColumnLayout {
                     id: agentRuntimeColumn
@@ -659,13 +680,15 @@ Window {
                 }
             }
 
-            Rectangle {
+            JarvisUi.VisionGlassPanel {
                 width: parent.width
                 implicitHeight: voicePipelineColumn.implicitHeight + 44
                 radius: 30
-                color: "#9208111d"
-                border.width: 1
-                border.color: "#1d2f4d"
+                panelColor: "#16192022"
+                innerColor: "#1d212b2f"
+                outlineColor: "#20ffffff"
+                highlightColor: "#16ffffff"
+                shadowOpacity: 0.22
 
                 ColumnLayout {
                     id: voicePipelineColumn
@@ -1030,18 +1053,20 @@ Window {
                     RowLayout {
                         Layout.fillWidth: true
 
-                        Rectangle {
+                        JarvisUi.VisionGlassPanel {
                             Layout.fillWidth: true
                             Layout.preferredHeight: 50
                             radius: 25
-                            color: "#15253c"
-                            border.width: 1
-                            border.color: "#2a4667"
+                            panelColor: "#1a20272a"
+                            innerColor: "#20262e33"
+                            outlineColor: "#20ffffff"
+                            highlightColor: "#10ffffff"
+                            shadowOpacity: 0.16
 
                             Text {
                                 anchors.centerIn: parent
                                 text: "Refresh models"
-                                color: "#e8f5ff"
+                                color: "#eff4ff"
                                 font.pixelSize: 14
                             }
 
@@ -1060,18 +1085,20 @@ Window {
                             }
                         }
 
-                        Rectangle {
+                        JarvisUi.VisionGlassPanel {
                             Layout.fillWidth: true
                             Layout.preferredHeight: 50
                             radius: 25
-                            color: "#15331f"
-                            border.width: 1
-                            border.color: "#2e7e4b"
+                            panelColor: "#19241f2b"
+                            innerColor: "#202c2634"
+                            outlineColor: "#22ffffff"
+                            highlightColor: "#10ffffff"
+                            shadowOpacity: 0.16
 
                             Text {
                                 anchors.centerIn: parent
                                 text: "Auto Detect"
-                                color: "#eafdf2"
+                                color: "#f2f8f4"
                                 font.pixelSize: 14
                                 font.weight: Font.Medium
                             }
@@ -1087,18 +1114,20 @@ Window {
                             }
                         }
 
-                        Rectangle {
+                        JarvisUi.VisionGlassPanel {
                             Layout.fillWidth: true
                             Layout.preferredHeight: 50
                             radius: 25
-                            color: "#183657"
-                            border.width: 1
-                            border.color: "#4d8fd1"
+                            panelColor: "#1a202b2e"
+                            innerColor: "#21283437"
+                            outlineColor: "#28ffffff"
+                            highlightColor: "#14ffffff"
+                            shadowOpacity: 0.16
 
                             Text {
                                 anchors.centerIn: parent
                                 text: "Save changes"
-                                color: "#f2fbff"
+                                color: "#f6f8ff"
                                 font.pixelSize: 14
                                 font.weight: Font.Medium
                             }
@@ -1142,13 +1171,15 @@ Window {
                 }
             }
 
-            Rectangle {
+            JarvisUi.VisionGlassPanel {
                 width: parent.width
                 implicitHeight: visionColumn.implicitHeight + 44
                 radius: 30
-                color: "#9208111d"
-                border.width: 1
-                border.color: "#1d2f4d"
+                panelColor: "#16192022"
+                innerColor: "#1d212b2f"
+                outlineColor: "#20ffffff"
+                highlightColor: "#16ffffff"
+                shadowOpacity: 0.22
 
                 ColumnLayout {
                     id: visionColumn
@@ -1290,13 +1321,15 @@ Window {
                 }
             }
 
-            Rectangle {
+            JarvisUi.VisionGlassPanel {
                 width: parent.width
                 implicitHeight: toolsStatusColumn.implicitHeight + 44
                 radius: 30
-                color: "#9208111d"
-                border.width: 1
-                border.color: "#1d2f4d"
+                panelColor: "#16192022"
+                innerColor: "#1d212b2f"
+                outlineColor: "#20ffffff"
+                highlightColor: "#16ffffff"
+                shadowOpacity: 0.22
 
                 ColumnLayout {
                     id: toolsStatusColumn
@@ -1347,36 +1380,41 @@ Window {
                         wrapMode: Text.Wrap
                     }
 
-                    Rectangle {
+                    JarvisUi.VisionGlassPanel {
                         Layout.fillWidth: true
                         Layout.preferredHeight: 10
                         visible: settingsVm.supportsAutoToolInstall && settingsVm.toolDownloadPercent >= 0
                         radius: 5
-                        color: "#1b2a40"
-                        border.width: 1
-                        border.color: "#2d4668"
+                        panelColor: "#171c2228"
+                        innerColor: "#1d222930"
+                        outlineColor: "#18ffffff"
+                        highlightColor: "#08ffffff"
+                        shadowOpacity: 0.08
 
                         Rectangle {
                             anchors.left: parent.left
                             anchors.top: parent.top
                             anchors.bottom: parent.bottom
                             width: parent.width * Math.max(0, Math.min(1, settingsVm.toolDownloadPercent / 100.0))
-                            radius: parent.radius
-                            color: "#4d9cff"
+                            radius: 5
+                            color: "#d8e7ff"
+                            opacity: 0.78
                         }
                     }
 
                     Repeater {
                         model: settingsVm.toolStatuses
 
-                        delegate: Rectangle {
+                        delegate: JarvisUi.VisionGlassPanel {
                             required property var modelData
                             Layout.fillWidth: true
                             width: parent.width
                             radius: 18
-                            color: "#102034"
-                            border.width: 1
-                            border.color: modelData.installed ? "#2e7e4b" : "#3b506b"
+                            panelColor: modelData.installed ? "#17221f26" : "#171c2326"
+                            innerColor: modelData.installed ? "#1d2a2530" : "#1d232c32"
+                            outlineColor: modelData.installed ? "#24ffffff" : "#18ffffff"
+                            highlightColor: "#10ffffff"
+                            shadowOpacity: 0.16
                             height: 58
 
                             RowLayout {
@@ -1399,13 +1437,15 @@ Window {
                 }
             }
 
-            Rectangle {
+            JarvisUi.VisionGlassPanel {
                 width: parent.width
                 implicitHeight: agentTraceColumn.implicitHeight + 44
                 radius: 30
-                color: "#9208111d"
-                border.width: 1
-                border.color: "#1d2f4d"
+                panelColor: "#16192022"
+                innerColor: "#1d212b2f"
+                outlineColor: "#20ffffff"
+                highlightColor: "#16ffffff"
+                shadowOpacity: 0.22
                 visible: settingsVm.tracePanelEnabled
 
                 ColumnLayout {
@@ -1430,14 +1470,16 @@ Window {
                     Repeater {
                         model: settingsVm.agentTraceEntries
 
-                        delegate: Rectangle {
+                        delegate: JarvisUi.VisionGlassPanel {
                             required property var modelData
                             Layout.fillWidth: true
                             width: parent.width
                             radius: 16
-                            color: "#102034"
-                            border.width: 1
-                            border.color: modelData.success ? "#2e7e4b" : "#7e3b3b"
+                            panelColor: modelData.success ? "#17221f26" : "#231a1f2a"
+                            innerColor: modelData.success ? "#1d2a2530" : "#2a202632"
+                            outlineColor: modelData.success ? "#24ffffff" : "#20ffffff"
+                            highlightColor: "#10ffffff"
+                            shadowOpacity: 0.14
                             height: traceColumn.implicitHeight + 20
 
                             Column {

@@ -13,7 +13,7 @@ Window {
     minimumHeight: 720
     visible: false
     title: settingsVm.assistantName + " Setup"
-    color: "#050912"
+    color: "#04070d"
 
     property real dpiScale: Math.max(1.0, Screen.devicePixelRatio)
 
@@ -103,16 +103,23 @@ Window {
 
     Rectangle {
         anchors.fill: parent
-        color: "#050912"
+        gradient: Gradient {
+            GradientStop { position: 0.0; color: "#17212d" }
+            GradientStop { position: 0.35; color: "#0e141d" }
+            GradientStop { position: 0.72; color: "#070b11" }
+            GradientStop { position: 1.0; color: "#04070c" }
+        }
     }
 
     Rectangle {
-        anchors.fill: parent
-        gradient: Gradient {
-            GradientStop { position: 0.0; color: "#091224" }
-            GradientStop { position: 0.6; color: "#060b14" }
-            GradientStop { position: 1.0; color: "#03060c" }
-        }
+        anchors.top: parent.top
+        anchors.horizontalCenter: parent.horizontalCenter
+        anchors.topMargin: -160
+        width: 520
+        height: 520
+        radius: 260
+        color: "#4cddf4ff"
+        opacity: 0.10
     }
 
     RowLayout {
@@ -120,13 +127,15 @@ Window {
         anchors.margins: 24
         spacing: 20
 
-        Rectangle {
+        JarvisUi.VisionGlassPanel {
             Layout.preferredWidth: 300
             Layout.fillHeight: true
             radius: 34
-            color: "#88111c2c"
-            border.width: 1
-            border.color: "#213754"
+            panelColor: "#161a2124"
+            innerColor: "#1d212a31"
+            outlineColor: "#22ffffff"
+            highlightColor: "#16ffffff"
+            shadowOpacity: 0.26
 
             Column {
                 anchors.fill: parent
@@ -150,7 +159,7 @@ Window {
                 Text {
                     width: parent.width
                     text: settingsVm.assistantName + " Setup"
-                    color: "#eef7ff"
+                    color: "#f3f7ff"
                     font.pixelSize: 30
                     font.weight: Font.Medium
                     horizontalAlignment: Text.AlignHCenter
@@ -159,7 +168,7 @@ Window {
                 Text {
                     width: parent.width
                     text: "Prepare the local AI, voice stack, wake phrase flow, and overlay defaults before activation."
-                    color: "#8da6c7"
+                    color: "#ced9e8"
                     font.pixelSize: 14
                     wrapMode: Text.Wrap
                     horizontalAlignment: Text.AlignHCenter
@@ -178,15 +187,17 @@ Window {
                     Repeater {
                         model: 5
 
-                        delegate: Rectangle {
+                        delegate: JarvisUi.VisionGlassPanel {
                             required property int index
 
                             width: parent.width
                             height: 46
                             radius: 23
-                            color: wizard.stepIndex === index ? "#17375d" : "#0d1829"
-                            border.width: 1
-                            border.color: wizard.stepIndex === index ? "#5ba5ff" : "#213754"
+                            panelColor: wizard.stepIndex === index ? "#1a24312e" : "#151a2125"
+                            innerColor: wizard.stepIndex === index ? "#212d3b38" : "#1c212931"
+                            outlineColor: wizard.stepIndex === index ? "#28ffffff" : "#18ffffff"
+                            highlightColor: wizard.stepIndex === index ? "#16ffffff" : "#0cffffff"
+                            shadowOpacity: 0.14
 
                             Text {
                                 anchors.centerIn: parent
@@ -195,7 +206,7 @@ Window {
                                     : index === 2 ? "Voice"
                                     : index === 3 ? "Wake Word"
                                     : "Final Check"
-                                color: "#e5f4ff"
+                                color: wizard.stepIndex === index ? "#f4f7ff" : "#e6eef9"
                                 font.pixelSize: 14
                             }
                         }
@@ -204,13 +215,15 @@ Window {
             }
         }
 
-        Rectangle {
+        JarvisUi.VisionGlassPanel {
             Layout.fillWidth: true
             Layout.fillHeight: true
             radius: 34
-            color: "#7a08111d"
-            border.width: 1
-            border.color: "#20314e"
+            panelColor: "#16192022"
+            innerColor: "#1d212b30"
+            outlineColor: "#22ffffff"
+            highlightColor: "#18ffffff"
+            shadowOpacity: 0.26
 
             ColumnLayout {
                 anchors.fill: parent
@@ -223,7 +236,7 @@ Window {
                         : wizard.stepIndex === 2 ? "Voice Pipeline"
                         : wizard.stepIndex === 3 ? "Wake Phrase"
                         : "Final Validation"
-                    color: "#f0f8ff"
+                    color: "#f4f7ff"
                     font.pixelSize: 28
                     font.weight: Font.Medium
                 }
@@ -234,26 +247,29 @@ Window {
                         : wizard.stepIndex === 2 ? "Connect whisper.cpp, Piper, FFmpeg, and the local speech models you want."
                         : wizard.stepIndex === 3 ? "Review the local sherpa wake engine and microphone behavior."
                         : "Run final checks, trigger tests, and confirm the real startup behavior."
-                    color: "#89a3c4"
+                    color: "#c9d5e5"
                     font.pixelSize: 14
                     wrapMode: Text.Wrap
                 }
 
-                Rectangle {
+                JarvisUi.VisionGlassPanel {
                     Layout.fillWidth: true
                     Layout.preferredHeight: 10
                     radius: 5
-                    color: "#1b2a40"
-                    border.width: 1
-                    border.color: "#2d4668"
+                    panelColor: "#171c2228"
+                    innerColor: "#1d222930"
+                    outlineColor: "#18ffffff"
+                    highlightColor: "#08ffffff"
+                    shadowOpacity: 0.08
 
                     Rectangle {
                         anchors.left: parent.left
                         anchors.top: parent.top
                         anchors.bottom: parent.bottom
                         width: parent.width * Math.max(0, Math.min(1, (wizard.stepIndex + 1) / 5.0))
-                        radius: parent.radius
-                        color: "#4d9cff"
+                        radius: 5
+                        color: "#d8e7ff"
+                        opacity: 0.8
                     }
                 }
 
@@ -583,18 +599,20 @@ Window {
                         spacing: 14
 
                         Text { text: "Wake phrase"; color: "#d0e3f5"; font.pixelSize: 13 }
-                        Rectangle {
+                        JarvisUi.VisionGlassPanel {
                             Layout.fillWidth: true
                             Layout.preferredHeight: 58
                             radius: 18
-                            color: "#0f1a2a"
-                            border.width: 1
-                            border.color: "#284666"
+                            panelColor: "#181c2428"
+                            innerColor: "#1d222b32"
+                            outlineColor: "#20ffffff"
+                            highlightColor: "#10ffffff"
+                            shadowOpacity: 0.14
 
                             Text {
                                 anchors.centerIn: parent
                                 text: settingsVm.wakeWordPhrase
-                                color: "#e7f7ff"
+                                color: "#f3f7ff"
                                 font.pixelSize: 22
                                 font.weight: Font.Medium
                             }
@@ -809,37 +827,42 @@ Window {
                             wrapMode: Text.Wrap
                         }
 
-                        Rectangle {
+                        JarvisUi.VisionGlassPanel {
                             Layout.fillWidth: true
                             Layout.preferredHeight: 10
                             visible: settingsVm.supportsAutoToolInstall && settingsVm.toolDownloadPercent >= 0
                             radius: 5
-                            color: "#1b2a40"
-                            border.width: 1
-                            border.color: "#2d4668"
+                            panelColor: "#171c2228"
+                            innerColor: "#1d222930"
+                            outlineColor: "#18ffffff"
+                            highlightColor: "#08ffffff"
+                            shadowOpacity: 0.08
 
                             Rectangle {
                                 anchors.left: parent.left
                                 anchors.top: parent.top
                                 anchors.bottom: parent.bottom
                                 width: parent.width * Math.max(0, Math.min(1, settingsVm.toolDownloadPercent / 100.0))
-                                radius: parent.radius
-                                color: "#4d9cff"
+                                radius: 5
+                                color: "#d8e7ff"
+                                opacity: 0.8
                             }
                         }
 
                         Repeater {
                             model: settingsVm.toolStatuses
 
-                            delegate: Rectangle {
+                            delegate: JarvisUi.VisionGlassPanel {
                                 required property var modelData
                                 Layout.fillWidth: true
                                 width: parent.width
                                 height: 52
                                 radius: 14
-                                color: "#0f1a2a"
-                                border.width: 1
-                                border.color: modelData.installed ? "#2e7e4b" : "#284666"
+                                panelColor: modelData.installed ? "#17221f26" : "#171c2326"
+                                innerColor: modelData.installed ? "#1d2a2530" : "#1d232c32"
+                                outlineColor: modelData.installed ? "#24ffffff" : "#18ffffff"
+                                highlightColor: "#10ffffff"
+                                shadowOpacity: 0.14
 
                                 RowLayout {
                                     anchors.fill: parent

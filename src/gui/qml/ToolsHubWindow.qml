@@ -11,7 +11,7 @@ Window {
     height: 860
     visible: false
     title: settingsVm.assistantName + " Tools & Stores"
-    color: "#050912"
+    color: "#04070d"
 
     function syncFields() {
         webProviderField.text = settingsVm.webSearchProvider
@@ -46,10 +46,22 @@ Window {
     Rectangle {
         anchors.fill: parent
         gradient: Gradient {
-            GradientStop { position: 0.0; color: "#091224" }
-            GradientStop { position: 0.55; color: "#060b14" }
-            GradientStop { position: 1.0; color: "#03060c" }
+            GradientStop { position: 0.0; color: "#18222e" }
+            GradientStop { position: 0.35; color: "#0f151d" }
+            GradientStop { position: 0.72; color: "#070b11" }
+            GradientStop { position: 1.0; color: "#04070c" }
         }
+    }
+
+    Rectangle {
+        anchors.top: parent.top
+        anchors.horizontalCenter: parent.horizontalCenter
+        anchors.topMargin: -150
+        width: 520
+        height: 520
+        radius: 260
+        color: "#4bddf3ff"
+        opacity: 0.10
     }
 
     ScrollView {
@@ -61,13 +73,15 @@ Window {
             width: parent.width
             spacing: 18
 
-            Rectangle {
+            JarvisUi.VisionGlassPanel {
                 width: parent.width
                 implicitHeight: 210
                 radius: 30
-                color: "#101a2d"
-                border.width: 1
-                border.color: "#22395c"
+                panelColor: "#16192022"
+                innerColor: "#1d212a30"
+                outlineColor: "#24ffffff"
+                highlightColor: "#18ffffff"
+                shadowOpacity: 0.26
 
                 RowLayout {
                     anchors.fill: parent
@@ -93,7 +107,7 @@ Window {
 
                         Text {
                             text: "Tools & Stores"
-                            color: "#eef7ff"
+                            color: "#f3f7ff"
                             font.pixelSize: 34
                             font.weight: Font.Medium
                         }
@@ -102,7 +116,7 @@ Window {
                             Layout.fillWidth: true
                             wrapMode: Text.WordWrap
                             text: "Manage external runtimes, installed skills, MCP endpoints, and tool-facing settings without touching the main setup flow."
-                            color: "#8da6c7"
+                            color: "#ced9e8"
                             font.pixelSize: 15
                         }
 
@@ -127,7 +141,7 @@ Window {
 
                         Text {
                             text: settingsVm.toolInstallStatus
-                            color: "#b7c7dd"
+                            color: "#dde7f5"
                             font.pixelSize: 12
                             wrapMode: Text.WordWrap
                             visible: text.length > 0
@@ -136,13 +150,15 @@ Window {
                 }
             }
 
-            Rectangle {
+            JarvisUi.VisionGlassPanel {
                 width: parent.width
                 implicitHeight: toolsColumn.implicitHeight + 28
                 radius: 26
-                color: "#0b1424"
-                border.width: 1
-                border.color: "#1d324f"
+                panelColor: "#16192022"
+                innerColor: "#1d212b2f"
+                outlineColor: "#20ffffff"
+                highlightColor: "#16ffffff"
+                shadowOpacity: 0.22
 
                 ColumnLayout {
                     id: toolsColumn
@@ -170,14 +186,16 @@ Window {
                     Repeater {
                         model: settingsVm.toolStatuses
 
-                        Rectangle {
+                        JarvisUi.VisionGlassPanel {
                             Layout.fillWidth: true
                             width: toolsColumn.width
                             implicitHeight: toolRow.implicitHeight + 18
                             radius: 18
-                            color: "#101c31"
-                            border.width: 1
-                            border.color: "#22395c"
+                            panelColor: "#171c2326"
+                            innerColor: "#1d232c32"
+                            outlineColor: "#18ffffff"
+                            highlightColor: "#10ffffff"
+                            shadowOpacity: 0.14
 
                             ColumnLayout {
                                 id: toolRow
@@ -243,13 +261,15 @@ Window {
                 }
             }
 
-            Rectangle {
+            JarvisUi.VisionGlassPanel {
                 width: parent.width
                 implicitHeight: skillsColumn.implicitHeight + 28
                 radius: 26
-                color: "#0b1424"
-                border.width: 1
-                border.color: "#1d324f"
+                panelColor: "#16192022"
+                innerColor: "#1d212b2f"
+                outlineColor: "#20ffffff"
+                highlightColor: "#16ffffff"
+                shadowOpacity: 0.22
 
                 ColumnLayout {
                     id: skillsColumn
@@ -319,13 +339,15 @@ Window {
                     Repeater {
                         model: settingsVm.installedSkills
 
-                        Rectangle {
+                        JarvisUi.VisionGlassPanel {
                             width: skillsColumn.width
                             implicitHeight: skillEntry.implicitHeight + 16
                             radius: 16
-                            color: "#101c31"
-                            border.width: 1
-                            border.color: "#22395c"
+                            panelColor: "#171c2326"
+                            innerColor: "#1d232c32"
+                            outlineColor: "#18ffffff"
+                            highlightColor: "#10ffffff"
+                            shadowOpacity: 0.14
 
                             ColumnLayout {
                                 id: skillEntry
@@ -352,13 +374,15 @@ Window {
                 }
             }
 
-            Rectangle {
+            JarvisUi.VisionGlassPanel {
                 width: parent.width
                 implicitHeight: mcpColumn.implicitHeight + 28
                 radius: 26
-                color: "#0b1424"
-                border.width: 1
-                border.color: "#1d324f"
+                panelColor: "#16192022"
+                innerColor: "#1d212b2f"
+                outlineColor: "#20ffffff"
+                highlightColor: "#16ffffff"
+                shadowOpacity: 0.22
 
                 ColumnLayout {
                     id: mcpColumn
@@ -392,14 +416,16 @@ Window {
                     Repeater {
                         model: settingsVm.mcpQuickServers
 
-                        Rectangle {
+                        JarvisUi.VisionGlassPanel {
                             Layout.fillWidth: true
                             width: mcpColumn.width
                             implicitHeight: mcpPresetLayout.implicitHeight + 16
                             radius: 14
-                            color: "#101c31"
-                            border.width: 1
-                            border.color: "#22395c"
+                            panelColor: "#171c2326"
+                            innerColor: "#1d232c32"
+                            outlineColor: "#18ffffff"
+                            highlightColor: "#10ffffff"
+                            shadowOpacity: 0.14
 
                             RowLayout {
                                 id: mcpPresetLayout
@@ -515,13 +541,15 @@ Window {
                 }
             }
 
-            Rectangle {
+            JarvisUi.VisionGlassPanel {
                 width: parent.width
                 implicitHeight: configColumn.implicitHeight + 28
                 radius: 26
-                color: "#0b1424"
-                border.width: 1
-                border.color: "#1d324f"
+                panelColor: "#16192022"
+                innerColor: "#1d212b2f"
+                outlineColor: "#20ffffff"
+                highlightColor: "#16ffffff"
+                shadowOpacity: 0.22
 
                 ColumnLayout {
                     id: configColumn
@@ -570,13 +598,15 @@ Window {
                 }
             }
 
-            Rectangle {
+            JarvisUi.VisionGlassPanel {
                 width: parent.width
                 implicitHeight: agentToolsColumn.implicitHeight + 28
                 radius: 26
-                color: "#0b1424"
-                border.width: 1
-                border.color: "#1d324f"
+                panelColor: "#16192022"
+                innerColor: "#1d212b2f"
+                outlineColor: "#20ffffff"
+                highlightColor: "#16ffffff"
+                shadowOpacity: 0.22
 
                 ColumnLayout {
                     id: agentToolsColumn
@@ -596,13 +626,15 @@ Window {
                     Repeater {
                         model: settingsVm.availableAgentTools
 
-                        Rectangle {
+                        JarvisUi.VisionGlassPanel {
                             width: agentToolsColumn.width
                             implicitHeight: agentToolEntry.implicitHeight + 16
                             radius: 16
-                            color: "#101c31"
-                            border.width: 1
-                            border.color: "#22395c"
+                            panelColor: "#171c2326"
+                            innerColor: "#1d232c32"
+                            outlineColor: "#18ffffff"
+                            highlightColor: "#10ffffff"
+                            shadowOpacity: 0.14
 
                             ColumnLayout {
                                 id: agentToolEntry
@@ -633,9 +665,9 @@ Window {
                                     selectedTextColor: "#eef7ff"
                                     background: Rectangle {
                                         radius: 10
-                                        color: "#091120"
+                                        color: "#171b2326"
                                         border.width: 1
-                                        border.color: "#1d324f"
+                                        border.color: "#20ffffff"
                                     }
                                     implicitHeight: 92
                                     Layout.fillWidth: true

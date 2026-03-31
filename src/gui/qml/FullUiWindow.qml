@@ -13,7 +13,7 @@ Window {
     minimumHeight: 720
     visible: false
     title: settingsVm.assistantName + " Command Deck"
-    color: "#03060c"
+    color: "#04070c"
 
     property real dpiScale: Math.max(1.0, Screen.devicePixelRatio)
     property int maxLogEntries: 5
@@ -128,22 +128,46 @@ Window {
     Rectangle {
         anchors.fill: parent
         gradient: Gradient {
-            GradientStop { position: 0.0; color: "#060b14" }
-            GradientStop { position: 0.55; color: "#03060c" }
-            GradientStop { position: 1.0; color: "#020408" }
+            GradientStop { position: 0.0; color: "#182230" }
+            GradientStop { position: 0.32; color: "#0e141d" }
+            GradientStop { position: 0.72; color: "#060a10" }
+            GradientStop { position: 1.0; color: "#030509" }
         }
+    }
+
+    Rectangle {
+        anchors.top: parent.top
+        anchors.horizontalCenter: parent.horizontalCenter
+        anchors.topMargin: -parent.height * 0.18
+        width: Math.min(parent.width * 0.92, 1100)
+        height: width
+        radius: width / 2
+        color: "#54d9f3ff"
+        opacity: 0.13
+    }
+
+    Rectangle {
+        anchors.right: parent.right
+        anchors.rightMargin: -parent.width * 0.08
+        anchors.top: parent.top
+        anchors.topMargin: parent.height * 0.10
+        width: Math.min(parent.width * 0.46, 520)
+        height: width
+        radius: width / 2
+        color: "#24ffffff"
+        opacity: 0.08
     }
 
     Item {
         anchors.fill: parent
-        opacity: 0.35
+        opacity: 0.08
 
         Repeater {
             model: Math.floor(fullUi.width / 44)
             delegate: Rectangle {
                 width: 1
                 height: fullUi.height
-                color: "#0a2230"
+                color: "#24ffffff"
                 x: index * 44
             }
         }
@@ -153,7 +177,7 @@ Window {
             delegate: Rectangle {
                 width: fullUi.width
                 height: 1
-                color: "#0a2230"
+                color: "#18ffffff"
                 y: index * 44
             }
         }
@@ -164,13 +188,15 @@ Window {
         anchors.margins: 26
         spacing: 18
 
-        Rectangle {
+        JarvisUi.VisionGlassPanel {
             Layout.fillWidth: true
             Layout.preferredHeight: 74
-            radius: 16
-            color: "#08111e"
-            border.width: 1
-            border.color: "#1d3554"
+            radius: 22
+            panelColor: "#16161d22"
+            innerColor: "#1f1b222c"
+            outlineColor: "#24ffffff"
+            highlightColor: "#18ffffff"
+            shadowOpacity: 0.28
 
             RowLayout {
                 anchors.fill: parent
@@ -183,18 +209,18 @@ Window {
 
                     Text {
                         text: settingsVm.assistantName.toUpperCase() + " COMMAND DECK"
-                        color: "#e8f5ff"
+                        color: "#f3f7ff"
                         font.pixelSize: 20
                         font.weight: Font.DemiBold
-                        font.letterSpacing: 1.2
+                        font.letterSpacing: 0.8
                     }
                 }
 
                 Text {
                     text: statusLine()
-                    color: agentVm.uiState === 3 ? "#ff9846" : agentVm.uiState === 1 ? "#7af0a4" : "#8ad5ff"
+                    color: agentVm.uiState === 3 ? "#ffd2a3" : agentVm.uiState === 1 ? "#d8f1ff" : "#d6def8"
                     font.pixelSize: 14
-                    font.letterSpacing: 1.4
+                    font.letterSpacing: 1.0
                 }
             }
 
@@ -202,9 +228,13 @@ Window {
                 anchors.left: parent.left
                 anchors.right: parent.right
                 anchors.bottom: parent.bottom
-                height: 2
-                color: "#1a6aa6"
-                opacity: 0.2 + 0.35 * fullUi.slowPulse
+                anchors.leftMargin: 18
+                anchors.rightMargin: 18
+                anchors.bottomMargin: 10
+                height: 1
+                radius: height / 2
+                color: "#48ffffff"
+                opacity: 0.12 + 0.14 * fullUi.slowPulse
             }
         }
 
@@ -213,15 +243,17 @@ Window {
             Layout.fillHeight: true
             spacing: 18
 
-            Rectangle {
+            JarvisUi.VisionGlassPanel {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 Layout.minimumWidth: 430
                 Layout.preferredWidth: Math.max(460, fullUi.width * 0.48)
-                radius: 24
-                color: "#06101b"
-                border.width: 1
-                border.color: "#223a5a"
+                radius: 30
+                panelColor: "#151a2122"
+                innerColor: "#1a1f272e"
+                outlineColor: "#20ffffff"
+                highlightColor: "#14ffffff"
+                shadowOpacity: 0.30
 
                 ColumnLayout {
                     anchors.fill: parent
@@ -243,9 +275,9 @@ Window {
                             height: width
                             radius: width / 2
                             color: "transparent"
-                            border.width: 2
-                            border.color: "#1b6fa8"
-                            opacity: 0.18 + 0.22 * fullUi.fastPulse
+                            border.width: 1
+                            border.color: "#4affffff"
+                            opacity: 0.14 + 0.16 * fullUi.fastPulse
                         }
 
                         JarvisUi.OrbRenderer {
@@ -267,22 +299,26 @@ Window {
                         }
                     }
 
-                    Rectangle {
+                    JarvisUi.VisionGlassPanel {
                         Layout.fillWidth: true
                         Layout.minimumHeight: 96
                         Layout.preferredHeight: 110
-                        radius: 16
-                        color: "#081422"
-                        border.width: 1
-                        border.color: "#1c3452"
+                        radius: 20
+                        panelColor: "#151b2324"
+                        innerColor: "#171d262d"
+                        outlineColor: "#1effffff"
+                        highlightColor: "#10ffffff"
+                        shadowOpacity: 0.20
 
-                        Rectangle {
+                        JarvisUi.VisionGlassPanel {
                             anchors.fill: parent
                             anchors.margins: 8
-                            radius: 12
-                            color: "#040c16"
-                            border.width: 1
-                            border.color: "#1a3551"
+                            radius: 16
+                            panelColor: "#120f151e"
+                            innerColor: "#180f1526"
+                            outlineColor: "#16ffffff"
+                            highlightColor: "#0affffff"
+                            shadowOpacity: 0.14
 
                             JarvisUi.VoiceWaveRenderer {
                                 anchors.fill: parent
@@ -297,13 +333,15 @@ Window {
                         }
                     }
 
-                    Rectangle {
+                    JarvisUi.VisionGlassPanel {
                         Layout.fillWidth: true
                         Layout.preferredHeight: 58
-                        radius: 14
-                        color: "#0b1626"
-                        border.width: 1
-                        border.color: "#223a5a"
+                        radius: 18
+                        panelColor: "#171b2326"
+                        innerColor: "#1c21292e"
+                        outlineColor: "#1effffff"
+                        highlightColor: "#0dffffff"
+                        shadowOpacity: 0.18
 
                         RowLayout {
                             anchors.fill: parent
@@ -312,7 +350,7 @@ Window {
 
                             Text {
                                 text: agentVm.statusText.length > 0 ? agentVm.statusText : "Ready for command."
-                                color: "#b8d4ef"
+                                color: "#e1eaf7"
                                 font.pixelSize: 14
                                 Layout.fillWidth: true
                                 elide: Text.ElideRight
@@ -333,14 +371,16 @@ Window {
                 Layout.fillHeight: true
                 spacing: 14
 
-                Rectangle {
+                JarvisUi.VisionGlassPanel {
                     Layout.fillWidth: true
                     Layout.preferredHeight: Math.max(260, fullUi.height * 0.36)
                     Layout.maximumHeight: Math.max(320, fullUi.height * 0.48)
-                    radius: 22
-                    color: "#07111c"
-                    border.width: 1
-                    border.color: "#223a5a"
+                    radius: 28
+                    panelColor: "#14191f24"
+                    innerColor: "#191e2630"
+                    outlineColor: "#1effffff"
+                    highlightColor: "#14ffffff"
+                    shadowOpacity: 0.28
                     clip: true
 
                     Rectangle {
@@ -351,9 +391,9 @@ Window {
                         x: -width
                         opacity: 0.12 + 0.08 * fullUi.fastPulse
                         gradient: Gradient {
-                            GradientStop { position: 0.0; color: "#00d4ff00" }
-                            GradientStop { position: 0.5; color: "#1a6aa644" }
-                            GradientStop { position: 1.0; color: "#00d4ff00" }
+                            GradientStop { position: 0.0; color: "#00ffffff" }
+                            GradientStop { position: 0.5; color: "#2cffffff" }
+                            GradientStop { position: 1.0; color: "#00ffffff" }
                         }
 
                         NumberAnimation on x {
@@ -372,9 +412,9 @@ Window {
 
                         Text {
                             text: "MISSION LOG"
-                            color: "#8bd6ff"
+                            color: "#dceaff"
                             font.pixelSize: 12
-                            font.letterSpacing: 2.4
+                            font.letterSpacing: 1.8
                         }
 
                         ListView {
@@ -388,7 +428,7 @@ Window {
                             delegate: Text {
                                 width: logView.width
                                 text: (model.role === "YOU" ? "YOU: " : "AI: ") + model.text
-                                color: model.role === "YOU" ? "#e8e8e8" : "#00d4ff"
+                                color: model.role === "YOU" ? "#eef2f8" : "#dce9ff"
                                 font.pixelSize: 12
                                 wrapMode: Text.Wrap
                             }
@@ -397,13 +437,15 @@ Window {
                     }
                 }
 
-                Rectangle {
+                JarvisUi.VisionGlassPanel {
                     Layout.fillWidth: true
                     Layout.preferredHeight: 132
-                    radius: 18
-                    color: "#081422"
-                    border.width: 1
-                    border.color: "#1c3452"
+                    radius: 22
+                    panelColor: "#151b2426"
+                    innerColor: "#1a202930"
+                    outlineColor: "#1effffff"
+                    highlightColor: "#12ffffff"
+                    shadowOpacity: 0.22
 
                     ColumnLayout {
                         anchors.fill: parent
@@ -412,18 +454,20 @@ Window {
 
                         Text {
                             text: "LIVE RESPONSE"
-                            color: "#8bd6ff"
+                            color: "#dceaff"
                             font.pixelSize: 11
-                            font.letterSpacing: 2.0
+                            font.letterSpacing: 1.6
                         }
 
-                        Rectangle {
+                        JarvisUi.VisionGlassPanel {
                             Layout.fillWidth: true
                             Layout.fillHeight: true
-                            radius: 12
-                            color: "#06101b"
-                            border.width: 1
-                            border.color: "#1c3452"
+                            radius: 16
+                            panelColor: "#130f151e"
+                            innerColor: "#1a0f1626"
+                            outlineColor: "#16ffffff"
+                            highlightColor: "#0affffff"
+                            shadowOpacity: 0.12
 
                             Text {
                                 anchors.fill: parent
@@ -431,7 +475,7 @@ Window {
                                 text: "AI: " + (fullUi.liveTypingIndex > 0
                                        ? fullUi.liveResponseText.slice(0, fullUi.liveTypingIndex)
                                        : "") + (fullUi.liveResponseText.length > fullUi.liveTypingIndex ? "_" : "")
-                                color: "#00d4ff"
+                                color: "#eff5ff"
                                 font.pixelSize: 12
                                 wrapMode: Text.Wrap
                             }
@@ -445,13 +489,15 @@ Window {
             }
         }
 
-        Rectangle {
+        JarvisUi.VisionGlassPanel {
             Layout.fillWidth: true
             Layout.preferredHeight: 64
-            radius: 18
-            color: "#0b1626"
-            border.width: 1
-            border.color: "#223a5a"
+            radius: 22
+            panelColor: "#181c2428"
+            innerColor: "#1c212a32"
+            outlineColor: "#22ffffff"
+            highlightColor: "#12ffffff"
+            shadowOpacity: 0.24
 
             RowLayout {
                 anchors.fill: parent
