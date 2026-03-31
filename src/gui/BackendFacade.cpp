@@ -533,6 +533,15 @@ QString joinExecutableNames(const QStringList &names)
     return quoted.join(QStringLiteral(", "));
 }
 
+QString compactBackendSurfaceText(QString text, int maxLength = 60)
+{
+    text = text.simplified();
+    if (text.size() > maxLength) {
+        text = text.left(maxLength - 3).trimmed() + QStringLiteral("...");
+    }
+    return text;
+}
+
 QString whisperExecutableValidationMessage()
 {
     return PlatformRuntime::isWindows()
@@ -1019,6 +1028,7 @@ BackendFacade::BackendFacade(
     connect(m_assistantController, &AssistantController::transcriptChanged, this, &BackendFacade::transcriptChanged);
     connect(m_assistantController, &AssistantController::responseTextChanged, this, &BackendFacade::responseTextChanged);
     connect(m_assistantController, &AssistantController::statusTextChanged, this, &BackendFacade::statusTextChanged);
+    connect(m_assistantController, &AssistantController::assistantSurfaceChanged, this, &BackendFacade::assistantSurfaceChanged);
     connect(m_assistantController, &AssistantController::audioLevelChanged, this, &BackendFacade::audioLevelChanged);
     connect(m_assistantController, &AssistantController::wakeTriggerTokenChanged, this, &BackendFacade::wakeTriggerTokenChanged);
     connect(m_assistantController, &AssistantController::modelsChanged, this, [this]() {
@@ -1039,6 +1049,22 @@ BackendFacade::BackendFacade(
     connect(mediaDevices, &QMediaDevices::audioOutputsChanged, this, &BackendFacade::audioDevicesChanged);
     connect(m_toolManager, &ToolManager::toolsUpdated, this, &BackendFacade::toolStatusesChanged);
     connect(m_toolManager, &ToolManager::downloadProgress, this, [this](const QString &name, qint64 received, qint64 total) {
+        clearSurfaceBackendError();
+        QString primary = m_surfaceToolActivityPrimary;
+        if (primary.isEmpty()) {
+            primary = findIntentModelPreset(name) != nullptr
+                ? QStringLiteral("Downloading model...")
+                : QStringLiteral("Installing tool...");
+        }
+
+        QString secondary = compactBackendSurfaceText(name, 44);
+        if (total > 0) {
+            const int percent = static_cast<int>((received * 100) / total);
+            secondary = secondary.isEmpty()
+                ? QStringLiteral("%1%").arg(percent)
+                : QStringLiteral("%1  %2%").arg(secondary).arg(percent);
+        }
+        setSurfaceToolActivity(primary, secondary);
         setToolInstallStatus(total > 0
             ? QStringLiteral("%1: %2 / %3 bytes").arg(name).arg(received).arg(total)
             : QStringLiteral("%1: %2 bytes").arg(name).arg(received));
@@ -1056,7 +1082,11 @@ BackendFacade::BackendFacade(
                 autoDetectVoiceTools();
             }
         }
+        clearSurfaceToolActivity();
         setToolInstallStatus(QStringLiteral("%1: %2").arg(name, success ? message : QStringLiteral("failed - %1").arg(message)));
+        if (!success) {
+            setSurfaceBackendError(QStringLiteral("Install failed"), compactBackendSurfaceText(name + QStringLiteral("  ") + message, 60));
+        }
         emit toolStatusesChanged();
     });
     m_toolManager->rescan();
@@ -1105,6 +1135,57 @@ QString BackendFacade::stateName() const { return m_assistantController->stateNa
 QString BackendFacade::transcript() const { return m_assistantController->transcript(); }
 QString BackendFacade::responseText() const { return m_assistantController->responseText(); }
 QString BackendFacade::statusText() const { return m_assistantController->statusText(); }
+int BackendFacade::assistantSurfaceState() const
+{
+    if (!m_surfaceBackendErrorPrimary.isEmpty()) {
+        return static_cast<int>(AssistantSurfaceState::Error);
+    }
+
+    const AssistantSurfaceState controllerState = m_assistantController->assistantSurfaceState();
+    if (controllerState == AssistantSurfaceState::Error) {
+        return static_cast<int>(AssistantSurfaceState::Error);
+    }
+
+    if (m_surfaceToolActivityActive && !m_surfaceToolActivityPrimary.isEmpty()) {
+        return static_cast<int>(AssistantSurfaceState::ToolRunning);
+    }
+
+    return static_cast<int>(controllerState);
+}
+
+QString BackendFacade::assistantSurfaceActivityPrimary() const
+{
+    if (!m_surfaceBackendErrorPrimary.isEmpty()) {
+        return m_surfaceBackendErrorPrimary;
+    }
+
+    if (m_assistantController->assistantSurfaceState() == AssistantSurfaceState::Error) {
+        return m_assistantController->assistantSurfaceActivityPrimary();
+    }
+
+    if (m_surfaceToolActivityActive && !m_surfaceToolActivityPrimary.isEmpty()) {
+        return m_surfaceToolActivityPrimary;
+    }
+
+    return m_assistantController->assistantSurfaceActivityPrimary();
+}
+
+QString BackendFacade::assistantSurfaceActivitySecondary() const
+{
+    if (!m_surfaceBackendErrorPrimary.isEmpty()) {
+        return m_surfaceBackendErrorSecondary;
+    }
+
+    if (m_assistantController->assistantSurfaceState() == AssistantSurfaceState::Error) {
+        return m_assistantController->assistantSurfaceActivitySecondary();
+    }
+
+    if (m_surfaceToolActivityActive) {
+        return m_surfaceToolActivitySecondary;
+    }
+
+    return m_assistantController->assistantSurfaceActivitySecondary();
+}
 double BackendFacade::audioLevel() const { return m_assistantController->audioLevel(); }
 int BackendFacade::wakeTriggerToken() const { return m_assistantController->wakeTriggerToken(); }
 QStringList BackendFacade::models() const { return m_assistantController->availableModelIds(); }
@@ -1560,15 +1641,21 @@ bool BackendFacade::downloadVoiceModel(const QString &voiceId)
     const QString modelPath = voiceRoot + QStringLiteral("/") + preset->id + QStringLiteral(".onnx");
     const QString configPath = modelPath + QStringLiteral(".json");
 
+    clearSurfaceBackendError();
+    setSurfaceToolActivity(QStringLiteral("Downloading model..."), compactBackendSurfaceText(preset->label, 52));
     setToolInstallStatus(QStringLiteral("Downloading Piper voice %1...").arg(preset->id));
 
     QString errorText;
     if (!QFileInfo::exists(modelPath) && !downloadFileWithPowerShell(preset->modelUrl, modelPath, 5 * 60 * 1000, &errorText)) {
+        clearSurfaceToolActivity();
+        setSurfaceBackendError(QStringLiteral("Voice download failed"), compactBackendSurfaceText(errorText, 60));
         setToolInstallStatus(QStringLiteral("Voice download failed: %1").arg(errorText));
         return false;
     }
 
     if (!QFileInfo::exists(configPath) && !downloadFileWithPowerShell(preset->configUrl, configPath, 60 * 1000, &errorText)) {
+        clearSurfaceToolActivity();
+        setSurfaceBackendError(QStringLiteral("Voice config download failed"), compactBackendSurfaceText(errorText, 60));
         setToolInstallStatus(QStringLiteral("Voice config download failed: %1").arg(errorText));
         return false;
     }
@@ -1576,6 +1663,7 @@ bool BackendFacade::downloadVoiceModel(const QString &voiceId)
     m_settings->setSelectedVoicePresetId(preset->id);
     m_settings->setPiperVoiceModel(modelPath);
     m_settings->save();
+    clearSurfaceToolActivity();
     setToolInstallStatus(QStringLiteral("Voice ready: %1").arg(preset->label));
     emit settingsChanged();
     return true;
@@ -1599,16 +1687,21 @@ bool BackendFacade::downloadWhisperModel(const QString &modelId)
     QDir().mkpath(modelsRoot);
 
     const QString modelPath = modelsRoot + QStringLiteral("/") + preset->id + QStringLiteral(".bin");
+    clearSurfaceBackendError();
+    setSurfaceToolActivity(QStringLiteral("Downloading model..."), compactBackendSurfaceText(preset->label, 52));
     setToolInstallStatus(QStringLiteral("Downloading Whisper model %1...").arg(preset->id));
 
     QString errorText;
     if (!QFileInfo::exists(modelPath) && !downloadFileWithPowerShell(preset->modelUrl, modelPath, 10 * 60 * 1000, &errorText)) {
+        clearSurfaceToolActivity();
+        setSurfaceBackendError(QStringLiteral("Model download failed"), compactBackendSurfaceText(errorText, 60));
         setToolInstallStatus(QStringLiteral("Whisper model download failed: %1").arg(errorText));
         return false;
     }
 
     m_settings->setWhisperModelPath(modelPath);
     m_settings->save();
+    clearSurfaceToolActivity();
     setToolInstallStatus(QStringLiteral("Whisper model ready: %1").arg(preset->label));
     emit settingsChanged();
     return true;
@@ -1991,6 +2084,8 @@ void BackendFacade::downloadTool(const QString &name)
         return;
     }
     if (m_toolManager != nullptr) {
+        clearSurfaceBackendError();
+        setSurfaceToolActivity(QStringLiteral("Installing tool..."), compactBackendSurfaceText(name, 44));
         m_toolManager->downloadTool(name);
     }
 }
@@ -2002,6 +2097,8 @@ void BackendFacade::downloadModel(const QString &name)
         return;
     }
     if (m_toolManager != nullptr) {
+        clearSurfaceBackendError();
+        setSurfaceToolActivity(QStringLiteral("Downloading model..."), compactBackendSurfaceText(name, 44));
         m_toolManager->downloadModel(name);
     }
 }
@@ -2013,8 +2110,75 @@ void BackendFacade::installAllTools()
         return;
     }
     if (m_toolManager != nullptr) {
+        clearSurfaceBackendError();
+        setSurfaceToolActivity(QStringLiteral("Installing tools..."));
         m_toolManager->installAll();
     }
+}
+
+void BackendFacade::setSurfaceToolActivity(const QString &primary, const QString &secondary)
+{
+    const QString normalizedPrimary = compactBackendSurfaceText(primary);
+    const QString normalizedSecondary = compactBackendSurfaceText(secondary, 56);
+    if (normalizedPrimary.isEmpty()) {
+        clearSurfaceToolActivity();
+        return;
+    }
+
+    if (m_surfaceToolActivityActive
+        && m_surfaceToolActivityPrimary == normalizedPrimary
+        && m_surfaceToolActivitySecondary == normalizedSecondary) {
+        return;
+    }
+
+    m_surfaceToolActivityActive = true;
+    m_surfaceToolActivityPrimary = normalizedPrimary;
+    m_surfaceToolActivitySecondary = normalizedSecondary;
+    emit assistantSurfaceChanged();
+}
+
+void BackendFacade::clearSurfaceToolActivity()
+{
+    if (!m_surfaceToolActivityActive
+        && m_surfaceToolActivityPrimary.isEmpty()
+        && m_surfaceToolActivitySecondary.isEmpty()) {
+        return;
+    }
+
+    m_surfaceToolActivityActive = false;
+    m_surfaceToolActivityPrimary.clear();
+    m_surfaceToolActivitySecondary.clear();
+    emit assistantSurfaceChanged();
+}
+
+void BackendFacade::setSurfaceBackendError(const QString &primary, const QString &secondary)
+{
+    const QString normalizedPrimary = compactBackendSurfaceText(primary);
+    const QString normalizedSecondary = compactBackendSurfaceText(secondary, 60);
+    if (normalizedPrimary.isEmpty()) {
+        clearSurfaceBackendError();
+        return;
+    }
+
+    if (m_surfaceBackendErrorPrimary == normalizedPrimary
+        && m_surfaceBackendErrorSecondary == normalizedSecondary) {
+        return;
+    }
+
+    m_surfaceBackendErrorPrimary = normalizedPrimary;
+    m_surfaceBackendErrorSecondary = normalizedSecondary;
+    emit assistantSurfaceChanged();
+}
+
+void BackendFacade::clearSurfaceBackendError()
+{
+    if (m_surfaceBackendErrorPrimary.isEmpty() && m_surfaceBackendErrorSecondary.isEmpty()) {
+        return;
+    }
+
+    m_surfaceBackendErrorPrimary.clear();
+    m_surfaceBackendErrorSecondary.clear();
+    emit assistantSurfaceChanged();
 }
 
 void BackendFacade::setToolInstallStatus(const QString &status)
@@ -2290,6 +2454,8 @@ bool BackendFacade::installMcpQuickServer(const QString &presetId)
 
     QProcess process;
     process.setWorkingDirectory(mcpToolsRoot);
+    clearSurfaceBackendError();
+    setSurfaceToolActivity(QStringLiteral("Installing MCP package..."), compactBackendSurfaceText(preset->packageName, 52));
     setToolInstallStatus(QStringLiteral("Installing %1...").arg(preset->name));
     emit settingsChanged();
     process.start(
@@ -2306,6 +2472,8 @@ bool BackendFacade::installMcpQuickServer(const QString &presetId)
     if (!process.waitForFinished(120000)) {
         process.kill();
         process.waitForFinished(2000);
+        clearSurfaceToolActivity();
+        setSurfaceBackendError(QStringLiteral("MCP install timed out"), compactBackendSurfaceText(preset->name, 52));
         setToolInstallStatus(QStringLiteral("MCP install timed out for %1.").arg(preset->name));
         return false;
     }
@@ -2318,6 +2486,8 @@ bool BackendFacade::installMcpQuickServer(const QString &presetId)
         if (detail.isEmpty()) {
             detail = QStringLiteral("npm install failed");
         }
+        clearSurfaceToolActivity();
+        setSurfaceBackendError(QStringLiteral("MCP install failed"), compactBackendSurfaceText(detail, 60));
         setToolInstallStatus(QStringLiteral("%1 install failed: %2").arg(preset->name, detail));
         return false;
     }
@@ -2328,10 +2498,13 @@ bool BackendFacade::installMcpQuickServer(const QString &presetId)
     }
     m_settings->setMcpServerUrl(preset->packageName);
     if (!m_settings->save()) {
+        clearSurfaceToolActivity();
+        setSurfaceBackendError(QStringLiteral("MCP settings save failed"), compactBackendSurfaceText(preset->name, 52));
         setToolInstallStatus(QStringLiteral("Installed %1 but failed to save MCP settings.").arg(preset->name));
         return false;
     }
 
+    clearSurfaceToolActivity();
     setToolInstallStatus(QStringLiteral("Installed %1 (%2). MCP is enabled.").arg(preset->name, preset->packageName));
     emit settingsChanged();
     return true;
@@ -2367,6 +2540,8 @@ bool BackendFacade::installMcpPackage(const QString &packageSpec, const QString 
 
     QProcess process;
     process.setWorkingDirectory(mcpToolsRoot);
+    clearSurfaceBackendError();
+    setSurfaceToolActivity(QStringLiteral("Installing MCP package..."), compactBackendSurfaceText(normalizedSpec, 52));
     setToolInstallStatus(QStringLiteral("Installing MCP package %1...").arg(normalizedSpec));
     emit settingsChanged();
     process.start(
@@ -2383,6 +2558,8 @@ bool BackendFacade::installMcpPackage(const QString &packageSpec, const QString 
     if (!process.waitForFinished(120000)) {
         process.kill();
         process.waitForFinished(2000);
+        clearSurfaceToolActivity();
+        setSurfaceBackendError(QStringLiteral("MCP install timed out"), compactBackendSurfaceText(normalizedSpec, 52));
         setToolInstallStatus(QStringLiteral("MCP install timed out for %1.").arg(normalizedSpec));
         return false;
     }
@@ -2395,6 +2572,8 @@ bool BackendFacade::installMcpPackage(const QString &packageSpec, const QString 
         if (detail.isEmpty()) {
             detail = QStringLiteral("npm install failed");
         }
+        clearSurfaceToolActivity();
+        setSurfaceBackendError(QStringLiteral("MCP install failed"), compactBackendSurfaceText(detail, 60));
         setToolInstallStatus(QStringLiteral("Custom MCP install failed: %1").arg(detail));
         return false;
     }
@@ -2410,10 +2589,13 @@ bool BackendFacade::installMcpPackage(const QString &packageSpec, const QString 
     }
     m_settings->setMcpServerUrl(serverId);
     if (!m_settings->save()) {
+        clearSurfaceToolActivity();
+        setSurfaceBackendError(QStringLiteral("MCP settings save failed"), compactBackendSurfaceText(normalizedSpec, 52));
         setToolInstallStatus(QStringLiteral("Installed %1 but failed to save MCP settings.").arg(normalizedSpec));
         return false;
     }
 
+    clearSurfaceToolActivity();
     setToolInstallStatus(QStringLiteral("Installed custom MCP package %1.").arg(normalizedSpec));
     emit settingsChanged();
     return true;

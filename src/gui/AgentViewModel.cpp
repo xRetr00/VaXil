@@ -17,6 +17,7 @@ AgentViewModel::AgentViewModel(BackendFacade *backend, QObject *parent)
     connect(m_backend, &BackendFacade::transcriptChanged, this, &AgentViewModel::transcriptChanged);
     connect(m_backend, &BackendFacade::responseTextChanged, this, &AgentViewModel::responseTextChanged);
     connect(m_backend, &BackendFacade::statusTextChanged, this, &AgentViewModel::statusTextChanged);
+    connect(m_backend, &BackendFacade::assistantSurfaceChanged, this, &AgentViewModel::assistantSurfaceChanged);
     connect(m_backend, &BackendFacade::audioLevelChanged, this, &AgentViewModel::audioLevelChanged);
     connect(m_backend, &BackendFacade::wakeTriggerTokenChanged, this, &AgentViewModel::wakeTriggerTokenChanged);
     connect(m_backend, &BackendFacade::overlayVisibleChanged, this, &AgentViewModel::overlayVisibleChanged);
@@ -47,6 +48,21 @@ QString AgentViewModel::responseText() const
 QString AgentViewModel::statusText() const
 {
     return m_backend ? m_backend->statusText() : QString();
+}
+
+int AgentViewModel::assistantSurfaceState() const
+{
+    return m_backend ? m_backend->assistantSurfaceState() : READY;
+}
+
+QString AgentViewModel::assistantSurfaceActivityPrimary() const
+{
+    return m_backend ? m_backend->assistantSurfaceActivityPrimary() : QString();
+}
+
+QString AgentViewModel::assistantSurfaceActivitySecondary() const
+{
+    return m_backend ? m_backend->assistantSurfaceActivitySecondary() : QString();
 }
 
 double AgentViewModel::audioLevel() const

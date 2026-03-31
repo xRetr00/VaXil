@@ -20,25 +20,29 @@ Window {
     readonly property int stateThinking: 2
     readonly property int stateExecuting: 3
 
+    readonly property int surfaceReady: 0
+    readonly property int surfaceListening: 1
+    readonly property int surfaceThinking: 2
+    readonly property int surfaceSpeaking: 3
+    readonly property int surfaceToolRunning: 4
+    readonly property int surfaceError: 5
+
     property real dpiScale: Math.max(1.0, Math.max(Screen.devicePixelRatio, Screen.pixelDensity / 3.78))
     property real shortEdge: Math.min(width, height)
     property real pageMargin: Math.max(22 * dpiScale, Math.min(shortEdge * 0.045, 56 * dpiScale))
     property real sectionSpacing: Math.max(12 * dpiScale, shortEdge * 0.012)
     property real contentWidth: Math.min(width * 0.4, 520 * dpiScale)
-    property real orbBaseSize: Math.max(220 * dpiScale, Math.min(shortEdge * 0.31, 420 * dpiScale))
+    property real orbBaseSize: Math.max(182 * dpiScale, Math.min(shortEdge * 0.245, 338 * dpiScale))
     property bool showTaskPanel: taskVm.backgroundPanelVisible && taskVm.backgroundTaskResults.length > 0
     property real sideLaneWidth: taskVm.backgroundTaskResults.length > 0
         ? Math.min(width * (width >= 1480 * dpiScale ? 0.3 : 0.2), 470 * dpiScale)
         : 0
-    property real presenceDriftX: agentVm.presenceOffsetX * Math.min(width * 0.04, 34 * dpiScale)
-    property real presenceDriftY: agentVm.presenceOffsetY * Math.min(height * 0.03, 24 * dpiScale)
     property real bgLuma: (0.2126 * palette.window.r) + (0.7152 * palette.window.g) + (0.0722 * palette.window.b)
     property bool useDarkText: bgLuma > 0.55
     property color textPrimaryColor: useDarkText ? "#14202c" : "#edf6ff"
     property color textSecondaryColor: useDarkText ? "#2b4056" : "#bfd3ea"
     property color textMutedColor: useDarkText ? "#3f5871" : "#7f9fc7"
     property color textOutlineColor: useDarkText ? "#80ffffff" : "#90060d14"
-    property bool showingModelResponse: agentVm.responseText.trim().length > 0
 
     onClosing: function(close) {
         close.accepted = false
@@ -52,62 +56,80 @@ Window {
         }
     }
 
-    function compactText(rawText, fallbackText) {
+    function compactText(rawText, fallbackText, maxLength) {
         let text = (rawText || "").toString().replace(/\s+/g, " ").trim()
         if (text.length === 0) {
             text = fallbackText || ""
         }
-        if (text.length > 72) {
-            text = text.slice(0, 69) + "..."
+        const limit = maxLength || 72
+        if (text.length > limit) {
+            text = text.slice(0, limit - 3).trim() + "..."
         }
         return text
     }
 
-    function greetingLine() {
-        const hour = new Date().getHours()
-        const period = hour < 12 ? "Good morning" : hour >= 18 ? "Good evening" : "Good afternoon"
-        return agentVm.userName.length > 0 ? period + ", " + agentVm.userName + "." : period + "."
+    function defaultPrimaryForSurfaceState() {
+        switch (agentVm.assistantSurfaceState) {
+        case surfaceListening:
+            return "Listening..."
+        case surfaceThinking:
+            return "Thinking..."
+        case surfaceSpeaking:
+            return "Speaking..."
+        case surfaceToolRunning:
+            return "Tool running..."
+        case surfaceError:
+            return "Attention needed"
+        default:
+            return "Ready"
+        }
     }
 
-    function presenceLine() {
-        if (root.showingModelResponse) {
-            return compactText(agentVm.responseText, "")
+    function surfacePrimaryText() {
+        const response = compactText(agentVm.responseText, "", 112)
+        if (response.length > 0) {
+            return response
         }
-        if (agentVm.uiState === stateIdle) {
-            return greetingLine()
+
+        const activity = compactText(agentVm.assistantSurfaceActivityPrimary, "", 92)
+        if (activity.length > 0) {
+            return activity
         }
-        return compactText(agentVm.statusText, "Ready.")
+
+        return defaultPrimaryForSurfaceState()
     }
 
-    function shouldShowStatusToast(statusText) {
-        const value = compactText(statusText, "").toLowerCase()
-        if (value.length === 0) {
-            return false
+    function surfaceSecondaryText(primary) {
+        const activitySecondary = compactText(agentVm.assistantSurfaceActivitySecondary, "", 68)
+        if (activitySecondary.length > 0) {
+            return activitySecondary
         }
-        return value !== "processing request"
-            && value !== "listening"
-            && value !== "thinking"
-            && value !== "executing"
-            && value !== "idle"
-            && value !== "response ready"
+
+        const status = compactText(agentVm.statusText, "", 72)
+        if (status.length === 0) {
+            return ""
+        }
+
+        const primaryNormalized = compactText(primary, "", 120).toLowerCase()
+        const statusNormalized = status.toLowerCase()
+        if (statusNormalized === primaryNormalized) {
+            return ""
+        }
+
+        return status
     }
 
-    function shouldShowModelToast(responseText) {
-        const normalizedResponse = compactText(responseText, "").toLowerCase()
-        return normalizedResponse.length > 0
-    }
-
-    function microStatus() {
-        if (agentVm.uiState === stateListening) {
-            return "Listening"
+    function surfacePreferredMode(primary, secondary) {
+        if (secondary.length > 0) {
+            return primary.length > 52 || secondary.length > 46 ? "extended" : "expanded"
         }
-        if (agentVm.uiState === stateThinking) {
-            return "Thinking"
+        if (primary.length > 68) {
+            return "extended"
         }
-        if (agentVm.uiState === stateExecuting) {
-            return "Executing"
+        if (primary.length > 34) {
+            return "expanded"
         }
-        return "Idle"
+        return "compact"
     }
 
     JarvisUi.AnimationController {
@@ -143,120 +165,68 @@ Window {
         anchors.fill: parent
 
         Column {
+            id: assistantSurfaceCluster
+            anchors.left: parent.left
+            anchors.leftMargin: root.pageMargin
             anchors.top: parent.top
             anchors.topMargin: root.pageMargin
-            anchors.horizontalCenter: parent.horizontalCenter
-            spacing: 4 * root.dpiScale
+            spacing: Math.round(10 * root.dpiScale)
 
-            Text {
-                anchors.horizontalCenter: parent.horizontalCenter
-                text: "VAXIL ONLINE"
-                color: root.textPrimaryColor
-                opacity: 0.82
-                style: Text.Outline
-                styleColor: root.textOutlineColor
-                font.pixelSize: Math.round(11 * root.dpiScale)
-                font.letterSpacing: 2.4
-            }
+            readonly property string primaryText: root.surfacePrimaryText()
+            readonly property string secondaryText: root.surfaceSecondaryText(primaryText)
+            readonly property string preferredMode: root.surfacePreferredMode(primaryText, secondaryText)
 
-            Text {
-                anchors.horizontalCenter: parent.horizontalCenter
-                text: microStatus()
-                color: root.textMutedColor
-                opacity: 0.88
-                style: Text.Outline
-                styleColor: root.textOutlineColor
-                font.pixelSize: Math.round(12 * root.dpiScale)
-                font.letterSpacing: 1.6
+            JarvisUi.AssistantStatusSurface {
+                surfaceState: agentVm.assistantSurfaceState
+                primaryText: assistantSurfaceCluster.primaryText
+                secondaryText: assistantSurfaceCluster.secondaryText
+                preferredMode: assistantSurfaceCluster.preferredMode
+                dpiScale: root.dpiScale
+                maxWidth: Math.min(root.width * 0.34, 430 * root.dpiScale)
             }
+        }
+
+        JarvisUi.AssistantStateIndicator {
+            anchors.top: parent.top
+            anchors.topMargin: root.pageMargin
+            anchors.right: parent.right
+            anchors.rightMargin: root.pageMargin
+            surfaceState: agentVm.assistantSurfaceState
+            dpiScale: root.dpiScale
         }
 
         Item {
             id: centerFrame
             anchors.horizontalCenter: parent.horizontalCenter
             anchors.verticalCenter: parent.verticalCenter
-            anchors.verticalCenterOffset: root.height * 0.06 + root.presenceDriftY
-            width: Math.max(root.contentWidth, root.orbBaseSize)
-            height: centerStack.implicitHeight
-            transform: Translate {
-                x: root.presenceDriftX
-                y: 0
-            }
+            anchors.verticalCenterOffset: root.height * 0.2
+            width: root.orbBaseSize
+            height: root.orbBaseSize
 
-            ColumnLayout {
-                id: centerStack
+            Item {
                 anchors.fill: parent
-                spacing: root.sectionSpacing
-
-                Item {
-                    Layout.alignment: Qt.AlignHCenter
-                    Layout.preferredWidth: root.contentWidth
-                    Layout.maximumWidth: root.contentWidth
-                    implicitHeight: presenceStack.implicitHeight
-
-                    ColumnLayout {
-                        id: presenceStack
-                        anchors.horizontalCenter: parent.horizontalCenter
-                        width: parent.width
-                        spacing: 8 * root.dpiScale
-
-                        Text {
-                            Layout.fillWidth: true
-                            horizontalAlignment: Text.AlignHCenter
-                            text: presenceLine()
-                            color: root.textPrimaryColor
-                            font.pixelSize: Math.round(Math.max(18 * root.dpiScale, Math.min(root.shortEdge * 0.03, 28 * root.dpiScale)))
-                            wrapMode: Text.Wrap
-                            maximumLineCount: 2
-                            elide: Text.ElideRight
-                            style: Text.Outline
-                            styleColor: root.textOutlineColor
-                            layer.enabled: false
-                        }
-
-                        Text {
-                            Layout.fillWidth: true
-                            horizontalAlignment: Text.AlignHCenter
-                            text: compactText(agentVm.statusText, "")
-                            visible: text.length > 0 && text !== presenceLine()
-                            color: root.textMutedColor
-                            font.pixelSize: Math.round(12 * root.dpiScale)
-                            wrapMode: Text.Wrap
-                            maximumLineCount: 1
-                            elide: Text.ElideRight
-                            style: Text.Outline
-                            styleColor: root.textOutlineColor
-                        }
-                    }
+                transform: Translate {
+                    x: motion.listeningVibrationX * 4 * root.dpiScale
+                    y: motion.listeningVibrationY * 4 * root.dpiScale
                 }
 
-                Item {
-                    Layout.alignment: Qt.AlignHCenter
-                    Layout.preferredWidth: root.orbBaseSize
-                    Layout.preferredHeight: root.orbBaseSize
-                    transform: Translate {
-                        x: motion.listeningVibrationX * 4 * root.dpiScale
-                        y: motion.listeningVibrationY * 4 * root.dpiScale
-                    }
-
-                    JarvisUi.OrbRenderer {
-                        id: orb
-                        anchors.fill: parent
-                        stateName: agentVm.stateName
-                        uiState: agentVm.uiState
-                        quality: root.shortEdge < 760 * root.dpiScale ? orb.qualityLow
-                            : root.shortEdge < 1100 * root.dpiScale ? orb.qualityMedium
-                            : orb.qualityHigh
-                        time: motion.time
-                        audioLevel: motion.inputBoost
-                        speakingLevel: motion.speakingSignal
-                        distortion: motion.distortion
-                        glow: motion.glow
-                        orbScale: motion.orbScale
-                        orbitalRotation: motion.orbitalRotation
-                        auraPulse: motion.auraPulse
-                        flicker: motion.flicker
-                    }
+                JarvisUi.OrbRenderer {
+                    id: orb
+                    anchors.fill: parent
+                    stateName: agentVm.stateName
+                    uiState: agentVm.uiState
+                    quality: root.shortEdge < 760 * root.dpiScale ? orb.qualityLow
+                        : root.shortEdge < 1100 * root.dpiScale ? orb.qualityMedium
+                        : orb.qualityHigh
+                    time: motion.time
+                    audioLevel: motion.inputBoost
+                    speakingLevel: motion.speakingSignal
+                    distortion: motion.distortion
+                    glow: motion.glow
+                    orbScale: motion.orbScale
+                    orbitalRotation: motion.orbitalRotation
+                    auraPulse: motion.auraPulse
+                    flicker: motion.flicker
                 }
             }
         }
@@ -417,28 +387,6 @@ Window {
                 taskVm.setBackgroundPanelVisible(true)
                 taskVm.notifyTaskToastShown(taskId)
             }
-        }
-    }
-
-    Connections {
-        target: agentVm
-
-        function onStatusTextChanged() {
-            if (!root.shouldShowStatusToast(agentVm.statusText)) {
-                return
-            }
-            toastManager.pushToast(
-                agentVm.statusText,
-                agentVm.statusText.toLowerCase().indexOf("error") >= 0 ? "error" : "status",
-                -1,
-                "status")
-        }
-
-        function onResponseTextChanged() {
-            if (!root.shouldShowModelToast(agentVm.responseText)) {
-                return
-            }
-            toastManager.pushToast(agentVm.responseText, "response", -1, "response")
         }
     }
 

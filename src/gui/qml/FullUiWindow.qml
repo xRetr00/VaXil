@@ -16,7 +16,7 @@ Window {
     color: "#03060c"
 
     property real dpiScale: Math.max(1.0, Screen.devicePixelRatio)
-    property int maxLogEntries: 8
+    property int maxLogEntries: 5
     property bool blinkOn: true
     property string lastTranscript: ""
     property string lastResponse: ""
@@ -213,110 +213,114 @@ Window {
             Layout.fillHeight: true
             spacing: 18
 
-            ColumnLayout {
+            Rectangle {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
-                spacing: 14
+                Layout.minimumWidth: 430
+                Layout.preferredWidth: Math.max(460, fullUi.width * 0.48)
+                radius: 24
+                color: "#06101b"
+                border.width: 1
+                border.color: "#223a5a"
 
-                Rectangle {
-                    Layout.fillWidth: true
-                    Layout.fillHeight: true
-                    radius: 22
-                    color: "#06101b"
-                    border.width: 1
-                    border.color: "#223a5a"
+                ColumnLayout {
+                    anchors.fill: parent
+                    anchors.margins: 18
+                    spacing: 16
 
-                    ColumnLayout {
-                        anchors.fill: parent
-                        anchors.margins: 18
-                        spacing: 14
+                    Item {
+                        id: visualHero
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+                        Layout.minimumHeight: 380
+                        clip: true
 
-                        Item {
-                            Layout.alignment: Qt.AlignHCenter
-                            Layout.preferredWidth: 360
-                            Layout.preferredHeight: 360
+                        readonly property real orbDiameter: Math.min(width * 0.84, height * 0.88)
 
-                            Rectangle {
-                                anchors.centerIn: parent
-                                width: parent.width * (1.08 + 0.04 * fullUi.slowPulse)
-                                height: width
-                                radius: width / 2
-                                color: "transparent"
-                                border.width: 2
-                                border.color: "#1b6fa8"
-                                opacity: 0.18 + 0.22 * fullUi.fastPulse
-                            }
+                        Rectangle {
+                            anchors.centerIn: parent
+                            width: visualHero.orbDiameter * (1.1 + 0.05 * fullUi.slowPulse)
+                            height: width
+                            radius: width / 2
+                            color: "transparent"
+                            border.width: 2
+                            border.color: "#1b6fa8"
+                            opacity: 0.18 + 0.22 * fullUi.fastPulse
+                        }
 
-                            JarvisUi.OrbRenderer {
+                        JarvisUi.OrbRenderer {
+                            anchors.centerIn: parent
+                            width: visualHero.orbDiameter
+                            height: visualHero.orbDiameter
+                            stateName: agentVm.stateName
+                            uiState: agentVm.uiState
+                            time: motion.time
+                            audioLevel: motion.inputBoost
+                            speakingLevel: motion.speakingSignal
+                            distortion: motion.distortion
+                            glow: motion.glow
+                            orbScale: motion.orbScale
+                            orbitalRotation: motion.orbitalRotation
+                            auraPulse: motion.auraPulse
+                            flicker: motion.flicker
+                            quality: fullUi.width < 1200 ? qualityMedium : qualityHigh
+                        }
+                    }
+
+                    Rectangle {
+                        Layout.fillWidth: true
+                        Layout.minimumHeight: 96
+                        Layout.preferredHeight: 110
+                        radius: 16
+                        color: "#081422"
+                        border.width: 1
+                        border.color: "#1c3452"
+
+                        Rectangle {
+                            anchors.fill: parent
+                            anchors.margins: 8
+                            radius: 12
+                            color: "#040c16"
+                            border.width: 1
+                            border.color: "#1a3551"
+
+                            JarvisUi.VoiceWaveRenderer {
                                 anchors.fill: parent
+                                anchors.margins: 6
                                 stateName: agentVm.stateName
-                                uiState: agentVm.uiState
                                 time: motion.time
                                 audioLevel: motion.inputBoost
                                 speakingLevel: motion.speakingSignal
-                                distortion: motion.distortion
                                 glow: motion.glow
-                                orbScale: motion.orbScale
-                                orbitalRotation: motion.orbitalRotation
-                                auraPulse: motion.auraPulse
-                                flicker: motion.flicker
-                                quality: fullUi.width < 1200 ? qualityMedium : qualityHigh
+                                uiState: agentVm.uiState
                             }
                         }
+                    }
 
-                        Rectangle {
-                            Layout.fillWidth: true
-                            Layout.preferredHeight: 72
-                            radius: 16
-                            color: "#081422"
-                            border.width: 1
-                            border.color: "#1c3452"
+                    Rectangle {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: 58
+                        radius: 14
+                        color: "#0b1626"
+                        border.width: 1
+                        border.color: "#223a5a"
 
-                            Rectangle {
-                                anchors.fill: parent
-                                anchors.margins: 10
-                                radius: 12
-                                color: "#040c16"
-                                border.width: 1
-                                border.color: "#1a3551"
+                        RowLayout {
+                            anchors.fill: parent
+                            anchors.margins: 12
+                            spacing: 10
 
-                                JarvisUi.VoiceWaveRenderer {
-                                    anchors.fill: parent
-                                    anchors.margins: 4
-                                    time: motion.time
-                                    audioLevel: motion.inputBoost
-                                    speakingLevel: motion.speakingSignal
-                                    glow: motion.glow
-                                    uiState: agentVm.uiState
-                                }
+                            Text {
+                                text: agentVm.statusText.length > 0 ? agentVm.statusText : "Ready for command."
+                                color: "#b8d4ef"
+                                font.pixelSize: 14
+                                Layout.fillWidth: true
+                                elide: Text.ElideRight
                             }
-                        }
 
-                        Rectangle {
-                            Layout.fillWidth: true
-                            Layout.preferredHeight: 58
-                            radius: 14
-                            color: "#0b1626"
-                            border.width: 1
-                            border.color: "#223a5a"
-
-                            RowLayout {
-                                anchors.fill: parent
-                                anchors.margins: 12
-                                spacing: 10
-
-                                Text {
-                                    text: agentVm.statusText.length > 0 ? agentVm.statusText : "Ready for command."
-                                    color: "#b8d4ef"
-                                    font.pixelSize: 14
-                                    Layout.fillWidth: true
-                                    elide: Text.ElideRight
-                                }
-
-                                Button {
-                                    text: "MIC"
-                                    onClicked: agentVm.startListening()
-                                }
+                            Button {
+                                text: "MIC"
+                                onClicked: agentVm.startListening()
                             }
                         }
                     }
@@ -324,13 +328,15 @@ Window {
             }
 
             ColumnLayout {
-                Layout.preferredWidth: Math.min(420, fullUi.width * 0.36)
+                Layout.preferredWidth: Math.max(280, Math.min(360, fullUi.width * 0.28))
+                Layout.maximumWidth: 380
                 Layout.fillHeight: true
                 spacing: 14
 
                 Rectangle {
                     Layout.fillWidth: true
-                    Layout.fillHeight: true
+                    Layout.preferredHeight: Math.max(260, fullUi.height * 0.36)
+                    Layout.maximumHeight: Math.max(320, fullUi.height * 0.48)
                     radius: 22
                     color: "#07111c"
                     border.width: 1
@@ -388,9 +394,32 @@ Window {
                             }
                         }
 
+                    }
+                }
+
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 132
+                    radius: 18
+                    color: "#081422"
+                    border.width: 1
+                    border.color: "#1c3452"
+
+                    ColumnLayout {
+                        anchors.fill: parent
+                        anchors.margins: 14
+                        spacing: 8
+
+                        Text {
+                            text: "LIVE RESPONSE"
+                            color: "#8bd6ff"
+                            font.pixelSize: 11
+                            font.letterSpacing: 2.0
+                        }
+
                         Rectangle {
                             Layout.fillWidth: true
-                            Layout.preferredHeight: 72
+                            Layout.fillHeight: true
                             radius: 12
                             color: "#06101b"
                             border.width: 1
@@ -410,42 +439,46 @@ Window {
                     }
                 }
 
-                Rectangle {
+                Item {
+                    Layout.fillHeight: true
+                }
+            }
+        }
+
+        Rectangle {
+            Layout.fillWidth: true
+            Layout.preferredHeight: 64
+            radius: 18
+            color: "#0b1626"
+            border.width: 1
+            border.color: "#223a5a"
+
+            RowLayout {
+                anchors.fill: parent
+                anchors.margins: 12
+                spacing: 10
+
+                TextField {
+                    id: inputField
                     Layout.fillWidth: true
-                    Layout.preferredHeight: 64
-                    radius: 18
-                    color: "#0b1626"
-                    border.width: 1
-                    border.color: "#223a5a"
-
-                    RowLayout {
-                        anchors.fill: parent
-                        anchors.margins: 12
-                        spacing: 10
-
-                        TextField {
-                            id: inputField
-                            Layout.fillWidth: true
-                            placeholderText: "Type a command..."
-                            onAccepted: {
-                                if (text.trim().length === 0) {
-                                    return
-                                }
-                                agentVm.submitText(text)
-                                text = ""
-                            }
+                    placeholderText: "Type a command..."
+                    onAccepted: {
+                        if (text.trim().length === 0) {
+                            return
                         }
+                        agentVm.submitText(text)
+                        text = ""
+                    }
+                }
 
-                        Button {
-                            text: "SEND"
-                            onClicked: {
-                                if (inputField.text.trim().length === 0) {
-                                    return
-                                }
-                                agentVm.submitText(inputField.text)
-                                inputField.text = ""
-                            }
+                Button {
+                    text: "SEND"
+                    onClicked: {
+                        if (inputField.text.trim().length === 0) {
+                            return
                         }
+                        agentVm.submitText(inputField.text)
+                        inputField.text = ""
                     }
                 }
             }

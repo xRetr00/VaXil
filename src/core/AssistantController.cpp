@@ -69,6 +69,82 @@ QString stateToString(AssistantState state)
     return QStringLiteral("IDLE");
 }
 
+QString compactSurfaceText(QString text, int maxLength = 72)
+{
+    text = text.simplified();
+    if (text.size() > maxLength) {
+        text = text.left(maxLength - 3).trimmed() + QStringLiteral("...");
+    }
+    return text;
+}
+
+QString formatDurationForSurface(int totalSeconds)
+{
+    if (totalSeconds <= 0) {
+        return {};
+    }
+
+    if (totalSeconds >= 3600) {
+        const int hours = totalSeconds / 3600;
+        const int minutes = (totalSeconds % 3600) / 60;
+        return minutes > 0
+            ? QStringLiteral("%1 hr %2 min").arg(hours).arg(minutes)
+            : QStringLiteral("%1 hr").arg(hours);
+    }
+
+    if (totalSeconds >= 60) {
+        const int minutes = totalSeconds / 60;
+        const int seconds = totalSeconds % 60;
+        return seconds > 0
+            ? QStringLiteral("%1 min %2 sec").arg(minutes).arg(seconds)
+            : QStringLiteral("%1 min").arg(minutes);
+    }
+
+    return QStringLiteral("%1 sec").arg(totalSeconds);
+}
+
+QString firstNonEmptyArg(const QJsonObject &args, const QStringList &keys)
+{
+    for (const QString &key : keys) {
+        const QString value = args.value(key).toString().trimmed();
+        if (!value.isEmpty()) {
+            return value;
+        }
+    }
+    return {};
+}
+
+QString compactPathForSurface(const QString &pathText)
+{
+    const QString trimmed = pathText.trimmed();
+    if (trimmed.isEmpty()) {
+        return {};
+    }
+
+    const QFileInfo info(trimmed);
+    const QString fileName = info.fileName().trimmed();
+    if (!fileName.isEmpty()) {
+        return compactSurfaceText(fileName, 56);
+    }
+
+    return compactSurfaceText(trimmed, 56);
+}
+
+QString compactUrlForSurface(const QString &urlText)
+{
+    const QString trimmed = urlText.trimmed();
+    if (trimmed.isEmpty()) {
+        return {};
+    }
+
+    const QUrl url(trimmed);
+    if (url.isValid() && !url.host().trimmed().isEmpty()) {
+        return compactSurfaceText(url.host(), 48);
+    }
+
+    return compactSurfaceText(trimmed, 48);
+}
+
 QString normalizeForRouting(QString text)
 {
     text = text.trimmed();
@@ -1065,8 +1141,27 @@ AssistantController::AssistantController(
     connect(&m_gestureActionRouterThread, &QThread::finished, m_gestureActionRouter, &QObject::deleteLater);
     connect(m_taskDispatcher, &TaskDispatcher::taskReady, m_toolWorker, &ToolWorker::processTask, Qt::QueuedConnection);
     connect(m_taskDispatcher, &TaskDispatcher::taskCanceled, m_toolWorker, &ToolWorker::cancelTask, Qt::QueuedConnection);
+    connect(m_taskDispatcher, &TaskDispatcher::taskCanceled, this, [this](int taskId) {
+        m_knownBackgroundTasks.remove(taskId);
+
+        for (auto it = m_activeBackgroundTaskIds.begin(); it != m_activeBackgroundTaskIds.end();) {
+            if (it.value() == taskId) {
+                it = m_activeBackgroundTaskIds.erase(it);
+            } else {
+                ++it;
+            }
+        }
+
+        refreshBackgroundTaskSurface();
+    });
     connect(m_taskDispatcher, &TaskDispatcher::activeTaskChanged, this, [this](const QString &type, int taskId) {
         m_activeBackgroundTaskIds.insert(type, taskId);
+        if (m_knownBackgroundTasks.contains(taskId)) {
+            AgentTask task = m_knownBackgroundTasks.value(taskId);
+            task.state = TaskState::Running;
+            m_knownBackgroundTasks.insert(taskId, task);
+        }
+        refreshBackgroundTaskSurface();
     });
     connect(m_toolWorker, &ToolWorker::taskStarted, m_taskDispatcher, &TaskDispatcher::handleTaskStarted, Qt::QueuedConnection);
     connect(m_toolWorker, &ToolWorker::taskFinished, m_taskDispatcher, &TaskDispatcher::handleTaskFinished, Qt::QueuedConnection);
@@ -1074,6 +1169,19 @@ AssistantController::AssistantController(
         recordTaskResult(resultObject);
     }, Qt::QueuedConnection);
     connect(m_visionIngestService, &VisionIngestService::visionSnapshotReceived, this, &AssistantController::handleVisionSnapshot, Qt::QueuedConnection);
+    connect(m_visionIngestService, &VisionIngestService::statusChanged, this, [this](const QString &status, bool connected) {
+        if (!m_settings->visionEnabled() || status.compare(QStringLiteral("Vision ingest disabled"), Qt::CaseInsensitive) == 0) {
+            clearSurfaceError(QStringLiteral("vision"));
+            return;
+        }
+
+        if (connected) {
+            clearSurfaceError(QStringLiteral("vision"));
+            return;
+        }
+
+        setSurfaceError(QStringLiteral("vision"), compactSurfaceText(status));
+    }, Qt::QueuedConnection);
     connect(m_gestureInterpreter, &GestureInterpreter::observationsInterpreted, m_gestureStateMachine, &GestureStateMachine::ingestObservations, Qt::QueuedConnection);
     connect(m_gestureStateMachine, &GestureStateMachine::gestureEventReady, m_gestureActionRouter, &GestureActionRouter::routeGestureEvent, Qt::QueuedConnection);
     connect(m_gestureActionRouter, &GestureActionRouter::gestureTriggered, this, [this](const QString &gestureName, qint64 timestampMs) {
@@ -1248,6 +1356,7 @@ void AssistantController::initialize()
             handleConversationSessionMiss(errorText);
             return;
         }
+        setSurfaceError(QStringLiteral("assistant"), compactSurfaceText(errorText));
         setStatus(errorText);
         resumeWakeMonitor(shortWakeResumeDelayMs());
         emit idleRequested();
@@ -1307,6 +1416,7 @@ void AssistantController::initialize()
             handleConversationSessionMiss(errorText);
             return;
         }
+        setSurfaceError(QStringLiteral("assistant"), compactSurfaceText(errorText));
         setStatus(errorText);
         resumeWakeMonitor(shortWakeResumeDelayMs());
         emit idleRequested();
@@ -1321,6 +1431,7 @@ void AssistantController::initialize()
         if (m_loggingService) {
             m_loggingService->infoFor(QStringLiteral("tts"), QStringLiteral("TTS playback started."));
         }
+        clearSurfaceError(QStringLiteral("assistant"));
         beginTtsExclusiveMode();
         emit speakingRequested();
     });
@@ -1348,6 +1459,7 @@ void AssistantController::initialize()
     });
     connect(m_ttsEngine, &TtsEngine::playbackFailed, this, [this](const QString &errorText) {
         enterPostSpeechCooldown();
+        setSurfaceError(QStringLiteral("assistant"), compactSurfaceText(errorText));
         setStatus(errorText);
         endConversationSession();
         resumeWakeMonitor(shortWakeResumeDelayMs());
@@ -1356,6 +1468,7 @@ void AssistantController::initialize()
 
     connect(m_aiBackendClient, &AiBackendClient::requestStarted, this, [this](quint64 requestId) {
         m_activeRequestId = requestId;
+        clearSurfaceError(QStringLiteral("assistant"));
         if (m_loggingService) {
             m_loggingService->info(QStringLiteral("Local AI backend request started. requestId=%1 kind=%2")
                 .arg(requestId)
@@ -1419,6 +1532,7 @@ void AssistantController::initialize()
                 ? QStringLiteral("error_timeout")
                 : QStringLiteral("ai_offline");
             refreshConversationSession();
+            setSurfaceError(QStringLiteral("assistant"), compactSurfaceText(errorText));
             deliverLocalResponse(
                 m_localResponseEngine->respondToError(errorGroup, buildLocalResponseContext()),
                 errorText,
@@ -1438,6 +1552,43 @@ QString AssistantController::responseText() const { return m_responseText; }
 QString AssistantController::statusText() const { return m_statusText; }
 float AssistantController::audioLevel() const { return m_audioLevel; }
 int AssistantController::wakeTriggerToken() const { return m_wakeTriggerToken; }
+AssistantSurfaceState AssistantController::assistantSurfaceState() const
+{
+    if (!m_surfaceErrorPrimary.trimmed().isEmpty()) {
+        return AssistantSurfaceState::Error;
+    }
+    if (m_surfaceBackgroundTaskId >= 0 && !m_surfaceBackgroundPrimary.trimmed().isEmpty()) {
+        return AssistantSurfaceState::ToolRunning;
+    }
+
+    switch (m_currentState) {
+    case AssistantState::Listening:
+        return AssistantSurfaceState::Listening;
+    case AssistantState::Processing:
+        return AssistantSurfaceState::Thinking;
+    case AssistantState::Speaking:
+        return AssistantSurfaceState::Speaking;
+    case AssistantState::Idle:
+    default:
+        return AssistantSurfaceState::Ready;
+    }
+}
+
+QString AssistantController::assistantSurfaceActivityPrimary() const
+{
+    if (!m_surfaceErrorPrimary.trimmed().isEmpty()) {
+        return m_surfaceErrorPrimary;
+    }
+    return m_surfaceBackgroundPrimary;
+}
+
+QString AssistantController::assistantSurfaceActivitySecondary() const
+{
+    if (!m_surfaceErrorPrimary.trimmed().isEmpty()) {
+        return m_surfaceErrorSecondary;
+    }
+    return m_surfaceBackgroundSecondary;
+}
 bool AssistantController::startupReady() const { return m_startupReady; }
 bool AssistantController::startupBlocked() const { return m_startupBlocked; }
 QString AssistantController::startupBlockingIssue() const { return m_startupBlockingIssue; }
@@ -1501,6 +1652,7 @@ void AssistantController::submitText(const QString &text)
         return;
     }
 
+    clearSurfaceError(QStringLiteral("assistant"));
     m_lastPromptForAiLog = trimmed;
     invalidateWakeMonitorResume();
 
@@ -1729,12 +1881,14 @@ void AssistantController::startListening()
         }
         return;
     }
+    clearSurfaceError(QStringLiteral("assistant"));
     pauseWakeMonitor();
     startAudioCapture(AudioCaptureMode::Direct, true);
 }
 
 void AssistantController::interruptSpeechAndListen()
 {
+    clearSurfaceError(QStringLiteral("assistant"));
     invalidateWakeMonitorResume();
 
     // Interrupt both pending generation and speech without ending the conversation session.
@@ -1765,6 +1919,7 @@ void AssistantController::interruptSpeechAndListen()
 
     pauseWakeMonitor();
     if (!startAudioCapture(AudioCaptureMode::Direct, true)) {
+        setSurfaceError(QStringLiteral("assistant"), QStringLiteral("Unable to start listening"));
         setStatus(QStringLiteral("Unable to start listening"));
         resumeWakeMonitor(shortWakeResumeDelayMs());
         emit idleRequested();
@@ -2081,6 +2236,7 @@ void AssistantController::bindWakeWordEngineSignals()
     connect(m_wakeWordEngine, &WakeWordEngine::engineReady, this, [this]() {
         m_wakeEngineReady = true;
         m_lastWakeError.clear();
+        clearSurfaceError(QStringLiteral("assistant"));
         updateStartupState();
     });
     connect(m_wakeWordEngine, &WakeWordEngine::wakeWordDetected, this, [this]() {
@@ -2126,6 +2282,7 @@ void AssistantController::bindWakeWordEngineSignals()
         if (m_loggingService) {
             m_loggingService->errorFor(QStringLiteral("wake_engine"), QStringLiteral("%1 wake engine error: %2").arg(wakeEngineDisplayName(), message));
         }
+        setSurfaceError(QStringLiteral("assistant"), compactSurfaceText(message));
         setStatus(message);
     });
 }
@@ -2138,6 +2295,7 @@ void AssistantController::transitionToState(AssistantState state)
 
     m_currentState = state;
     emit stateChanged();
+    emit assistantSurfaceChanged();
 }
 
 void AssistantController::updateStartupState()
@@ -3447,11 +3605,14 @@ void AssistantController::dispatchBackgroundTasks(const QList<AgentTask> &tasks)
         task.id = m_nextTaskId++;
         task.createdAtMs = QDateTime::currentMSecsSinceEpoch();
         task.state = TaskState::Pending;
+        m_knownBackgroundTasks.insert(task.id, task);
         if (m_loggingService) {
             m_loggingService->info(QStringLiteral("[TaskDispatcher] created %1 #%2").arg(task.type).arg(task.id));
         }
         m_taskDispatcher->enqueue(task);
     }
+
+    refreshBackgroundTaskSurface();
 }
 
 void AssistantController::recordTaskResult(const QJsonObject &resultObject)
@@ -3470,6 +3631,7 @@ void AssistantController::recordTaskResult(const QJsonObject &resultObject)
 
     const int activeTaskId = m_activeBackgroundTaskIds.value(result.type, -1);
     if (activeTaskId != result.taskId) {
+        m_knownBackgroundTasks.remove(result.taskId);
         if (m_loggingService) {
             m_loggingService->info(QStringLiteral("[UI] ignored stale task id=%1 type=%2 active=%3")
                 .arg(result.taskId)
@@ -3480,6 +3642,11 @@ void AssistantController::recordTaskResult(const QJsonObject &resultObject)
     }
 
     if (result.state == TaskState::Canceled) {
+        m_knownBackgroundTasks.remove(result.taskId);
+        if (m_activeBackgroundTaskIds.value(result.type, -1) == result.taskId) {
+            m_activeBackgroundTaskIds.remove(result.type);
+        }
+        refreshBackgroundTaskSurface();
         if (m_loggingService) {
             m_loggingService->info(QStringLiteral("[UI] ignored canceled task id=%1 type=%2")
                 .arg(result.taskId)
@@ -3493,6 +3660,12 @@ void AssistantController::recordTaskResult(const QJsonObject &resultObject)
             .arg(result.type)
             .arg(result.taskId));
     }
+
+    m_knownBackgroundTasks.remove(result.taskId);
+    if (m_activeBackgroundTaskIds.value(result.type, -1) == result.taskId) {
+        m_activeBackgroundTaskIds.remove(result.type);
+    }
+    refreshBackgroundTaskSurface();
 
     m_backgroundTaskResults.prepend(result);
     while (m_backgroundTaskResults.size() > 40) {
@@ -3516,6 +3689,155 @@ void AssistantController::recordTaskResult(const QJsonObject &resultObject)
     if (result.type == QStringLiteral("web_search") && result.success) {
         startWebSearchSummaryRequest(result);
     }
+}
+
+void AssistantController::refreshBackgroundTaskSurface()
+{
+    int nextTaskId = -1;
+    QString nextPrimary;
+    QString nextSecondary;
+    qint64 nextCreatedAt = -1;
+
+    for (auto it = m_activeBackgroundTaskIds.cbegin(); it != m_activeBackgroundTaskIds.cend(); ++it) {
+        const int taskId = it.value();
+        const AgentTask task = m_knownBackgroundTasks.value(taskId);
+        if (task.id <= 0 || task.type.isEmpty()) {
+            continue;
+        }
+
+        const auto copy = backgroundTaskSurfaceCopy(task);
+        if (copy.first.isEmpty()) {
+            continue;
+        }
+
+        if (task.createdAtMs >= nextCreatedAt) {
+            nextCreatedAt = task.createdAtMs;
+            nextTaskId = taskId;
+            nextPrimary = copy.first;
+            nextSecondary = copy.second;
+        }
+    }
+
+    if (m_surfaceBackgroundTaskId == nextTaskId
+        && m_surfaceBackgroundPrimary == nextPrimary
+        && m_surfaceBackgroundSecondary == nextSecondary) {
+        return;
+    }
+
+    m_surfaceBackgroundTaskId = nextTaskId;
+    m_surfaceBackgroundPrimary = nextPrimary;
+    m_surfaceBackgroundSecondary = nextSecondary;
+    emit assistantSurfaceChanged();
+}
+
+QPair<QString, QString> AssistantController::backgroundTaskSurfaceCopy(const AgentTask &task) const
+{
+    const QJsonObject &args = task.args;
+    const QString type = task.type.trimmed().toLower();
+
+    if (type == QStringLiteral("web_search")) {
+        return {
+            QStringLiteral("Searching the web..."),
+            compactSurfaceText(firstNonEmptyArg(args, {QStringLiteral("query"), QStringLiteral("q")}), 64)
+        };
+    }
+
+    if (type == QStringLiteral("dir_list")) {
+        return {
+            QStringLiteral("Listing files..."),
+            compactPathForSurface(firstNonEmptyArg(args, {QStringLiteral("path"), QStringLiteral("directory"), QStringLiteral("dir")}))
+        };
+    }
+
+    if (type == QStringLiteral("file_read")) {
+        return {
+            QStringLiteral("Opening file..."),
+            compactPathForSurface(firstNonEmptyArg(args, {QStringLiteral("path"), QStringLiteral("file"), QStringLiteral("filename")}))
+        };
+    }
+
+    if (type == QStringLiteral("file_write") || type == QStringLiteral("computer_write_file")) {
+        return {
+            QStringLiteral("Writing file..."),
+            compactPathForSurface(firstNonEmptyArg(args, {QStringLiteral("path"), QStringLiteral("file"), QStringLiteral("filename")}))
+        };
+    }
+
+    if (type == QStringLiteral("memory_write")) {
+        return {
+            QStringLiteral("Saving memory..."),
+            compactSurfaceText(firstNonEmptyArg(args, {QStringLiteral("summary"), QStringLiteral("title"), QStringLiteral("memory"), QStringLiteral("content")}), 60)
+        };
+    }
+
+    if (type == QStringLiteral("computer_open_app")) {
+        return {
+            QStringLiteral("Opening app..."),
+            compactSurfaceText(firstNonEmptyArg(args, {QStringLiteral("app"), QStringLiteral("name"), QStringLiteral("application")}), 48)
+        };
+    }
+
+    if (type == QStringLiteral("computer_open_url") || type == QStringLiteral("browser_open")) {
+        return {
+            QStringLiteral("Opening link..."),
+            compactUrlForSurface(firstNonEmptyArg(args, {QStringLiteral("url"), QStringLiteral("link")}))
+        };
+    }
+
+    if (type == QStringLiteral("computer_set_timer")) {
+        QString secondary;
+        const int seconds = args.value(QStringLiteral("seconds")).toInt();
+        if (seconds > 0) {
+            secondary = formatDurationForSurface(seconds);
+        } else {
+            secondary = compactSurfaceText(firstNonEmptyArg(args, {QStringLiteral("duration"), QStringLiteral("label")}), 48);
+        }
+        return {QStringLiteral("Setting timer..."), secondary};
+    }
+
+    return {
+        QStringLiteral("Tool running..."),
+        compactSurfaceText(firstNonEmptyArg(args, {QStringLiteral("query"), QStringLiteral("path"), QStringLiteral("file"), QStringLiteral("url"), QStringLiteral("name")}), 56)
+    };
+}
+
+void AssistantController::setSurfaceError(const QString &source, const QString &primary, const QString &secondary)
+{
+    const QString normalizedPrimary = compactSurfaceText(primary);
+    const QString normalizedSecondary = compactSurfaceText(secondary, 56);
+    if (normalizedPrimary.isEmpty()) {
+        clearSurfaceError(source);
+        return;
+    }
+
+    if (m_surfaceErrorSource == source
+        && m_surfaceErrorPrimary == normalizedPrimary
+        && m_surfaceErrorSecondary == normalizedSecondary) {
+        return;
+    }
+
+    m_surfaceErrorSource = source;
+    m_surfaceErrorPrimary = normalizedPrimary;
+    m_surfaceErrorSecondary = normalizedSecondary;
+    emit assistantSurfaceChanged();
+}
+
+void AssistantController::clearSurfaceError(const QString &source)
+{
+    if (!source.isEmpty() && m_surfaceErrorSource != source) {
+        return;
+    }
+
+    if (m_surfaceErrorSource.isEmpty()
+        && m_surfaceErrorPrimary.isEmpty()
+        && m_surfaceErrorSecondary.isEmpty()) {
+        return;
+    }
+
+    m_surfaceErrorSource.clear();
+    m_surfaceErrorPrimary.clear();
+    m_surfaceErrorSecondary.clear();
+    emit assistantSurfaceChanged();
 }
 
 void AssistantController::startWebSearchSummaryRequest(const BackgroundTaskResult &result)

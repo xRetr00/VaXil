@@ -6,6 +6,8 @@
         <file alias="qml/ToastWidget.qml">qml/ToastWidget.qml</file>
         <file alias="qml/ToastManager.qml">qml/ToastManager.qml</file>
         <file alias="qml/AnimationController.qml">qml/AnimationController.qml</file>
+        <file alias="qml/AssistantStateIndicator.qml">qml/AssistantStateIndicator.qml</file>
+        <file alias="qml/AssistantStatusSurface.qml">qml/AssistantStatusSurface.qml</file>
         <file alias="qml/SettingsWindow.qml">qml/SettingsWindow.qml</file>
         <file alias="qml/SetupWizard.qml">qml/SetupWizard.qml</file>
         <file alias="qml/ToolsHubWindow.qml">qml/ToolsHubWindow.qml</file>

@@ -20,6 +20,15 @@ enum class AssistantState {
     Speaking
 };
 
+enum class AssistantSurfaceState {
+    Ready,
+    Listening,
+    Thinking,
+    Speaking,
+    ToolRunning,
+    Error
+};
+
 enum class ReasoningMode {
     Fast,
     Balanced,

@@ -18,6 +18,9 @@ class BackendFacade : public QObject
     Q_PROPERTY(QString transcript READ transcript NOTIFY transcriptChanged)
     Q_PROPERTY(QString responseText READ responseText NOTIFY responseTextChanged)
     Q_PROPERTY(QString statusText READ statusText NOTIFY statusTextChanged)
+    Q_PROPERTY(int assistantSurfaceState READ assistantSurfaceState NOTIFY assistantSurfaceChanged)
+    Q_PROPERTY(QString assistantSurfaceActivityPrimary READ assistantSurfaceActivityPrimary NOTIFY assistantSurfaceChanged)
+    Q_PROPERTY(QString assistantSurfaceActivitySecondary READ assistantSurfaceActivitySecondary NOTIFY assistantSurfaceChanged)
     Q_PROPERTY(double audioLevel READ audioLevel NOTIFY audioLevelChanged)
     Q_PROPERTY(int wakeTriggerToken READ wakeTriggerToken NOTIFY wakeTriggerTokenChanged)
     Q_PROPERTY(QStringList models READ models NOTIFY modelsChanged)
@@ -128,6 +131,9 @@ public:
     QString transcript() const;
     QString responseText() const;
     QString statusText() const;
+    int assistantSurfaceState() const;
+    QString assistantSurfaceActivityPrimary() const;
+    QString assistantSurfaceActivitySecondary() const;
     double audioLevel() const;
     int wakeTriggerToken() const;
     QStringList models() const;
@@ -355,6 +361,7 @@ signals:
     void transcriptChanged();
     void responseTextChanged();
     void statusTextChanged();
+    void assistantSurfaceChanged();
     void audioLevelChanged();
     void wakeTriggerTokenChanged();
     void modelsChanged();
@@ -375,6 +382,10 @@ signals:
     void toolsWindowRequested();
 
 private:
+    void setSurfaceToolActivity(const QString &primary, const QString &secondary = QString());
+    void clearSurfaceToolActivity();
+    void setSurfaceBackendError(const QString &primary, const QString &secondary = QString());
+    void clearSurfaceBackendError();
     void setToolInstallStatus(const QString &status);
 
     AppSettings *m_settings = nullptr;
@@ -384,5 +395,10 @@ private:
     LoggingService *m_loggingService = nullptr;
     ToolManager *m_toolManager = nullptr;
     QString m_toolInstallStatus;
+    bool m_surfaceToolActivityActive = false;
+    QString m_surfaceToolActivityPrimary;
+    QString m_surfaceToolActivitySecondary;
+    QString m_surfaceBackendErrorPrimary;
+    QString m_surfaceBackendErrorSecondary;
     QHash<QString, qint64> m_orbHeartbeatLogTimes;
 };

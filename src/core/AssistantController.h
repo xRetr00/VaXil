@@ -2,6 +2,7 @@
 
 #include <QHash>
 #include <QObject>
+#include <QPair>
 #include <QThread>
 
 #include "core/AssistantTypes.h"
@@ -60,6 +61,9 @@ public:
     QString statusText() const;
     float audioLevel() const;
     int wakeTriggerToken() const;
+    AssistantSurfaceState assistantSurfaceState() const;
+    QString assistantSurfaceActivityPrimary() const;
+    QString assistantSurfaceActivitySecondary() const;
     bool startupReady() const;
     bool startupBlocked() const;
     QString startupBlockingIssue() const;
@@ -148,6 +152,7 @@ signals:
     void backgroundTaskResultsChanged();
     void backgroundPanelVisibleChanged();
     void latestTaskToastChanged();
+    void assistantSurfaceChanged();
     void startupStateChanged();
     void listeningRequested();
     void processingRequested();
@@ -227,6 +232,10 @@ private:
     void handleCommandFinished(const QString &text);
     void dispatchBackgroundTasks(const QList<AgentTask> &tasks);
     void recordTaskResult(const QJsonObject &resultObject);
+    void refreshBackgroundTaskSurface();
+    QPair<QString, QString> backgroundTaskSurfaceCopy(const AgentTask &task) const;
+    void setSurfaceError(const QString &source, const QString &primary, const QString &secondary = QString());
+    void clearSurfaceError(const QString &source = QString());
     void startWebSearchSummaryRequest(const BackgroundTaskResult &result);
     QStringList backgroundAllowedRoots() const;
     void logPromptResponsePair(const QString &response, const QString &source, const QString &status = QString());
@@ -294,6 +303,13 @@ private:
     QString m_latestTaskToastType = QStringLiteral("background");
     int m_nextTaskId = 1;
     QHash<QString, int> m_activeBackgroundTaskIds;
+    QHash<int, AgentTask> m_knownBackgroundTasks;
+    int m_surfaceBackgroundTaskId = -1;
+    QString m_surfaceBackgroundPrimary;
+    QString m_surfaceBackgroundSecondary;
+    QString m_surfaceErrorSource;
+    QString m_surfaceErrorPrimary;
+    QString m_surfaceErrorSecondary;
     AudioCaptureMode m_audioCaptureMode = AudioCaptureMode::None;
     AudioCaptureMode m_lastCompletedCaptureMode = AudioCaptureMode::None;
     bool m_wakeMonitorEnabled = false;
