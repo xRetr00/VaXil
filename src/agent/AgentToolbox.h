@@ -7,6 +7,7 @@
 class AppSettings;
 class LoggingService;
 class MemoryStore;
+class PythonRuntimeManager;
 class SkillStore;
 
 class AgentToolbox : public QObject
@@ -51,4 +52,5 @@ private:
     MemoryStore *m_memoryStore = nullptr;
     SkillStore *m_skillStore = nullptr;
     LoggingService *m_loggingService = nullptr;
+    PythonRuntimeManager *m_pythonRuntime = nullptr;
 };

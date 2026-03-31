@@ -14,6 +14,7 @@
 
 class LoggingService;
 class AppSettings;
+class PythonRuntimeManager;
 
 class ToolWorker : public QObject
 {
@@ -69,6 +70,7 @@ private:
     QStringList m_allowedRoots;
     LoggingService *m_loggingService = nullptr;
     AppSettings *m_settings = nullptr;
+    PythonRuntimeManager *m_pythonRuntime = nullptr;
     std::unique_ptr<MemoryManager> m_memoryManager;
     QHash<QString, QElapsedTimer> m_lastExecution;
     QHash<QString, CachedResult> m_cache;

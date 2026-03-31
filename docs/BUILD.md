@@ -12,6 +12,7 @@
   - `whisper.cpp` executable
   - `Piper` executable and voice model
   - `ffmpeg` executable for post-processing
+- Windows release packaging for the Python tools runtime requires a local Python interpreter on the build machine
 
 Optional local speech stack dependencies (for full native wake/audio pipeline features):
 
@@ -73,6 +74,7 @@ build.bat clean
 build.bat release clean
 build.bat notest
 build.bat debug
+build.bat package
 ```
 
 Linux helper script:
@@ -89,6 +91,8 @@ Notes:
 - `build.bat` defaults to Release in `build-release`.
 - `build.bat debug` uses `build`.
 - `build.bat notest` skips `ctest` execution after build.
+- Release Windows builds bundle the Python tools sidecar as `bin/python_runtime/vaxil_python_runtime.exe`.
+- `build.bat package` additionally creates `build-release/vaxil-windows-portable.zip`.
 
 For the verified local MSVC build directory:
 
@@ -133,6 +137,7 @@ ctest --test-dir build-linux-release --output-on-failure
 - Voice generation starts only when sentence boundaries are detected from streamed output
 - The application builds and deploys `vaxil_wake_helper` next to the main `vaxil` executable
 - `windeployqt` runs as a post-build step on Windows to stage Qt runtime files
+- Release Windows builds also stage the frozen Python tools runtime and bundled Playwright Chromium under `bin/python_runtime`
 - On Linux/X11, the Qt xcb platform plugin requires runtime packages such as `libxcb-cursor0`; `build.sh` installs these via apt
 - On Linux, `build.sh` also attempts to auto-install `whisper.cpp` and `piper` executables from distro packages when missing
 - If `whisper.cpp` is unavailable in distro repos, `build.sh` falls back to source build and installs `whisper-cli` to `~/.local/share/vaxil/tools/whisper/bin/whisper-cli`
@@ -144,6 +149,18 @@ ctest --test-dir build-linux-release --output-on-failure
   - FFmpeg post-processing adds mild EQ, light reverb, compression, and limiting
 - Identity is loaded from `config/identity.json`
 - User profile is loaded from `config/user_profile.json`
+
+## Windows Portable Package
+
+Create the portable Windows zip from an existing release build:
+
+```powershell
+cmake --build build-release --target vaxil_windows_portable_zip --parallel
+```
+
+Output:
+
+- `build-release/vaxil-windows-portable.zip`
 
 ## Linux AppImage
 

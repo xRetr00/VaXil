@@ -21,6 +21,7 @@
 #include "core/ComputerControl.h"
 #include "logging/LoggingService.h"
 #include "memory/MemoryManager.h"
+#include "python/PythonRuntimeManager.h"
 #include "settings/AppSettings.h"
 
 namespace {
@@ -283,6 +284,7 @@ ToolWorker::ToolWorker(const QStringList &allowedRoots,
     , m_allowedRoots(allowedRoots)
     , m_loggingService(loggingService)
     , m_settings(settings)
+    , m_pythonRuntime(new PythonRuntimeManager(allowedRoots, loggingService, this))
     , m_memoryManager(std::make_unique<MemoryManager>())
 {
 }
@@ -328,33 +330,49 @@ void ToolWorker::processTask(const AgentTask &task)
     }
 
     QJsonObject result;
-    if (task.type == QStringLiteral("dir_list")) {
+    QString runtimeError;
+    if (m_pythonRuntime && m_pythonRuntime->supportsAction(task.type, &runtimeError)) {
+        QJsonObject context;
+        context.insert(QStringLiteral("braveSearchApiKey"), m_settings ? m_settings->braveSearchApiKey() : QString{});
+        const QJsonObject runtimeResult = m_pythonRuntime->executeAction(task.type, task.args, context, &runtimeError);
+        if (!runtimeResult.isEmpty()) {
+            result = buildResult(task,
+                                 runtimeResult.value(QStringLiteral("ok")).toBool(),
+                                 TaskState::Finished,
+                                 runtimeResult.value(QStringLiteral("summary")).toString(task.type),
+                                 runtimeResult.value(QStringLiteral("summary")).toString(task.type),
+                                 runtimeResult.value(QStringLiteral("detail")).toString(),
+                                 runtimeResult.value(QStringLiteral("payload")).toObject());
+        }
+    }
+
+    if (result.isEmpty() && task.type == QStringLiteral("dir_list")) {
         result = processDirList(task);
-    } else if (task.type == QStringLiteral("file_read")) {
+    } else if (result.isEmpty() && task.type == QStringLiteral("file_read")) {
         result = processFileRead(task);
-    } else if (task.type == QStringLiteral("file_write")) {
+    } else if (result.isEmpty() && task.type == QStringLiteral("file_write")) {
         result = processFileWrite(task);
-    } else if (task.type == QStringLiteral("log_tail")) {
+    } else if (result.isEmpty() && task.type == QStringLiteral("log_tail")) {
         result = processLogTail(task);
-    } else if (task.type == QStringLiteral("log_search")) {
+    } else if (result.isEmpty() && task.type == QStringLiteral("log_search")) {
         result = processLogSearch(task);
-    } else if (task.type == QStringLiteral("ai_log_read")) {
+    } else if (result.isEmpty() && task.type == QStringLiteral("ai_log_read")) {
         result = processAiLogRead(task);
-    } else if (task.type == QStringLiteral("web_search")) {
+    } else if (result.isEmpty() && task.type == QStringLiteral("web_search")) {
         result = processWebSearch(task);
-    } else if (task.type == QStringLiteral("memory_write")) {
+    } else if (result.isEmpty() && task.type == QStringLiteral("memory_write")) {
         result = processMemoryWrite(task);
-    } else if (task.type == QStringLiteral("computer_list_apps")) {
+    } else if (result.isEmpty() && task.type == QStringLiteral("computer_list_apps")) {
         result = processComputerListApps(task);
-    } else if (task.type == QStringLiteral("computer_open_app")) {
+    } else if (result.isEmpty() && task.type == QStringLiteral("computer_open_app")) {
         result = processComputerOpenApp(task);
-    } else if (task.type == QStringLiteral("computer_open_url")) {
+    } else if (result.isEmpty() && task.type == QStringLiteral("computer_open_url")) {
         result = processComputerOpenUrl(task);
-    } else if (task.type == QStringLiteral("computer_write_file")) {
+    } else if (result.isEmpty() && task.type == QStringLiteral("computer_write_file")) {
         result = processComputerWriteFile(task);
-    } else if (task.type == QStringLiteral("computer_set_timer")) {
+    } else if (result.isEmpty() && task.type == QStringLiteral("computer_set_timer")) {
         result = processComputerSetTimer(task);
-    } else {
+    } else if (result.isEmpty()) {
         result = buildResult(task,
                              false,
                              TaskState::Finished,

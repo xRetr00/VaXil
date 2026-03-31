@@ -27,6 +27,11 @@ set(JARVIS_SHERPA_CXX_API_SHARED_LIBRARY "")
 set(JARVIS_ONNXRUNTIME_PROVIDER_SHARED_LIBRARY "")
 
 option(JARVIS_BUILD_TESTS "Build Vaxil tests" ON)
+set(JARVIS_BUNDLE_PYTHON_RUNTIME_DEFAULT OFF)
+if(WIN32 AND CMAKE_BUILD_TYPE STREQUAL "Release")
+    set(JARVIS_BUNDLE_PYTHON_RUNTIME_DEFAULT ON)
+endif()
+option(JARVIS_BUNDLE_PYTHON_RUNTIME "Bundle the Python tool runtime as a frozen Windows sidecar executable" ${JARVIS_BUNDLE_PYTHON_RUNTIME_DEFAULT})
 set(JARVIS_ONNXRUNTIME_ROOT "" CACHE PATH "Path to a local ONNX Runtime package root")
 set(JARVIS_SHERPA_ROOT "" CACHE PATH "Path to a local sherpa-onnx package root")
 set(JARVIS_SENTENCEPIECE_ROOT "${CMAKE_SOURCE_DIR}/third_party/sentencepiece" CACHE PATH "Path to a local sentencepiece source tree")
@@ -163,6 +168,54 @@ endif()
 
 qt_standard_project_setup(REQUIRES 6.6)
 
+file(GLOB_RECURSE JARVIS_PYTHON_RUNTIME_SOURCES CONFIGURE_DEPENDS
+    "${CMAKE_SOURCE_DIR}/python_runtime/vaxil_runtime/*.py"
+    "${CMAKE_SOURCE_DIR}/python_runtime/vaxil_runtime/Actions/*.py"
+)
+
+set(JARVIS_PYTHON_RUNTIME_REQUIREMENTS_LOCK "${CMAKE_SOURCE_DIR}/python_runtime/requirements.lock")
+set(JARVIS_PYTHON_RUNTIME_PACKAGING_REQUIREMENTS "${CMAKE_SOURCE_DIR}/python_runtime/requirements-packaging.txt")
+set(JARVIS_PYTHON_RUNTIME_SPEC "${CMAKE_SOURCE_DIR}/python_runtime/vaxil_python_runtime.spec")
+set(JARVIS_PYTHON_RUNTIME_BUNDLE_ROOT "${CMAKE_BINARY_DIR}/python_runtime_bundle")
+set(JARVIS_PYTHON_RUNTIME_BROWSERS_DIR "${JARVIS_PYTHON_RUNTIME_BUNDLE_ROOT}/ms-playwright")
+set(JARVIS_PYTHON_RUNTIME_DIST_DIR "${JARVIS_PYTHON_RUNTIME_BUNDLE_ROOT}/dist")
+set(JARVIS_PYTHON_RUNTIME_WORK_DIR "${JARVIS_PYTHON_RUNTIME_BUNDLE_ROOT}/work")
+set(JARVIS_PYTHON_RUNTIME_STAMP "${JARVIS_PYTHON_RUNTIME_BUNDLE_ROOT}/bundle.stamp")
+
+if(WIN32 AND JARVIS_BUNDLE_PYTHON_RUNTIME)
+    find_package(Python3 COMPONENTS Interpreter REQUIRED)
+
+    add_custom_command(
+        OUTPUT "${JARVIS_PYTHON_RUNTIME_STAMP}"
+        COMMAND "${CMAKE_COMMAND}"
+            -DPYTHON_EXECUTABLE=${Python3_EXECUTABLE}
+            -DSOURCE_DIR=${CMAKE_SOURCE_DIR}
+            -DBUNDLE_ROOT=${JARVIS_PYTHON_RUNTIME_BUNDLE_ROOT}
+            -DBROWSERS_DIR=${JARVIS_PYTHON_RUNTIME_BROWSERS_DIR}
+            -DDIST_DIR=${JARVIS_PYTHON_RUNTIME_DIST_DIR}
+            -DWORK_DIR=${JARVIS_PYTHON_RUNTIME_WORK_DIR}
+            -DREQUIREMENTS_LOCK=${JARVIS_PYTHON_RUNTIME_REQUIREMENTS_LOCK}
+            -DREQUIREMENTS_PACKAGING=${JARVIS_PYTHON_RUNTIME_PACKAGING_REQUIREMENTS}
+            -DSPEC_FILE=${JARVIS_PYTHON_RUNTIME_SPEC}
+            -DSTAMP_FILE=${JARVIS_PYTHON_RUNTIME_STAMP}
+            -P "${CMAKE_SOURCE_DIR}/cmake/BundlePythonRuntime.cmake"
+        DEPENDS
+            ${JARVIS_PYTHON_RUNTIME_SOURCES}
+            "${JARVIS_PYTHON_RUNTIME_REQUIREMENTS_LOCK}"
+            "${JARVIS_PYTHON_RUNTIME_PACKAGING_REQUIREMENTS}"
+            "${JARVIS_PYTHON_RUNTIME_SPEC}"
+            "${CMAKE_SOURCE_DIR}/cmake/BundlePythonRuntime.cmake"
+        BYPRODUCTS
+            "${JARVIS_PYTHON_RUNTIME_DIST_DIR}/vaxil_python_runtime/vaxil_python_runtime.exe"
+        COMMENT "Bundling Python runtime sidecar"
+        VERBATIM
+    )
+
+    add_custom_target(vaxil_python_runtime_bundle ALL
+        DEPENDS "${JARVIS_PYTHON_RUNTIME_STAMP}"
+    )
+endif()
+
 function(jarvis_find_shared_library out_var root_path library_base_name)
     if(WIN32)
         set(_patterns "${root_path}/lib/${library_base_name}.dll")
@@ -214,6 +267,7 @@ set(JARVIS_SOURCES
     src/memory/MemoryStore.cpp
     src/overlay/OverlayController.cpp
     src/platform/PlatformRuntime.cpp
+    src/python/PythonRuntimeManager.cpp
     src/settings/AppSettings.cpp
     src/settings/IdentityProfileService.cpp
     src/skills/SkillStore.cpp
@@ -274,6 +328,7 @@ set(JARVIS_HEADERS
     src/platform/ComputerControlBackend.h
     src/platform/PlatformCapabilities.h
     src/platform/PlatformRuntime.h
+    src/python/PythonRuntimeManager.h
     src/settings/AppSettings.h
     src/settings/IdentityProfileService.h
     src/skills/SkillStore.h
@@ -578,6 +633,45 @@ if(WIN32)
     )
 endif()
 jarvis_copy_optional_runtime_libraries(jarvis)
+if(WIN32 AND JARVIS_BUNDLE_PYTHON_RUNTIME)
+    add_dependencies(jarvis vaxil_python_runtime_bundle)
+    add_custom_command(TARGET jarvis POST_BUILD
+        COMMAND "${CMAKE_COMMAND}" -E remove_directory
+            "$<TARGET_FILE_DIR:jarvis>/python_runtime"
+        COMMAND "${CMAKE_COMMAND}" -E make_directory
+            "$<TARGET_FILE_DIR:jarvis>/python_runtime"
+        COMMAND "${CMAKE_COMMAND}" -E copy_directory
+            "${JARVIS_PYTHON_RUNTIME_DIST_DIR}/vaxil_python_runtime"
+            "$<TARGET_FILE_DIR:jarvis>/python_runtime"
+        COMMAND "${CMAKE_COMMAND}" -E copy_directory
+            "${JARVIS_PYTHON_RUNTIME_BROWSERS_DIR}"
+            "$<TARGET_FILE_DIR:jarvis>/python_runtime/ms-playwright"
+        COMMENT "Copying bundled Python runtime"
+    )
+else()
+    add_custom_command(TARGET jarvis POST_BUILD
+        COMMAND "${CMAKE_COMMAND}" -E copy_directory
+            "${CMAKE_SOURCE_DIR}/python_runtime"
+            "$<TARGET_FILE_DIR:jarvis>/python_runtime"
+        COMMENT "Copying Python runtime assets"
+    )
+endif()
+
+if(WIN32)
+    set(JARVIS_WINDOWS_PORTABLE_STAGE_DIR "${CMAKE_BINARY_DIR}/portable/vaxil")
+    set(JARVIS_WINDOWS_PORTABLE_ZIP "${CMAKE_BINARY_DIR}/vaxil-windows-portable.zip")
+    add_custom_target(vaxil_windows_portable_zip
+        COMMAND "${CMAKE_COMMAND}" -E remove_directory "${JARVIS_WINDOWS_PORTABLE_STAGE_DIR}"
+        COMMAND "${CMAKE_COMMAND}" -E make_directory "${JARVIS_WINDOWS_PORTABLE_STAGE_DIR}"
+        COMMAND "${CMAKE_COMMAND}" -E copy_directory "$<TARGET_FILE_DIR:jarvis>" "${JARVIS_WINDOWS_PORTABLE_STAGE_DIR}"
+        COMMAND "${CMAKE_COMMAND}" -E rm -f "${JARVIS_WINDOWS_PORTABLE_ZIP}"
+        COMMAND "${CMAKE_COMMAND}" -E tar cf "${JARVIS_WINDOWS_PORTABLE_ZIP}" --format=zip portable/vaxil
+        WORKING_DIRECTORY "${CMAKE_BINARY_DIR}"
+        COMMENT "Packaging Vaxil Windows portable zip"
+        VERBATIM
+    )
+    add_dependencies(vaxil_windows_portable_zip jarvis)
+endif()
 
 if(JARVIS_BUILD_TESTS)
     enable_testing()
@@ -721,4 +815,22 @@ if(JARVIS_BUILD_TESTS)
     add_test(NAME jarvis_skill_store_tests COMMAND jarvis_skill_store_tests)
     set_tests_properties(jarvis_skill_store_tests PROPERTIES ENVIRONMENT "PATH=${QT_BIN_DIR}${JARVIS_PATH_ENV_SEPARATOR}$ENV{PATH}")
     jarvis_copy_optional_runtime_libraries(jarvis_skill_store_tests)
+
+    qt_add_executable(jarvis_python_runtime_tests
+        tests/PythonRuntimeTests.cpp
+    )
+
+    target_link_libraries(jarvis_python_runtime_tests
+        PRIVATE
+            Qt6::Core
+            Qt6::Test
+            jarvis_lib
+    )
+
+    add_test(NAME jarvis_python_runtime_tests COMMAND jarvis_python_runtime_tests)
+    set_tests_properties(jarvis_python_runtime_tests PROPERTIES ENVIRONMENT "PATH=${QT_BIN_DIR}${JARVIS_PATH_ENV_SEPARATOR}$ENV{PATH}")
+    jarvis_copy_optional_runtime_libraries(jarvis_python_runtime_tests)
+    if(WIN32 AND JARVIS_BUNDLE_PYTHON_RUNTIME)
+        add_dependencies(jarvis_python_runtime_tests vaxil_python_runtime_bundle)
+    endif()
 endif()

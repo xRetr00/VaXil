@@ -6,10 +6,14 @@
 #include <QEventLoop>
 #include <QFile>
 #include <QFileInfo>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QJsonValue>
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
 #include <QNetworkRequest>
 #include <QRegularExpression>
+#include <QSet>
 #include <QStandardPaths>
 #include <QTextStream>
 #include <QTimer>
@@ -19,6 +23,7 @@
 #include "logging/LoggingService.h"
 #include "memory/MemoryStore.h"
 #include "platform/PlatformRuntime.h"
+#include "python/PythonRuntimeManager.h"
 #include "settings/AppSettings.h"
 #include "skills/SkillStore.h"
 
@@ -75,6 +80,28 @@ QString extractString(const nlohmann::json &args, const char *key)
         : QString{};
 }
 
+nlohmann::json qJsonValueToStdJson(const QJsonValue &value)
+{
+    const QJsonDocument doc = value.isObject()
+        ? QJsonDocument(value.toObject())
+        : QJsonDocument(value.toArray());
+    return nlohmann::json::parse(doc.toJson(QJsonDocument::Compact).constData(), nullptr, false);
+}
+
+AgentToolSpec toolSpecFromRuntimeJson(const QJsonObject &object)
+{
+    AgentToolSpec spec;
+    spec.name = object.value(QStringLiteral("name")).toString();
+    spec.description = object.value(QStringLiteral("description")).toString();
+    if (object.contains(QStringLiteral("args_schema"))) {
+        spec.parameters = qJsonValueToStdJson(object.value(QStringLiteral("args_schema")));
+        if (spec.parameters.is_discarded()) {
+            spec.parameters = nlohmann::json::object();
+        }
+    }
+    return spec;
+}
+
 NetworkFetchResult httpGet(const QUrl &url,
                            const QList<QPair<QByteArray, QByteArray>> &headers = {},
                            int timeoutMs = 20000)
@@ -126,53 +153,34 @@ AgentToolbox::AgentToolbox(AppSettings *settings, MemoryStore *memoryStore, Skil
     , m_memoryStore(memoryStore)
     , m_skillStore(skillStore)
     , m_loggingService(loggingService)
+    , m_pythonRuntime(new PythonRuntimeManager(allowedRoots(), loggingService, this))
 {
 }
 
 QList<AgentToolSpec> AgentToolbox::builtInTools() const
 {
-    QList<AgentToolSpec> tools = {
-        {QStringLiteral("file_read"), QStringLiteral("Read a UTF-8 text file from a readable path."),
-         schemaObject({{"path", {{"type", "string"}}}}, {"path"})},
-        {QStringLiteral("file_search"), QStringLiteral("Search for text under a readable directory."),
-         schemaObject({{"root", {{"type", "string"}}}, {"query", {{"type", "string"}}}}, {"root", "query"})},
-        {QStringLiteral("file_write"), QStringLiteral("Write a UTF-8 text file to a writable sandbox path."),
-         schemaObject({{"path", {{"type", "string"}}}, {"content", {{"type", "string"}}}}, {"path", "content"})},
-        {QStringLiteral("file_patch"), QStringLiteral("Patch a writable sandbox file by replacing one text fragment with another."),
-         schemaObject({{"path", {{"type", "string"}}}, {"find", {{"type", "string"}}}, {"replace", {{"type", "string"}}}}, {"path", "find", "replace"})},
-        {QStringLiteral("dir_list"), QStringLiteral("List files under a readable directory."),
-         schemaObject({{"path", {{"type", "string"}}}}, {"path"})},
-        {QStringLiteral("memory_search"), QStringLiteral("Search structured memory entries."),
-         schemaObject({{"query", {{"type", "string"}}}}, {"query"})},
-        {QStringLiteral("memory_write"), QStringLiteral("Write or update a structured memory entry."),
-         schemaObject({{"kind", {{"type", "string"}}}, {"title", {{"type", "string"}}}, {"content", {{"type", "string"}}}}, {"kind", "title", "content"})},
-        {QStringLiteral("memory_delete"), QStringLiteral("Delete a memory entry by id or title."),
-         schemaObject({{"id", {{"type", "string"}}}}, {"id"})},
-        {QStringLiteral("log_tail"), QStringLiteral("Read the tail of a readable log file."),
-         schemaObject({{"path", {{"type", "string"}}}, {"lines", {{"type", "integer"}}}}, {"path"})},
-        {QStringLiteral("log_search"), QStringLiteral("Search a readable log directory or log file for a pattern."),
-         schemaObject({{"path", {{"type", "string"}}}, {"query", {{"type", "string"}}}}, {"path", "query"})},
-        {QStringLiteral("ai_log_read"), QStringLiteral("Read the latest AI exchange log or a specific readable AI log file."),
-         schemaObject({{"path", {{"type", "string"}}}}, {})},
-        {QStringLiteral("web_search"), QStringLiteral("Search the web using the configured provider."),
-         schemaObject({{"query", {{"type", "string"}}}}, {"query"})},
-        {QStringLiteral("web_fetch"), QStringLiteral("Fetch the contents of a public URL."),
-         schemaObject({{"url", {{"type", "string"}}}}, {"url"})},
-        {QStringLiteral("computer_open_url"), QStringLiteral("Open a URL in the system default browser or handler. Use this for browser sites like YouTube."),
-         schemaObject({{"url", {{"type", "string"}}}}, {"url"})},
-        {QStringLiteral("computer_write_file"), QStringLiteral("Create a UTF-8 text file on the computer. Relative paths default to the Desktop unless base_dir is provided."),
-         schemaObject({{"path", {{"type", "string"}}},
-                       {"content", {{"type", "string"}}},
-                       {"base_dir", {{"type", "string"}}},
-                       {"overwrite", {{"type", "boolean"}}}},
-                      {"path", "content"})},
-        {QStringLiteral("skill_list"), QStringLiteral("List installed declarative skills."),
-         schemaObject({})},
-        {QStringLiteral("skill_install"), QStringLiteral("Install a skill from a GitHub repo URL or zip URL."),
-         schemaObject({{"url", {{"type", "string"}}}}, {"url"})},
-        {QStringLiteral("skill_create"), QStringLiteral("Create a new local skill scaffold."),
-         schemaObject({{"id", {{"type", "string"}}}, {"name", {{"type", "string"}}}, {"description", {{"type", "string"}}}}, {"id", "name", "description"})}
-    };
+    QList<AgentToolSpec> tools;
+    QString runtimeError;
+    const QJsonArray runtimeCatalog = m_pythonRuntime ? m_pythonRuntime->listCatalog(&runtimeError) : QJsonArray{};
+    for (const QJsonValue &value : runtimeCatalog) {
+        const AgentToolSpec spec = toolSpecFromRuntimeJson(value.toObject());
+        if (!spec.name.isEmpty()) {
+            tools.push_back(spec);
+        }
+    }
+
+    tools.push_back({QStringLiteral("memory_search"), QStringLiteral("Search structured memory entries."),
+                     schemaObject({{"query", {{"type", "string"}}}}, {"query"})});
+    tools.push_back({QStringLiteral("memory_write"), QStringLiteral("Write or update a structured memory entry."),
+                     schemaObject({{"kind", {{"type", "string"}}}, {"title", {{"type", "string"}}}, {"content", {{"type", "string"}}}}, {"kind", "title", "content"})});
+    tools.push_back({QStringLiteral("memory_delete"), QStringLiteral("Delete a memory entry by id or title."),
+                     schemaObject({{"id", {{"type", "string"}}}}, {"id"})});
+    tools.push_back({QStringLiteral("skill_list"), QStringLiteral("List installed declarative skills."),
+                     schemaObject({})});
+    tools.push_back({QStringLiteral("skill_install"), QStringLiteral("Install a skill from a GitHub repo URL or zip URL."),
+                     schemaObject({{"url", {{"type", "string"}}}}, {"url"})});
+    tools.push_back({QStringLiteral("skill_create"), QStringLiteral("Create a new local skill scaffold."),
+                     schemaObject({{"id", {{"type", "string"}}}, {"name", {{"type", "string"}}}, {"description", {{"type", "string"}}}}, {"id", "name", "description"})});
 
     const PlatformCapabilities capabilities = PlatformRuntime::currentCapabilities();
     if (capabilities.supportsAppListing) {
@@ -191,7 +199,16 @@ QList<AgentToolSpec> AgentToolbox::builtInTools() const
                                       {"duration_seconds"})});
     }
 
-    return tools;
+    QSet<QString> seen;
+    QList<AgentToolSpec> deduped;
+    for (const AgentToolSpec &tool : tools) {
+        if (!tool.name.isEmpty() && !seen.contains(tool.name)) {
+            seen.insert(tool.name);
+            deduped.push_back(tool);
+        }
+    }
+
+    return deduped;
 }
 
 AgentToolResult AgentToolbox::execute(const AgentToolCall &call)
@@ -199,6 +216,44 @@ AgentToolResult AgentToolbox::execute(const AgentToolCall &call)
     const auto args = nlohmann::json::parse(call.argumentsJson.toStdString(), nullptr, false);
     if (call.name != QStringLiteral("skill_list") && args.is_discarded()) {
         return failedResult(call, QStringLiteral("Tool arguments were not valid JSON."));
+    }
+
+    if (m_pythonRuntime) {
+        QString runtimeError;
+        if (m_pythonRuntime->supportsAction(call.name, &runtimeError)) {
+            QJsonObject context;
+            context.insert(QStringLiteral("braveSearchApiKey"), m_settings ? m_settings->braveSearchApiKey() : QString{});
+            const QJsonObject response = m_pythonRuntime->executeAction(
+                call.name,
+                QJsonDocument::fromJson(call.argumentsJson.toUtf8()).object(),
+                context,
+                &runtimeError);
+            if (!response.isEmpty()) {
+                const bool ok = response.value(QStringLiteral("ok")).toBool();
+                const QJsonObject payload = response.value(QStringLiteral("payload")).toObject();
+                QString output = response.value(QStringLiteral("detail")).toString();
+                if (payload.contains(QStringLiteral("text"))) {
+                    output = payload.value(QStringLiteral("text")).toString();
+                } else if (payload.contains(QStringLiteral("code"))) {
+                    output = payload.value(QStringLiteral("code")).toString();
+                } else if (payload.contains(QStringLiteral("matches"))) {
+                    QStringList lines;
+                    for (const QJsonValue &value : payload.value(QStringLiteral("matches")).toArray()) {
+                        lines.push_back(value.toString());
+                    }
+                    output = lines.join(QStringLiteral("\n"));
+                } else if (payload.contains(QStringLiteral("entries"))) {
+                    QStringList lines;
+                    for (const QJsonValue &value : payload.value(QStringLiteral("entries")).toArray()) {
+                        const QJsonObject entry = value.toObject();
+                        lines.push_back(QStringLiteral("%1\t%2").arg(entry.value(QStringLiteral("type")).toString(),
+                                                                       entry.value(QStringLiteral("name")).toString()));
+                    }
+                    output = lines.join(QStringLiteral("\n"));
+                }
+                return ok ? successResult(call, output) : failedResult(call, output);
+            }
+        }
     }
 
     if (call.name == QStringLiteral("file_read")) return executeFileRead(call, args);

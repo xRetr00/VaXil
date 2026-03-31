@@ -1,11 +1,14 @@
 #include "skills/SkillStore.h"
 
 #include "platform/PlatformRuntime.h"
+#include "python/PythonRuntimeManager.h"
 
 #include <QDir>
 #include <QDirIterator>
 #include <QFile>
 #include <QFileInfo>
+#include <QJsonArray>
+#include <QJsonObject>
 #include <QJsonDocument>
 #include <QProcess>
 #include <QRegularExpression>
@@ -77,6 +80,32 @@ QString SkillStore::skillsRoot() const
 
 QList<SkillManifest> SkillStore::listSkills() const
 {
+    if (m_pythonRuntime == nullptr) {
+        auto *self = const_cast<SkillStore *>(this);
+        self->m_pythonRuntime = new PythonRuntimeManager({skillsRoot(), QDir::currentPath()}, nullptr, self);
+    }
+
+    QString runtimeError;
+    const QJsonArray runtimeSkills = m_pythonRuntime->listSkills(&runtimeError);
+    if (!runtimeSkills.isEmpty()) {
+        QList<SkillManifest> skills;
+        for (const QJsonValue &value : runtimeSkills) {
+            const QJsonObject object = value.toObject();
+            SkillManifest manifest;
+            manifest.id = normalizeSkillId(object.value(QStringLiteral("id")).toString());
+            manifest.name = object.value(QStringLiteral("name")).toString();
+            manifest.version = object.value(QStringLiteral("version")).toString();
+            manifest.description = object.value(QStringLiteral("description")).toString();
+            manifest.promptTemplatePath = object.value(QStringLiteral("prompt_template")).toString();
+            if (!manifest.id.isEmpty()) {
+                skills.push_back(manifest);
+            }
+        }
+        if (!skills.isEmpty()) {
+            return skills;
+        }
+    }
+
     QList<SkillManifest> skills;
     QDirIterator it(skillsRoot(), {QStringLiteral("skill.json")}, QDir::Files | QDir::Readable, QDirIterator::Subdirectories);
     while (it.hasNext()) {
@@ -91,6 +120,23 @@ QList<SkillManifest> SkillStore::listSkills() const
 
 bool SkillStore::createSkill(const QString &id, const QString &name, const QString &description, QString *error) const
 {
+    if (m_pythonRuntime == nullptr) {
+        auto *self = const_cast<SkillStore *>(this);
+        self->m_pythonRuntime = new PythonRuntimeManager({skillsRoot(), QDir::currentPath()}, nullptr, self);
+    }
+
+    QString runtimeError;
+    const QJsonObject runtimeResult = m_pythonRuntime->createSkill(id, name, description, &runtimeError);
+    if (!runtimeResult.isEmpty()) {
+        const bool ok = runtimeResult.value(QStringLiteral("ok")).toBool();
+        if (!ok && error) {
+            *error = runtimeResult.value(QStringLiteral("detail")).toString(runtimeError);
+        }
+        if (ok) {
+            return true;
+        }
+    }
+
     SkillManifest manifest{
         .id = normalizeSkillId(id),
         .name = name.trimmed(),
@@ -133,6 +179,23 @@ bool SkillStore::installSkill(const QString &sourceUrl, QString *error) const
             *error = QStringLiteral("Skill download/install is currently only supported on Windows.");
         }
         return false;
+    }
+
+    if (m_pythonRuntime == nullptr) {
+        auto *self = const_cast<SkillStore *>(this);
+        self->m_pythonRuntime = new PythonRuntimeManager({skillsRoot(), QDir::currentPath()}, nullptr, self);
+    }
+
+    QString runtimeError;
+    const QJsonObject runtimeResult = m_pythonRuntime->installSkill(sourceUrl, &runtimeError);
+    if (!runtimeResult.isEmpty()) {
+        const bool ok = runtimeResult.value(QStringLiteral("ok")).toBool();
+        if (!ok && error) {
+            *error = runtimeResult.value(QStringLiteral("detail")).toString(runtimeError);
+        }
+        if (ok) {
+            return true;
+        }
     }
 
     QTemporaryDir tempDir;

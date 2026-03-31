@@ -8,6 +8,7 @@ set "BUILD_TYPE=Release"
 set "BUILD_DIR=%ROOT%\build-release"
 set "RUN_TESTS=1"
 set "FRESH=0"
+set "PACKAGE_ZIP=0"
 
 if /I "%~1"=="debug" (
     set "BUILD_TYPE=Debug"
@@ -25,6 +26,8 @@ if /I "%~2"=="clean" (
 )
 if /I "%~1"=="notest" set "RUN_TESTS=0"
 if /I "%~2"=="notest" set "RUN_TESTS=0"
+if /I "%~1"=="package" set "PACKAGE_ZIP=1"
+if /I "%~2"=="package" set "PACKAGE_ZIP=1"
 
 if defined QT_DIR (
     set "QT_PATH=%QT_DIR%"
@@ -66,6 +69,11 @@ if errorlevel 1 exit /b 1
 cmake --build "%BUILD_DIR%" --parallel
 if errorlevel 1 exit /b 1
 
+if "%PACKAGE_ZIP%"=="1" (
+    cmake --build "%BUILD_DIR%" --target vaxil_windows_portable_zip --parallel
+    if errorlevel 1 exit /b 1
+)
+
 if "%RUN_TESTS%"=="1" (
     ctest --test-dir "%BUILD_DIR%" --output-on-failure
     if errorlevel 1 exit /b 1
@@ -74,5 +82,6 @@ if "%RUN_TESTS%"=="1" (
 echo.
 echo [OK] Build complete.
 echo [OK] Vaxil executable: "%ROOT%\bin\vaxil.exe"
+if "%PACKAGE_ZIP%"=="1" echo [OK] Portable zip: "%BUILD_DIR%\vaxil-windows-portable.zip"
 echo [OK] Logs:       "%ROOT%\bin\logs"
 exit /b 0

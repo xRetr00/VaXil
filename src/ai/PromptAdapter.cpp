@@ -103,6 +103,24 @@ QString toolUseGuidance(const QString &toolName)
     if (toolName == QStringLiteral("web_fetch")) {
         return QStringLiteral("you already have a URL and need its contents");
     }
+    if (toolName == QStringLiteral("browser_open")) {
+        return QStringLiteral("the user asks to open or control a page through the browser automation engine");
+    }
+    if (toolName == QStringLiteral("browser_fetch_text")) {
+        return QStringLiteral("the user needs rendered page text or a page inspected through the browser automation engine");
+    }
+    if (toolName == QStringLiteral("shell_run")) {
+        return QStringLiteral("the user asks to run a shell, PowerShell, CMD, test, git, or coding command");
+    }
+    if (toolName == QStringLiteral("coding_generate")) {
+        return QStringLiteral("the user asks you to generate starter code, boilerplate, or a code scaffold");
+    }
+    if (toolName == QStringLiteral("weather_current")) {
+        return QStringLiteral("the user asks for weather and coordinates are already known or supplied");
+    }
+    if (toolName == QStringLiteral("youtube_transcript")) {
+        return QStringLiteral("the user asks for a YouTube transcript or subtitles from a specific video");
+    }
     if (toolName == QStringLiteral("computer_list_apps")) {
         return QStringLiteral("the user asks which desktop apps are installed or available to open");
     }
@@ -159,6 +177,24 @@ QString toolOutputHint(const QString &toolName)
     if (toolName == QStringLiteral("web_fetch")) {
         return QStringLiteral("page contents");
     }
+    if (toolName == QStringLiteral("browser_open")) {
+        return QStringLiteral("the browser title and URL");
+    }
+    if (toolName == QStringLiteral("browser_fetch_text")) {
+        return QStringLiteral("rendered page text");
+    }
+    if (toolName == QStringLiteral("shell_run")) {
+        return QStringLiteral("stdout, stderr, and exit code");
+    }
+    if (toolName == QStringLiteral("coding_generate")) {
+        return QStringLiteral("generated starter code");
+    }
+    if (toolName == QStringLiteral("weather_current")) {
+        return QStringLiteral("weather JSON payload");
+    }
+    if (toolName == QStringLiteral("youtube_transcript")) {
+        return QStringLiteral("transcript text and segments");
+    }
     if (toolName == QStringLiteral("computer_list_apps")) {
         return QStringLiteral("installed app names and ids");
     }
@@ -205,11 +241,17 @@ QStringList toolNamesForIntent(IntentType intent)
     case IntentType::GENERAL_CHAT:
     default:
         return {QStringLiteral("web_search"),
+                QStringLiteral("browser_fetch_text"),
+                QStringLiteral("browser_open"),
                 QStringLiteral("log_tail"),
                 QStringLiteral("log_search"),
                 QStringLiteral("ai_log_read"),
                 QStringLiteral("dir_list"),
                 QStringLiteral("file_read"),
+                QStringLiteral("shell_run"),
+                QStringLiteral("coding_generate"),
+                QStringLiteral("weather_current"),
+                QStringLiteral("youtube_transcript"),
                 QStringLiteral("computer_list_apps"),
                 QStringLiteral("computer_open_app"),
                 QStringLiteral("computer_open_url"),

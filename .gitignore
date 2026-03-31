@@ -20,6 +20,9 @@ node_modules/
 dist/
 coverage/
 .env
+.venv/
+python_runtime/.venv/
+python_runtime/ms-playwright/
 .idea/
 .vscode/
 *.iml
