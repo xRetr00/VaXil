@@ -371,36 +371,10 @@ Window {
             onClicked: agentVm.interruptSpeechAndListen()
         }
 
-        JarvisUi.ToastManager {
-            id: toastManager
-            anchors.right: parent.right
-            anchors.rightMargin: pageMargin
-            anchors.bottom: parent.bottom
-            anchors.bottomMargin: pageMargin
-            latestUserPrompt: agentVm.transcript
-            onToastClicked: function(taskId) {
-                if (taskId < 0) {
-                    return
-                }
-                taskVm.setBackgroundPanelVisible(true)
-                taskVm.notifyTaskToastShown(taskId)
-            }
-        }
     }
 
     Connections {
         target: taskVm
-
-        function onLatestTaskToastChanged() {
-            if (taskVm.latestTaskToast.length === 0) {
-                return
-            }
-            toastManager.pushToast(
-                taskVm.latestTaskToast,
-                taskVm.latestTaskToastTone,
-                taskVm.latestTaskToastTaskId,
-                taskVm.latestTaskToastType)
-        }
 
         function onBackgroundPanelVisibleChanged() {
             if (taskVm.backgroundPanelVisible) {
