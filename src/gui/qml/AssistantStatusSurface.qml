@@ -8,17 +8,19 @@ Item {
     property string secondaryText: ""
     property string preferredMode: "compact"
     property real dpiScale: 1.0
-    property real maxWidth: 420
+    property real maxWidth: 300
     property string displayMode: preferredMode
 
     readonly property bool showSecondary: displayMode !== "compact" && secondaryText.length > 0
     readonly property int primaryLineLimit: displayMode === "compact" ? 1 : 2
     readonly property int secondaryLineLimit: displayMode === "extended" ? 1 : 1
+    readonly property real compactWidth: Math.min(maxWidth, Math.round(248 * dpiScale))
+    readonly property real activeWidth: displayMode === "compact" ? compactWidth : maxWidth
 
-    implicitWidth: Math.round(maxWidth)
+    implicitWidth: Math.round(activeWidth)
     implicitHeight: height
     width: implicitWidth
-    height: card.implicitHeight + Math.round(14 * dpiScale)
+    height: card.implicitHeight + Math.round(10 * dpiScale)
     opacity: primaryText.length > 0 ? 1 : 0
     y: displayMode === "compact" ? 0 : Math.round(2 * dpiScale)
 
@@ -62,13 +64,13 @@ Item {
     Rectangle {
         anchors.horizontalCenter: parent.horizontalCenter
         anchors.top: parent.top
-        anchors.topMargin: Math.round(8 * root.dpiScale)
+        anchors.topMargin: Math.round(6 * root.dpiScale)
         width: root.width - Math.round(2 * root.dpiScale)
         height: card.height
         radius: card.radius
-        color: "#14000000"
-        opacity: 0.55
-        y: Math.round(10 * root.dpiScale)
+        color: "#0c000000"
+        opacity: 0.45
+        y: Math.round(8 * root.dpiScale)
     }
 
     Rectangle {
@@ -77,17 +79,17 @@ Item {
         anchors.right: parent.right
         anchors.top: parent.top
         width: parent.width
-        implicitHeight: contentColumn.implicitHeight + Math.round(22 * root.dpiScale)
-        radius: Math.round(22 * root.dpiScale)
-        color: "#17192025"
+        implicitHeight: contentColumn.implicitHeight + Math.round(18 * root.dpiScale)
+        radius: Math.round(20 * root.dpiScale)
+        color: "#11161b20"
         border.width: 1
-        border.color: "#22ffffff"
+        border.color: "#16ffffff"
 
         Rectangle {
             anchors.fill: parent
             anchors.margins: 1
             radius: parent.radius - 1
-            color: "#12161d2d"
+            color: "#10151b26"
         }
 
         Rectangle {
@@ -95,9 +97,9 @@ Item {
             anchors.right: parent.right
             anchors.top: parent.top
             anchors.margins: 1
-            height: parent.height * 0.48
+            height: parent.height * 0.42
             radius: parent.radius - 1
-            color: "#12ffffff"
+            color: "#0effffff"
         }
 
         Column {
@@ -105,9 +107,9 @@ Item {
             anchors.left: parent.left
             anchors.right: parent.right
             anchors.verticalCenter: parent.verticalCenter
-            anchors.leftMargin: Math.round(18 * root.dpiScale)
-            anchors.rightMargin: Math.round(18 * root.dpiScale)
-            spacing: Math.round(5 * root.dpiScale)
+            anchors.leftMargin: Math.round(15 * root.dpiScale)
+            anchors.rightMargin: Math.round(15 * root.dpiScale)
+            spacing: Math.round(4 * root.dpiScale)
 
             Text {
                 width: parent.width

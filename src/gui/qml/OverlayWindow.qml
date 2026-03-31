@@ -32,7 +32,7 @@ Window {
     property real pageMargin: Math.max(22 * dpiScale, Math.min(shortEdge * 0.045, 56 * dpiScale))
     property real sectionSpacing: Math.max(12 * dpiScale, shortEdge * 0.012)
     property real contentWidth: Math.min(width * 0.4, 520 * dpiScale)
-    property real orbBaseSize: Math.max(182 * dpiScale, Math.min(shortEdge * 0.245, 338 * dpiScale))
+    property real orbBaseSize: Math.max(138 * dpiScale, Math.min(shortEdge * 0.18, 250 * dpiScale))
     property bool showTaskPanel: taskVm.backgroundPanelVisible && taskVm.backgroundTaskResults.length > 0
     property real sideLaneWidth: taskVm.backgroundTaskResults.length > 0
         ? Math.min(width * (width >= 1480 * dpiScale ? 0.3 : 0.2), 470 * dpiScale)
@@ -164,42 +164,40 @@ Window {
     Item {
         anchors.fill: parent
 
-        Column {
+        ColumnLayout {
             id: assistantSurfaceCluster
-            anchors.left: parent.left
-            anchors.leftMargin: root.pageMargin
+            anchors.right: parent.right
+            anchors.rightMargin: root.pageMargin
             anchors.top: parent.top
             anchors.topMargin: root.pageMargin
-            spacing: Math.round(10 * root.dpiScale)
+            spacing: Math.round(8 * root.dpiScale)
 
             readonly property string primaryText: root.surfacePrimaryText()
             readonly property string secondaryText: root.surfaceSecondaryText(primaryText)
             readonly property string preferredMode: root.surfacePreferredMode(primaryText, secondaryText)
 
+            JarvisUi.AssistantStateIndicator {
+                Layout.alignment: Qt.AlignRight
+                surfaceState: agentVm.assistantSurfaceState
+                dpiScale: root.dpiScale
+            }
+
             JarvisUi.AssistantStatusSurface {
+                Layout.alignment: Qt.AlignRight
                 surfaceState: agentVm.assistantSurfaceState
                 primaryText: assistantSurfaceCluster.primaryText
                 secondaryText: assistantSurfaceCluster.secondaryText
                 preferredMode: assistantSurfaceCluster.preferredMode
                 dpiScale: root.dpiScale
-                maxWidth: Math.min(root.width * 0.34, 430 * root.dpiScale)
+                maxWidth: Math.min(root.width * 0.22, 300 * root.dpiScale)
             }
-        }
-
-        JarvisUi.AssistantStateIndicator {
-            anchors.top: parent.top
-            anchors.topMargin: root.pageMargin
-            anchors.right: parent.right
-            anchors.rightMargin: root.pageMargin
-            surfaceState: agentVm.assistantSurfaceState
-            dpiScale: root.dpiScale
         }
 
         Item {
             id: centerFrame
             anchors.horizontalCenter: parent.horizontalCenter
             anchors.verticalCenter: parent.verticalCenter
-            anchors.verticalCenterOffset: root.height * 0.2
+            anchors.verticalCenterOffset: root.height * 0.29
             width: root.orbBaseSize
             height: root.orbBaseSize
 
