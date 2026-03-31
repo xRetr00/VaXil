@@ -59,6 +59,9 @@ Window {
 
         const outputIndex = settingsVm.audioOutputDeviceIds.indexOf(settingsVm.selectedAudioOutputDeviceId)
         outputDeviceCombo.currentIndex = outputIndex >= 0 ? outputIndex : 0
+        if (uiModeCombo) {
+            uiModeCombo.currentIndex = settingsVm.uiMode === "overlay" ? 1 : 0
+        }
     }
 
     onClosing: function(close) {
@@ -669,6 +672,17 @@ Window {
                             text: "Enable click-through overlay by default"
                             checked: settingsVm.clickThroughEnabled
                         }
+
+                        RowLayout {
+                            Layout.fillWidth: true
+                            Text { text: "UI mode"; color: "#d0e3f5"; font.pixelSize: 13 }
+                            ComboBox {
+                                id: uiModeCombo
+                                Layout.fillWidth: true
+                                model: ["Full UI", "Overlay UI"]
+                                onActivated: settingsVm.setUiMode(currentIndex === 1 ? "overlay" : "full")
+                            }
+                        }
                         }
 
                         ColumnLayout {
@@ -890,6 +904,7 @@ Window {
                                 return
                             }
 
+                            settingsVm.setUiMode(uiModeCombo.currentIndex === 1 ? "overlay" : "full")
                             if (!settingsVm.completeInitialSetup(
                                     userNameField.text,
                                     providerCombo.currentText,

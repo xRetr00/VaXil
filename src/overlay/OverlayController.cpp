@@ -85,6 +85,18 @@ void OverlayController::toggleOverlay()
     }
 }
 
+void OverlayController::setOverlayEnabled(bool enabled)
+{
+    if (m_overlayEnabled == enabled) {
+        return;
+    }
+    m_overlayEnabled = enabled;
+    if (!m_overlayEnabled) {
+        m_manualRequested = false;
+    }
+    reevaluateVisibility();
+}
+
 void OverlayController::setClickThrough(bool enabled)
 {
     if (!m_window) {
@@ -134,6 +146,11 @@ void OverlayController::setSetupVisible(bool visible)
 void OverlayController::reevaluateVisibility()
 {
     if (!m_window) {
+        return;
+    }
+
+    if (!m_overlayEnabled) {
+        animateToVisible(false);
         return;
     }
 

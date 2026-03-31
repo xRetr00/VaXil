@@ -72,6 +72,7 @@ class BackendFacade : public QObject
     Q_PROPERTY(QString selectedAudioInputDeviceId READ selectedAudioInputDeviceId NOTIFY settingsChanged)
     Q_PROPERTY(QString selectedAudioOutputDeviceId READ selectedAudioOutputDeviceId NOTIFY settingsChanged)
     Q_PROPERTY(bool clickThroughEnabled READ clickThroughEnabled NOTIFY settingsChanged)
+    Q_PROPERTY(QString uiMode READ uiMode NOTIFY settingsChanged)
     Q_PROPERTY(QString assistantName READ assistantName NOTIFY profileChanged)
     Q_PROPERTY(QString userName READ userName NOTIFY profileChanged)
     Q_PROPERTY(bool initialSetupCompleted READ initialSetupCompleted NOTIFY settingsChanged)
@@ -180,6 +181,7 @@ public:
     QString selectedAudioInputDeviceId() const;
     QString selectedAudioOutputDeviceId() const;
     bool clickThroughEnabled() const;
+    QString uiMode() const;
     QString assistantName() const;
     QString userName() const;
     bool initialSetupCompleted() const;
@@ -221,6 +223,7 @@ public:
     QString skillsRoot() const;
 
     Q_INVOKABLE void toggleOverlay();
+    Q_INVOKABLE void setUiMode(const QString &mode);
     Q_INVOKABLE void refreshModels();
     Q_INVOKABLE void submitText(const QString &text);
     Q_INVOKABLE void startListening();

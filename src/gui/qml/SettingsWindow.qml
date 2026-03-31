@@ -87,6 +87,9 @@ Window {
         visionObjectsMinConfidenceSlider.value = settingsVm.visionObjectsMinConfidence
         visionGesturesMinConfidenceSlider.value = settingsVm.visionGesturesMinConfidence
         clickThroughCheck.checked = settingsVm.clickThroughEnabled
+        if (uiModeCombo) {
+            uiModeCombo.currentIndex = settingsVm.uiMode === "overlay" ? 1 : 0
+        }
         agentEnabledCheck.checked = settingsVm.agentEnabled
         agentProviderField.text = settingsVm.agentProviderMode
         conversationTempSlider.value = settingsVm.conversationTemperature
@@ -1008,6 +1011,17 @@ Window {
                         Component.onCompleted: {
                             const index = settingsVm.audioOutputDeviceIds.indexOf(settingsVm.selectedAudioOutputDeviceId)
                             currentIndex = index >= 0 ? index : 0
+                        }
+                    }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        Text { text: "UI mode"; color: "#c9def3"; font.pixelSize: 13 }
+                        ComboBox {
+                            id: uiModeCombo
+                            Layout.fillWidth: true
+                            model: ["Full UI", "Overlay UI"]
+                            onActivated: settingsVm.setUiMode(currentIndex === 1 ? "overlay" : "full")
                         }
                     }
 

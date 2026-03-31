@@ -117,6 +117,18 @@ double clampVisionConfidence(double value, double fallback)
     }
     return std::clamp(value, 0.05, 1.0);
 }
+
+QString normalizeUiMode(const QString &mode)
+{
+    const QString normalized = mode.trimmed().toLower();
+    if (normalized == QStringLiteral("overlay")) {
+        return QStringLiteral("overlay");
+    }
+    if (normalized == QStringLiteral("full")) {
+        return QStringLiteral("full");
+    }
+    return QStringLiteral("full");
+}
 }
 
 AppSettings::AppSettings(QObject *parent)
@@ -240,6 +252,7 @@ bool AppSettings::load()
     m_selectedAudioInputDeviceId = QString::fromStdString(parsed.value("selectedAudioInputDeviceId", std::string{}));
     m_selectedAudioOutputDeviceId = QString::fromStdString(parsed.value("selectedAudioOutputDeviceId", std::string{}));
     m_clickThroughEnabled = parsed.value("clickThroughEnabled", true);
+    m_uiMode = normalizeUiMode(QString::fromStdString(parsed.value("uiMode", m_uiMode.toStdString())));
     m_initialSetupCompleted = parsed.value("initialSetupCompleted", false);
     m_wakeWordPhrase = QString::fromStdString(parsed.value(
         "wake_word",
@@ -313,6 +326,7 @@ bool AppSettings::save() const
         {"selectedAudioInputDeviceId", m_selectedAudioInputDeviceId.toStdString()},
         {"selectedAudioOutputDeviceId", m_selectedAudioOutputDeviceId.toStdString()},
         {"clickThroughEnabled", m_clickThroughEnabled},
+        {"uiMode", m_uiMode.toStdString()},
         {"initialSetupCompleted", m_initialSetupCompleted},
         {"wake_word", m_wakeWordPhrase.toStdString()},
         {"wake_word_enabled", m_wakeWordEnabled},
@@ -563,6 +577,12 @@ QString AppSettings::selectedAudioOutputDeviceId() const { return m_selectedAudi
 void AppSettings::setSelectedAudioOutputDeviceId(const QString &deviceId) { m_selectedAudioOutputDeviceId = deviceId; emit settingsChanged(); }
 bool AppSettings::clickThroughEnabled() const { return m_clickThroughEnabled; }
 void AppSettings::setClickThroughEnabled(bool enabled) { m_clickThroughEnabled = enabled; emit settingsChanged(); }
+QString AppSettings::uiMode() const { return m_uiMode; }
+void AppSettings::setUiMode(const QString &mode)
+{
+    m_uiMode = normalizeUiMode(mode);
+    emit settingsChanged();
+}
 bool AppSettings::initialSetupCompleted() const { return m_initialSetupCompleted; }
 void AppSettings::setInitialSetupCompleted(bool completed) { m_initialSetupCompleted = completed; emit settingsChanged(); }
 QString AppSettings::wakeWordPhrase() const { return m_wakeWordPhrase; }

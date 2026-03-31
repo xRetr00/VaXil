@@ -2,6 +2,7 @@
 
 #include <QObject>
 #include <QPointer>
+#include <QString>
 #include <memory>
 
 class AssistantController;
@@ -49,4 +50,6 @@ private:
     QPointer<QQuickWindow> m_settingsWindow;
     QPointer<QQuickWindow> m_setupWindow;
     QPointer<QQuickWindow> m_toolsWindow;
+    QPointer<QQuickWindow> m_fullUiWindow;
+    QString m_lastUiMode;
 };

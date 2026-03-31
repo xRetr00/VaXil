@@ -282,6 +282,11 @@ QString SettingsViewModel::selectedAudioOutputDeviceId() const
     return m_backend ? m_backend->selectedAudioOutputDeviceId() : QString();
 }
 
+QString SettingsViewModel::uiMode() const
+{
+    return m_backend ? m_backend->uiMode() : QStringLiteral("full");
+}
+
 QString SettingsViewModel::toolInstallStatus() const
 {
     return m_backend ? m_backend->toolInstallStatus() : QString();
@@ -609,6 +614,13 @@ void SettingsViewModel::saveSettings(const QString &endpoint,
                                 audioInputDeviceId,
                                 audioOutputDeviceId,
                                 clickThrough);
+    }
+}
+
+void SettingsViewModel::setUiMode(const QString &mode)
+{
+    if (m_backend) {
+        m_backend->setUiMode(mode);
     }
 }
 

@@ -146,6 +146,7 @@ bool JarvisApplication::initialize()
     m_engine->load(QUrl(QStringLiteral("qrc:/qt/qml/VAXIL/gui/qml/SettingsWindow.qml")));
     m_engine->load(QUrl(QStringLiteral("qrc:/qt/qml/VAXIL/gui/qml/SetupWizard.qml")));
     m_engine->load(QUrl(QStringLiteral("qrc:/qt/qml/VAXIL/gui/qml/ToolsHubWindow.qml")));
+    m_engine->load(QUrl(QStringLiteral("qrc:/qt/qml/VAXIL/gui/qml/FullUiWindow.qml")));
     if (m_engine->rootObjects().isEmpty()) {
         qCritical() << "QML load failed: no root objects were created";
         return false;
@@ -188,21 +189,124 @@ bool JarvisApplication::initialize()
             m_toolsWindow->hide();
         }
     }
+    if (m_engine->rootObjects().size() > 4) {
+        m_fullUiWindow = qobject_cast<QQuickWindow *>(m_engine->rootObjects().at(4));
+        if (m_fullUiWindow) {
+            if (!appIcon.isNull()) {
+                m_fullUiWindow->setIcon(appIcon);
+            }
+            m_fullUiWindow->hide();
+        }
+    }
     if (m_setupWindow) {
         connect(m_setupWindow, &QWindow::visibleChanged, this, [this]() {
             m_overlayController->setSetupVisible(m_setupWindow && m_setupWindow->isVisible());
+            if (!m_fullUiWindow || !m_settings) {
+                return;
+            }
+            if (m_setupWindow && m_setupWindow->isVisible()) {
+                m_fullUiWindow->hide();
+                return;
+            }
+            const QString mode = m_settings->uiMode().trimmed().toLower();
+            if (mode == QStringLiteral("full") && !m_fullUiWindow->isVisible()) {
+                m_fullUiWindow->show();
+                m_fullUiWindow->raise();
+                m_fullUiWindow->requestActivate();
+            }
         });
     }
 
+    const auto normalizeUiMode = [](const QString &mode) {
+        const QString normalized = mode.trimmed().toLower();
+        if (normalized == QStringLiteral("overlay")) {
+            return QStringLiteral("overlay");
+        }
+        return QStringLiteral("full");
+    };
+
+    const auto applyUiMode = [this, normalizeUiMode]() {
+        if (!m_settings) {
+            return;
+        }
+        const QString mode = normalizeUiMode(m_settings->uiMode());
+        if (!m_lastUiMode.isEmpty() && m_lastUiMode == mode) {
+            return;
+        }
+        m_lastUiMode = mode;
+        if (mode == QStringLiteral("overlay")) {
+            m_overlayController->setOverlayEnabled(true);
+            if (m_fullUiWindow) {
+                m_fullUiWindow->hide();
+            }
+            return;
+        }
+
+        m_overlayController->setOverlayEnabled(false);
+        m_overlayController->hideOverlay();
+        if (m_fullUiWindow) {
+            if (m_setupWindow && m_setupWindow->isVisible()) {
+                m_fullUiWindow->hide();
+                return;
+            }
+            if (!m_fullUiWindow->isVisible()) {
+                m_fullUiWindow->show();
+                m_fullUiWindow->raise();
+                m_fullUiWindow->requestActivate();
+            }
+        }
+    };
+
+    const auto setUiModeAndApply = [this, applyUiMode](const QString &mode) {
+        if (!m_settings) {
+            return;
+        }
+        m_settings->setUiMode(mode);
+        m_settings->save();
+        applyUiMode();
+    };
+
+    const auto toggleActiveUi = [this, normalizeUiMode]() {
+        if (!m_settings) {
+            return;
+        }
+        const QString mode = normalizeUiMode(m_settings->uiMode());
+        if (mode == QStringLiteral("overlay")) {
+            m_overlayController->toggleOverlay();
+            return;
+        }
+
+        if (!m_fullUiWindow) {
+            m_overlayController->toggleOverlay();
+            return;
+        }
+
+        if (m_fullUiWindow->isVisible()) {
+            m_fullUiWindow->hide();
+        } else {
+            m_fullUiWindow->show();
+            m_fullUiWindow->raise();
+            m_fullUiWindow->requestActivate();
+        }
+    };
+
+    connect(m_settings.get(), &AppSettings::settingsChanged, this, applyUiMode);
+
 #ifdef Q_OS_WIN
-    m_hotkeyFilter = std::make_unique<NativeHotkeyFilter>([this]() {
-        m_overlayController->toggleOverlay();
+    m_hotkeyFilter = std::make_unique<NativeHotkeyFilter>([toggleActiveUi]() {
+        toggleActiveUi();
     });
     QCoreApplication::instance()->installNativeEventFilter(m_hotkeyFilter.get());
 #endif
     auto *trayMenu = new QMenu();
-    trayMenu->addAction(QStringLiteral("Toggle Overlay"), [this]() {
-        m_overlayController->toggleOverlay();
+    trayMenu->addAction(QStringLiteral("Toggle UI"), [toggleActiveUi]() {
+        toggleActiveUi();
+    });
+    trayMenu->addAction(QStringLiteral("Switch to Overlay UI"), [setUiModeAndApply]() {
+        setUiModeAndApply(QStringLiteral("overlay"));
+    });
+    trayMenu->addAction(QStringLiteral("Switch to Full UI"), [setUiModeAndApply]() {
+        setUiModeAndApply(QStringLiteral("full"));
     });
     trayMenu->addAction(QStringLiteral("Settings"), [this]() {
         if (m_settingsWindow) {
@@ -229,14 +333,14 @@ bool JarvisApplication::initialize()
     trayMenu->addAction(QStringLiteral("Quit"), qApp, &QCoreApplication::quit);
     m_trayIcon->setContextMenu(trayMenu);
     m_trayIcon->show();
-    connect(m_trayIcon.get(), &QSystemTrayIcon::activated, this, [this](QSystemTrayIcon::ActivationReason reason) {
+    connect(m_trayIcon.get(), &QSystemTrayIcon::activated, this, [this, toggleActiveUi](QSystemTrayIcon::ActivationReason reason) {
         if (reason == QSystemTrayIcon::Trigger || reason == QSystemTrayIcon::DoubleClick) {
             if (m_setupWindow && m_setupWindow->isVisible()) {
                 m_setupWindow->raise();
                 m_setupWindow->requestActivate();
                 return;
             }
-            m_overlayController->toggleOverlay();
+            toggleActiveUi();
         }
     });
 
@@ -310,6 +414,7 @@ bool JarvisApplication::initialize()
 
     m_assistantController->initialize();
     m_overlayController->setAssistantState(m_assistantController->stateName());
+    applyUiMode();
     if (!m_settings->initialSetupCompleted() && m_setupWindow) {
         qInfo() << "First run detected. Opening setup wizard.";
         m_setupWindow->show();

@@ -1203,6 +1203,7 @@ QStringList BackendFacade::audioOutputDeviceIds() const
 QString BackendFacade::selectedAudioInputDeviceId() const { return m_settings->selectedAudioInputDeviceId(); }
 QString BackendFacade::selectedAudioOutputDeviceId() const { return m_settings->selectedAudioOutputDeviceId(); }
 bool BackendFacade::clickThroughEnabled() const { return m_settings->clickThroughEnabled(); }
+QString BackendFacade::uiMode() const { return m_settings->uiMode(); }
 QString BackendFacade::assistantName() const { return m_identityProfileService->identity().assistantName; }
 QString BackendFacade::userName() const
 {
@@ -1320,6 +1321,11 @@ QVariantMap BackendFacade::platformCapabilities() const { return platformCapabil
 bool BackendFacade::supportsAutoToolInstall() const { return PlatformRuntime::currentCapabilities().supportsAutoToolInstall; }
 QString BackendFacade::skillsRoot() const { return QDir::currentPath() + QStringLiteral("/skills"); }
 void BackendFacade::toggleOverlay() { m_overlayController->toggleOverlay(); }
+void BackendFacade::setUiMode(const QString &mode)
+{
+    m_settings->setUiMode(mode);
+    m_settings->save();
+}
 void BackendFacade::refreshModels() { m_assistantController->refreshModels(); }
 void BackendFacade::submitText(const QString &text) { m_assistantController->submitText(text); }
 void BackendFacade::startListening() { m_assistantController->startListening(); }

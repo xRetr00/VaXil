@@ -177,6 +177,9 @@ public:
     bool clickThroughEnabled() const;
     void setClickThroughEnabled(bool enabled);
 
+    QString uiMode() const;
+    void setUiMode(const QString &mode);
+
     bool initialSetupCompleted() const;
     void setInitialSetupCompleted(bool completed);
 
@@ -250,6 +253,7 @@ private:
     QString m_selectedAudioInputDeviceId;
     QString m_selectedAudioOutputDeviceId;
     bool m_clickThroughEnabled = true;
+    QString m_uiMode = QStringLiteral("full");
     bool m_initialSetupCompleted = false;
     QString m_wakeWordPhrase = QStringLiteral("Hey Vaxil");
     bool m_wakeWordEnabled = true;

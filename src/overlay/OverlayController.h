@@ -21,6 +21,7 @@ public:
     void showOverlay();
     void hideOverlay();
     void toggleOverlay();
+    void setOverlayEnabled(bool enabled);
     void setClickThrough(bool enabled);
     void setAssistantState(const QString &stateName);
     void setSetupVisible(bool visible);
@@ -42,6 +43,7 @@ private:
     QTimer *m_monitorTimer = nullptr;
     bool m_visible = false;
     bool m_manualRequested = false;
+    bool m_overlayEnabled = true;
     bool m_assistantBusy = false;
     bool m_assistantSpeaking = false;
     bool m_setupVisible = false;

@@ -62,6 +62,7 @@ class SettingsViewModel : public QObject
     Q_PROPERTY(QStringList audioOutputDeviceIds READ audioOutputDeviceIds NOTIFY audioDevicesChanged)
     Q_PROPERTY(QString selectedAudioInputDeviceId READ selectedAudioInputDeviceId NOTIFY settingsChanged)
     Q_PROPERTY(QString selectedAudioOutputDeviceId READ selectedAudioOutputDeviceId NOTIFY settingsChanged)
+    Q_PROPERTY(QString uiMode READ uiMode NOTIFY settingsChanged)
     Q_PROPERTY(QString toolInstallStatus READ toolInstallStatus NOTIFY toolInstallStatusChanged)
     Q_PROPERTY(QVariantList toolStatuses READ toolStatuses NOTIFY toolStatusesChanged)
     Q_PROPERTY(int toolDownloadPercent READ toolDownloadPercent NOTIFY toolInstallStatusChanged)
@@ -147,6 +148,7 @@ public:
     QStringList audioOutputDeviceIds() const;
     QString selectedAudioInputDeviceId() const;
     QString selectedAudioOutputDeviceId() const;
+    QString uiMode() const;
     QString toolInstallStatus() const;
     QVariantList toolStatuses() const;
     int toolDownloadPercent() const;
@@ -237,6 +239,7 @@ public:
                                   const QString &audioInputDeviceId,
                                   const QString &audioOutputDeviceId,
                                   bool clickThrough);
+    Q_INVOKABLE void setUiMode(const QString &mode);
     Q_INVOKABLE bool downloadVoiceModel(const QString &voiceId);
     Q_INVOKABLE bool downloadWhisperModel(const QString &modelId);
     Q_INVOKABLE void downloadModel(const QString &name);
