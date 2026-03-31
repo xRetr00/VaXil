@@ -19,6 +19,17 @@ Window {
 
     property int stepIndex: 0
     property bool openRouterSelected: providerCombo.currentText === "openrouter"
+    readonly property string iconRoot: "qrc:/qt/qml/VAXIL/gui/assets/Icons/"
+
+    function stepIconSource(index) {
+        switch (index) {
+        case 0: return iconRoot + "icons8-member-50.png"
+        case 1: return iconRoot + "icons8-processor-50.png"
+        case 2: return iconRoot + "icons8-microphone-50.png"
+        case 3: return iconRoot + "icons8-radio-tower-50.png"
+        default: return iconRoot + "icons8-approval-50.png"
+        }
+    }
 
     function effectiveModelText() {
         const typed = (modelCombo.editText || "").trim()
@@ -156,13 +167,24 @@ Window {
                     orbitalRotation: setupMotion.orbitalRotation
                 }
 
-                Text {
+                Row {
                     width: parent.width
-                    text: settingsVm.assistantName + " Setup"
-                    color: "#f3f7ff"
-                    font.pixelSize: 30
-                    font.weight: Font.Medium
-                    horizontalAlignment: Text.AlignHCenter
+                    spacing: 12
+
+                    JarvisUi.VisionGlyph {
+                        anchors.verticalCenter: parent.verticalCenter
+                        iconSize: 20
+                        source: wizard.iconRoot + "icons8-approval-50.png"
+                    }
+
+                    Text {
+                        width: parent.width - 52
+                        text: settingsVm.assistantName + " Setup"
+                        color: "#f3f7ff"
+                        font.pixelSize: 30
+                        font.weight: Font.Medium
+                        verticalAlignment: Text.AlignVCenter
+                    }
                 }
 
                 Text {
@@ -199,15 +221,29 @@ Window {
                             highlightColor: wizard.stepIndex === index ? "#16ffffff" : "#0cffffff"
                             shadowOpacity: 0.14
 
-                            Text {
+                            Row {
                                 anchors.centerIn: parent
-                                text: index === 0 ? "Profile"
-                                    : index === 1 ? "AI Core"
-                                    : index === 2 ? "Voice"
-                                    : index === 3 ? "Wake Word"
-                                    : "Final Check"
-                                color: wizard.stepIndex === index ? "#f4f7ff" : "#e6eef9"
-                                font.pixelSize: 14
+                                spacing: 8
+
+                                Image {
+                                    width: 16
+                                    height: 16
+                                    source: wizard.stepIconSource(index)
+                                    fillMode: Image.PreserveAspectFit
+                                    smooth: true
+                                    mipmap: true
+                                    opacity: 0.96
+                                }
+
+                                Text {
+                                    text: index === 0 ? "Profile"
+                                        : index === 1 ? "AI Core"
+                                        : index === 2 ? "Voice"
+                                        : index === 3 ? "Wake Word"
+                                        : "Final Check"
+                                    color: wizard.stepIndex === index ? "#f4f7ff" : "#e6eef9"
+                                    font.pixelSize: 14
+                                }
                             }
                         }
                     }
@@ -230,15 +266,24 @@ Window {
                 anchors.margins: 28
                 spacing: 18
 
-                Text {
-                    text: wizard.stepIndex === 0 ? "Identity"
-                        : wizard.stepIndex === 1 ? "AI Core"
-                        : wizard.stepIndex === 2 ? "Voice Pipeline"
-                        : wizard.stepIndex === 3 ? "Wake Phrase"
-                        : "Final Validation"
-                    color: "#f4f7ff"
-                    font.pixelSize: 28
-                    font.weight: Font.Medium
+                RowLayout {
+                    spacing: 12
+
+                    JarvisUi.VisionGlyph {
+                        iconSize: 18
+                        source: wizard.stepIconSource(wizard.stepIndex)
+                    }
+
+                    Text {
+                        text: wizard.stepIndex === 0 ? "Identity"
+                            : wizard.stepIndex === 1 ? "AI Core"
+                            : wizard.stepIndex === 2 ? "Voice Pipeline"
+                            : wizard.stepIndex === 3 ? "Wake Phrase"
+                            : "Final Validation"
+                        color: "#f4f7ff"
+                        font.pixelSize: 28
+                        font.weight: Font.Medium
+                    }
                 }
 
                 Text {

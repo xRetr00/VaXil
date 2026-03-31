@@ -19,6 +19,7 @@ Window {
     property string braveValidationMessage: ""
     property bool braveValidationOk: false
     property bool openRouterSelected: providerCombo.currentText === "openrouter"
+    readonly property string iconRoot: "qrc:/qt/qml/VAXIL/gui/assets/Icons/"
 
     onClosing: function(close) {
         close.accepted = false
@@ -246,11 +247,20 @@ Window {
                     anchors.verticalCenter: parent.verticalCenter
                     spacing: 10
 
-                    Text {
-                        text: settingsVm.assistantName
-                        color: "#f3f7ff"
-                        font.pixelSize: 34
-                        font.weight: Font.Medium
+                    Row {
+                        spacing: 12
+
+                        JarvisUi.VisionGlyph {
+                            iconSize: 22
+                            source: settingsWindow.iconRoot + "icons8-tools-50.png"
+                        }
+
+                        Text {
+                            text: settingsVm.assistantName
+                            color: "#f3f7ff"
+                            font.pixelSize: 34
+                            font.weight: Font.Medium
+                        }
                     }
 
                     Text {
@@ -267,11 +277,13 @@ Window {
                         wrapMode: Text.Wrap
                     }
 
-                    Row {
+                    Flow {
+                        width: parent.width
                         spacing: 10
 
                         JarvisUi.VisionGlassPanel {
-                            width: 132
+                            id: modelChip
+                            width: Math.min(Math.max(128, modelChipLabel.implicitWidth + 24), parent.width)
                             height: 32
                             radius: 16
                             panelColor: "#171b2326"
@@ -281,15 +293,22 @@ Window {
                             shadowOpacity: 0.14
 
                             Text {
-                                anchors.centerIn: parent
+                                id: modelChipLabel
+                                anchors.left: parent.left
+                                anchors.right: parent.right
+                                anchors.verticalCenter: parent.verticalCenter
+                                anchors.leftMargin: 12
+                                anchors.rightMargin: 12
                                 text: settingsVm.selectedModel.length > 0 ? settingsVm.selectedModel : "No model"
                                 color: "#eef4ff"
                                 font.pixelSize: 12
+                                elide: Text.ElideRight
                             }
                         }
 
                         JarvisUi.VisionGlassPanel {
-                            width: 120
+                            id: routingChip
+                            width: Math.min(Math.max(118, routingChipLabel.implicitWidth + 24), parent.width)
                             height: 32
                             radius: 16
                             panelColor: "#171b2326"
@@ -299,10 +318,16 @@ Window {
                             shadowOpacity: 0.14
 
                             Text {
-                                anchors.centerIn: parent
+                                id: routingChipLabel
+                                anchors.left: parent.left
+                                anchors.right: parent.right
+                                anchors.verticalCenter: parent.verticalCenter
+                                anchors.leftMargin: 12
+                                anchors.rightMargin: 12
                                 text: settingsVm.autoRoutingEnabled ? "Auto routing" : "Manual routing"
                                 color: "#eef4ff"
                                 font.pixelSize: 12
+                                elide: Text.ElideRight
                             }
                         }
 
@@ -330,11 +355,20 @@ Window {
                     anchors.margins: 22
                     spacing: 14
 
-                    Text {
-                        text: "Identity"
-                        color: "#eef7ff"
-                        font.pixelSize: 22
-                        font.weight: Font.Medium
+                    RowLayout {
+                        spacing: 10
+
+                        JarvisUi.VisionGlyph {
+                            iconSize: 16
+                            source: settingsWindow.iconRoot + "icons8-member-50.png"
+                        }
+
+                        Text {
+                            text: "Identity"
+                            color: "#eef7ff"
+                            font.pixelSize: 22
+                            font.weight: Font.Medium
+                        }
                     }
 
                     Text {
@@ -377,11 +411,20 @@ Window {
                     anchors.margins: 22
                     spacing: 14
 
-                    Text {
-                        text: "AI Core"
-                        color: "#eef7ff"
-                        font.pixelSize: 22
-                        font.weight: Font.Medium
+                    RowLayout {
+                        spacing: 10
+
+                        JarvisUi.VisionGlyph {
+                            iconSize: 16
+                            source: settingsWindow.iconRoot + "icons8-processor-50.png"
+                        }
+
+                        Text {
+                            text: "AI Core"
+                            color: "#eef7ff"
+                            font.pixelSize: 22
+                            font.weight: Font.Medium
+                        }
                     }
 
                     Text {
@@ -550,11 +593,20 @@ Window {
                     anchors.margins: 22
                     spacing: 14
 
-                    Text {
-                        text: "Agent Runtime"
-                        color: "#eef7ff"
-                        font.pixelSize: 22
-                        font.weight: Font.Medium
+                    RowLayout {
+                        spacing: 10
+
+                        JarvisUi.VisionGlyph {
+                            iconSize: 16
+                            source: settingsWindow.iconRoot + "icons8-ai-50.png"
+                        }
+
+                        Text {
+                            text: "Agent Runtime"
+                            color: "#eef7ff"
+                            font.pixelSize: 22
+                            font.weight: Font.Medium
+                        }
                     }
 
                     Text {
@@ -696,11 +748,20 @@ Window {
                     anchors.margins: 22
                     spacing: 14
 
-                    Text {
-                        text: "Voice Pipeline"
-                        color: "#eef7ff"
-                        font.pixelSize: 22
-                        font.weight: Font.Medium
+                    RowLayout {
+                        spacing: 10
+
+                        JarvisUi.VisionGlyph {
+                            iconSize: 16
+                            source: settingsWindow.iconRoot + "icons8-microphone-50.png"
+                        }
+
+                        Text {
+                            text: "Voice Pipeline"
+                            color: "#eef7ff"
+                            font.pixelSize: 22
+                            font.weight: Font.Medium
+                        }
                     }
 
                     Text {
@@ -1187,11 +1248,20 @@ Window {
                     anchors.margins: 22
                     spacing: 14
 
-                    Text {
-                        text: "Distributed Vision"
-                        color: "#eef7ff"
-                        font.pixelSize: 22
-                        font.weight: Font.Medium
+                    RowLayout {
+                        spacing: 10
+
+                        JarvisUi.VisionGlyph {
+                            iconSize: 16
+                            source: settingsWindow.iconRoot + "icons8-eye-50.png"
+                        }
+
+                        Text {
+                            text: "Distributed Vision"
+                            color: "#eef7ff"
+                            font.pixelSize: 22
+                            font.weight: Font.Medium
+                        }
                     }
 
                     Text {
@@ -1337,11 +1407,20 @@ Window {
                     anchors.margins: 22
                     spacing: 14
 
-                    Text {
-                        text: "Tools Status"
-                        color: "#eef7ff"
-                        font.pixelSize: 22
-                        font.weight: Font.Medium
+                    RowLayout {
+                        spacing: 10
+
+                        JarvisUi.VisionGlyph {
+                            iconSize: 16
+                            source: settingsWindow.iconRoot + "icons8-toolbox-50.png"
+                        }
+
+                        Text {
+                            text: "Tools Status"
+                            color: "#eef7ff"
+                            font.pixelSize: 22
+                            font.weight: Font.Medium
+                        }
                     }
 
                     Text {
@@ -1454,11 +1533,20 @@ Window {
                     anchors.margins: 22
                     spacing: 14
 
-                    Text {
-                        text: "Agent Trace"
-                        color: "#eef7ff"
-                        font.pixelSize: 22
-                        font.weight: Font.Medium
+                    RowLayout {
+                        spacing: 10
+
+                        JarvisUi.VisionGlyph {
+                            iconSize: 16
+                            source: settingsWindow.iconRoot + "icons8-flow-chart-50.png"
+                        }
+
+                        Text {
+                            text: "Agent Trace"
+                            color: "#eef7ff"
+                            font.pixelSize: 22
+                            font.weight: Font.Medium
+                        }
                     }
 
                     Text {

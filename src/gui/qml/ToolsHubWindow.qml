@@ -12,6 +12,7 @@ Window {
     visible: false
     title: settingsVm.assistantName + " Tools & Stores"
     color: "#04070d"
+    readonly property string iconRoot: "qrc:/qt/qml/VAXIL/gui/assets/Icons/"
 
     function syncFields() {
         webProviderField.text = settingsVm.webSearchProvider
@@ -105,11 +106,20 @@ Window {
                         Layout.fillWidth: true
                         spacing: 10
 
-                        Text {
-                            text: "Tools & Stores"
-                            color: "#f3f7ff"
-                            font.pixelSize: 34
-                            font.weight: Font.Medium
+                        RowLayout {
+                            spacing: 12
+
+                            JarvisUi.VisionGlyph {
+                                iconSize: 22
+                                source: toolsWindow.iconRoot + "icons8-toolbox-50.png"
+                            }
+
+                            Text {
+                                text: "Tools & Stores"
+                                color: "#f3f7ff"
+                                font.pixelSize: 34
+                                font.weight: Font.Medium
+                            }
                         }
 
                         Text {
@@ -168,11 +178,20 @@ Window {
                     anchors.margins: 18
                     spacing: 12
 
-                    Text {
-                        text: "Installed Tool Runtime"
-                        color: "#eef7ff"
-                        font.pixelSize: 22
-                        font.weight: Font.Medium
+                    RowLayout {
+                        spacing: 10
+
+                        JarvisUi.VisionGlyph {
+                            iconSize: 16
+                            source: toolsWindow.iconRoot + "icons8-toolbox-50.png"
+                        }
+
+                        Text {
+                            text: "Installed Tool Runtime"
+                            color: "#eef7ff"
+                            font.pixelSize: 22
+                            font.weight: Font.Medium
+                        }
                     }
 
                     Text {
@@ -279,11 +298,20 @@ Window {
                     anchors.margins: 18
                     spacing: 12
 
-                    Text {
-                        text: "Skills Store"
-                        color: "#eef7ff"
-                        font.pixelSize: 22
-                        font.weight: Font.Medium
+                    RowLayout {
+                        spacing: 10
+
+                        JarvisUi.VisionGlyph {
+                            iconSize: 16
+                            source: toolsWindow.iconRoot + "icons8-shop-50.png"
+                        }
+
+                        Text {
+                            text: "Skills Store"
+                            color: "#eef7ff"
+                            font.pixelSize: 22
+                            font.weight: Font.Medium
+                        }
                     }
 
                     Text {
@@ -392,11 +420,20 @@ Window {
                     anchors.margins: 18
                     spacing: 12
 
-                    Text {
-                        text: "MCP Store"
-                        color: "#eef7ff"
-                        font.pixelSize: 22
-                        font.weight: Font.Medium
+                    RowLayout {
+                        spacing: 10
+
+                        JarvisUi.VisionGlyph {
+                            iconSize: 16
+                            source: toolsWindow.iconRoot + "icons8-connect-50.png"
+                        }
+
+                        Text {
+                            text: "MCP Store"
+                            color: "#eef7ff"
+                            font.pixelSize: 22
+                            font.weight: Font.Medium
+                        }
                     }
 
                     Text {
@@ -559,11 +596,20 @@ Window {
                     anchors.margins: 18
                     spacing: 12
 
-                    Text {
-                        text: "Tool Configuration"
-                        color: "#eef7ff"
-                        font.pixelSize: 22
-                        font.weight: Font.Medium
+                    RowLayout {
+                        spacing: 10
+
+                        JarvisUi.VisionGlyph {
+                            iconSize: 16
+                            source: toolsWindow.iconRoot + "icons8-toggle-on-50.png"
+                        }
+
+                        Text {
+                            text: "Tool Configuration"
+                            color: "#eef7ff"
+                            font.pixelSize: 22
+                            font.weight: Font.Medium
+                        }
                     }
 
                     Text {
@@ -616,11 +662,20 @@ Window {
                     anchors.margins: 18
                     spacing: 12
 
-                    Text {
-                        text: "Built-in Agent Tools"
-                        color: "#eef7ff"
-                        font.pixelSize: 22
-                        font.weight: Font.Medium
+                    RowLayout {
+                        spacing: 10
+
+                        JarvisUi.VisionGlyph {
+                            iconSize: 16
+                            source: toolsWindow.iconRoot + "icons8-tools-50.png"
+                        }
+
+                        Text {
+                            text: "Built-in Agent Tools"
+                            color: "#eef7ff"
+                            font.pixelSize: 22
+                            font.weight: Font.Medium
+                        }
                     }
 
                     Repeater {

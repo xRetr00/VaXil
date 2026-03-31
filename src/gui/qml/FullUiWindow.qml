@@ -24,6 +24,10 @@ Window {
     property int liveTypingIndex: 0
     property real slowPulse: 0.5 + 0.5 * Math.sin(motion.time * 0.35)
     property real fastPulse: 0.5 + 0.5 * Math.sin(motion.time * 1.15)
+    readonly property string iconRoot: "qrc:/qt/qml/VAXIL/gui/assets/Icons/"
+    readonly property string liveResponsePreview: "AI: " + (liveTypingIndex > 0
+        ? liveResponseText.slice(0, liveTypingIndex)
+        : "") + (liveResponseText.length > liveTypingIndex ? "_" : "")
 
     function appendLog(role, text) {
         const trimmed = (text || "").toString().trim()
@@ -207,12 +211,21 @@ Window {
                     Layout.fillWidth: true
                     spacing: 4
 
-                    Text {
-                        text: settingsVm.assistantName.toUpperCase() + " COMMAND DECK"
-                        color: "#f3f7ff"
-                        font.pixelSize: 20
-                        font.weight: Font.DemiBold
-                        font.letterSpacing: 0.8
+                    RowLayout {
+                        spacing: 10
+
+                        JarvisUi.VisionGlyph {
+                            iconSize: 18
+                            source: fullUi.iconRoot + "icons8-ai-50.png"
+                        }
+
+                        Text {
+                            text: settingsVm.assistantName.toUpperCase() + " COMMAND DECK"
+                            color: "#f3f7ff"
+                            font.pixelSize: 20
+                            font.weight: Font.DemiBold
+                            font.letterSpacing: 0.8
+                        }
                     }
                 }
 
@@ -373,8 +386,8 @@ Window {
 
                 JarvisUi.VisionGlassPanel {
                     Layout.fillWidth: true
-                    Layout.preferredHeight: Math.max(260, fullUi.height * 0.36)
-                    Layout.maximumHeight: Math.max(320, fullUi.height * 0.48)
+                    Layout.fillHeight: true
+                    Layout.minimumHeight: Math.max(240, fullUi.height * 0.30)
                     radius: 28
                     panelColor: "#14191f24"
                     innerColor: "#191e2630"
@@ -410,11 +423,20 @@ Window {
                         anchors.margins: 16
                         spacing: 12
 
-                        Text {
-                            text: "MISSION LOG"
-                            color: "#dceaff"
-                            font.pixelSize: 12
-                            font.letterSpacing: 1.8
+                        RowLayout {
+                            spacing: 8
+
+                            JarvisUi.VisionGlyph {
+                                iconSize: 14
+                                source: fullUi.iconRoot + "icons8-flow-chart-50.png"
+                            }
+
+                            Text {
+                                text: "MISSION LOG"
+                                color: "#dceaff"
+                                font.pixelSize: 12
+                                font.letterSpacing: 1.8
+                            }
                         }
 
                         ListView {
@@ -438,8 +460,13 @@ Window {
                 }
 
                 JarvisUi.VisionGlassPanel {
+                    id: liveResponseCard
                     Layout.fillWidth: true
-                    Layout.preferredHeight: 132
+                    Layout.minimumHeight: 136
+                    Layout.maximumHeight: Math.max(260, fullUi.height * 0.42)
+                    Layout.preferredHeight: Math.min(Layout.maximumHeight,
+                                                     Math.max(Layout.minimumHeight,
+                                                              liveResponseMeasure.implicitHeight + 64))
                     radius: 22
                     panelColor: "#151b2426"
                     innerColor: "#1a202930"
@@ -452,14 +479,24 @@ Window {
                         anchors.margins: 14
                         spacing: 8
 
-                        Text {
-                            text: "LIVE RESPONSE"
-                            color: "#dceaff"
-                            font.pixelSize: 11
-                            font.letterSpacing: 1.6
+                        RowLayout {
+                            spacing: 8
+
+                            JarvisUi.VisionGlyph {
+                                iconSize: 14
+                                source: fullUi.iconRoot + "icons8-radio-tower-50.png"
+                            }
+
+                            Text {
+                                text: "LIVE RESPONSE"
+                                color: "#dceaff"
+                                font.pixelSize: 11
+                                font.letterSpacing: 1.6
+                            }
                         }
 
                         JarvisUi.VisionGlassPanel {
+                            id: liveResponseBody
                             Layout.fillWidth: true
                             Layout.fillHeight: true
                             radius: 16
@@ -470,21 +507,29 @@ Window {
                             shadowOpacity: 0.12
 
                             Text {
-                                anchors.fill: parent
-                                anchors.margins: 10
-                                text: "AI: " + (fullUi.liveTypingIndex > 0
-                                       ? fullUi.liveResponseText.slice(0, fullUi.liveTypingIndex)
-                                       : "") + (fullUi.liveResponseText.length > fullUi.liveTypingIndex ? "_" : "")
-                                color: "#eff5ff"
+                                id: liveResponseMeasure
+                                visible: false
+                                width: Math.max(120, liveResponseBody.width - 20)
+                                text: fullUi.liveResponsePreview
                                 font.pixelSize: 12
                                 wrapMode: Text.Wrap
                             }
+
+                            ScrollView {
+                                anchors.fill: parent
+                                anchors.margins: 10
+                                clip: true
+
+                                Text {
+                                    width: Math.max(120, liveResponseBody.width - 20)
+                                    text: fullUi.liveResponsePreview
+                                    color: "#eff5ff"
+                                    font.pixelSize: 12
+                                    wrapMode: Text.Wrap
+                                }
+                            }
                         }
                     }
-                }
-
-                Item {
-                    Layout.fillHeight: true
                 }
             }
         }
@@ -504,16 +549,30 @@ Window {
                 anchors.margins: 12
                 spacing: 10
 
-                TextField {
-                    id: inputField
+                Item {
                     Layout.fillWidth: true
-                    placeholderText: "Type a command..."
-                    onAccepted: {
-                        if (text.trim().length === 0) {
-                            return
+                    Layout.fillHeight: true
+
+                    TextField {
+                        id: inputField
+                        anchors.fill: parent
+                        placeholderText: "Type a command..."
+                        leftPadding: 46
+                        onAccepted: {
+                            if (text.trim().length === 0) {
+                                return
+                            }
+                            agentVm.submitText(text)
+                            text = ""
                         }
-                        agentVm.submitText(text)
-                        text = ""
+                    }
+
+                    JarvisUi.VisionGlyph {
+                        anchors.left: parent.left
+                        anchors.leftMargin: 6
+                        anchors.verticalCenter: parent.verticalCenter
+                        iconSize: 16
+                        source: fullUi.iconRoot + "icons8-search-50.png"
                     }
                 }
 

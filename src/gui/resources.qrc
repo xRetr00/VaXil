@@ -9,11 +9,26 @@
         <file alias="qml/AssistantStateIndicator.qml">qml/AssistantStateIndicator.qml</file>
         <file alias="qml/AssistantStatusSurface.qml">qml/AssistantStatusSurface.qml</file>
         <file alias="qml/VisionGlassPanel.qml">qml/VisionGlassPanel.qml</file>
+        <file alias="qml/VisionGlyph.qml">qml/VisionGlyph.qml</file>
         <file alias="qml/SettingsWindow.qml">qml/SettingsWindow.qml</file>
         <file alias="qml/SetupWizard.qml">qml/SetupWizard.qml</file>
         <file alias="qml/ToolsHubWindow.qml">qml/ToolsHubWindow.qml</file>
         <file alias="qml/FullUiWindow.qml">qml/FullUiWindow.qml</file>
         <file alias="data/local_responses.json">data/local_responses.json</file>
+        <file alias="assets/Icons/icons8-ai-50.png">../../assets/Icons/icons8-ai-50.png</file>
+        <file alias="assets/Icons/icons8-approval-50.png">../../assets/Icons/icons8-approval-50.png</file>
+        <file alias="assets/Icons/icons8-connect-50.png">../../assets/Icons/icons8-connect-50.png</file>
+        <file alias="assets/Icons/icons8-eye-50.png">../../assets/Icons/icons8-eye-50.png</file>
+        <file alias="assets/Icons/icons8-flow-chart-50.png">../../assets/Icons/icons8-flow-chart-50.png</file>
+        <file alias="assets/Icons/icons8-member-50.png">../../assets/Icons/icons8-member-50.png</file>
+        <file alias="assets/Icons/icons8-microphone-50.png">../../assets/Icons/icons8-microphone-50.png</file>
+        <file alias="assets/Icons/icons8-processor-50.png">../../assets/Icons/icons8-processor-50.png</file>
+        <file alias="assets/Icons/icons8-radio-tower-50.png">../../assets/Icons/icons8-radio-tower-50.png</file>
+        <file alias="assets/Icons/icons8-search-50.png">../../assets/Icons/icons8-search-50.png</file>
+        <file alias="assets/Icons/icons8-shop-50.png">../../assets/Icons/icons8-shop-50.png</file>
+        <file alias="assets/Icons/icons8-toggle-on-50.png">../../assets/Icons/icons8-toggle-on-50.png</file>
+        <file alias="assets/Icons/icons8-toolbox-50.png">../../assets/Icons/icons8-toolbox-50.png</file>
+        <file alias="assets/Icons/icons8-tools-50.png">../../assets/Icons/icons8-tools-50.png</file>
         <file alias="assets/icon.ico">../../assets/icon.ico</file>
     </qresource>
 </RCC>
