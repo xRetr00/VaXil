@@ -98,10 +98,6 @@ void MemoryStore::appendConversation(const QString &role, const QString &content
 
     file.write(QByteArray::fromStdString(line.dump()));
     file.write("\n");
-
-    if (role == QStringLiteral("user")) {
-        extractUserFacts(content);
-    }
 }
 
 void MemoryStore::extractUserFacts(const QString &content)
@@ -130,6 +126,9 @@ void MemoryStore::extractUserFacts(const QString &content)
     entry.confidence = 0.92f;
     entry.source = QStringLiteral("conversation");
     entry.createdAt = QDateTime::currentDateTimeUtc();
+    if (entry.type == MemoryType::Context) {
+        entry.expiresAt = entry.createdAt.addDays(7);
+    }
     upsertEntry(entry);
 }
 

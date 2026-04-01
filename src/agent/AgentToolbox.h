@@ -9,6 +9,7 @@ class LoggingService;
 class MemoryStore;
 class PythonRuntimeManager;
 class SkillStore;
+class ToolExecutionService;
 
 class AgentToolbox : public QObject
 {
@@ -22,35 +23,11 @@ public:
 
 private:
     QStringList allowedRoots() const;
-    bool isReadablePath(const QString &path) const;
-    bool isWritablePath(const QString &path) const;
-    AgentToolResult executeFileRead(const AgentToolCall &call, const nlohmann::json &args);
-    AgentToolResult executeFileSearch(const AgentToolCall &call, const nlohmann::json &args);
-    AgentToolResult executeFileWrite(const AgentToolCall &call, const nlohmann::json &args);
-    AgentToolResult executeFilePatch(const AgentToolCall &call, const nlohmann::json &args);
-    AgentToolResult executeDirList(const AgentToolCall &call, const nlohmann::json &args);
-    AgentToolResult executeMemorySearch(const AgentToolCall &call, const nlohmann::json &args);
-    AgentToolResult executeMemoryWrite(const AgentToolCall &call, const nlohmann::json &args);
-    AgentToolResult executeMemoryDelete(const AgentToolCall &call, const nlohmann::json &args);
-    AgentToolResult executeLogTail(const AgentToolCall &call, const nlohmann::json &args);
-    AgentToolResult executeLogSearch(const AgentToolCall &call, const nlohmann::json &args);
-    AgentToolResult executeAiLogRead(const AgentToolCall &call, const nlohmann::json &args);
-    AgentToolResult executeWebSearch(const AgentToolCall &call, const nlohmann::json &args);
-    AgentToolResult executeWebFetch(const AgentToolCall &call, const nlohmann::json &args);
-    AgentToolResult executeComputerListApps(const AgentToolCall &call, const nlohmann::json &args);
-    AgentToolResult executeComputerOpenApp(const AgentToolCall &call, const nlohmann::json &args);
-    AgentToolResult executeComputerOpenUrl(const AgentToolCall &call, const nlohmann::json &args);
-    AgentToolResult executeComputerWriteFile(const AgentToolCall &call, const nlohmann::json &args);
-    AgentToolResult executeComputerSetTimer(const AgentToolCall &call, const nlohmann::json &args);
-    AgentToolResult executeSkillList(const AgentToolCall &call);
-    AgentToolResult executeSkillInstall(const AgentToolCall &call, const nlohmann::json &args);
-    AgentToolResult executeSkillCreate(const AgentToolCall &call, const nlohmann::json &args);
-    AgentToolResult failedResult(const AgentToolCall &call, const QString &message) const;
-    AgentToolResult successResult(const AgentToolCall &call, const QString &message) const;
 
     AppSettings *m_settings = nullptr;
     MemoryStore *m_memoryStore = nullptr;
     SkillStore *m_skillStore = nullptr;
     LoggingService *m_loggingService = nullptr;
     PythonRuntimeManager *m_pythonRuntime = nullptr;
+    ToolExecutionService *m_toolExecutionService = nullptr;
 };

@@ -133,7 +133,11 @@ QList<MemoryEntry> MemoryManager::search(const QString &query, int maxCount) con
 
     const QString lowered = query.trimmed().toLower();
     QList<MemoryEntry> matches;
+    const QDateTime now = QDateTime::currentDateTimeUtc();
     for (const MemoryEntry &entry : m_entries) {
+        if (entry.expiresAt.isValid() && entry.expiresAt < now) {
+            continue;
+        }
         const QString haystack = QStringList{
             entry.kind,
             entry.key,
@@ -148,7 +152,38 @@ QList<MemoryEntry> MemoryManager::search(const QString &query, int maxCount) con
         }
     }
 
-    std::sort(matches.begin(), matches.end(), [](const MemoryEntry &left, const MemoryEntry &right) {
+    std::sort(matches.begin(), matches.end(), [&lowered](const MemoryEntry &left, const MemoryEntry &right) {
+        auto scoreFor = [&lowered](const MemoryEntry &entry) {
+            int score = 0;
+            const QString key = entry.key.toLower();
+            const QString title = entry.title.toLower();
+            const QString value = entry.value.toLower();
+            const QString kind = entry.kind.toLower();
+            if (!lowered.isEmpty()) {
+                if (key == lowered || title == lowered) {
+                    score += 1000;
+                }
+                if (key.contains(lowered) || title.contains(lowered)) {
+                    score += 500;
+                }
+                if (value.contains(lowered)) {
+                    score += 100;
+                }
+            }
+            if (kind == QStringLiteral("preference")) {
+                score += 60;
+            } else if (kind == QStringLiteral("fact")) {
+                score += 40;
+            }
+            score += static_cast<int>(entry.confidence * 100.0f);
+            return score;
+        };
+
+        const int leftScore = scoreFor(left);
+        const int rightScore = scoreFor(right);
+        if (leftScore != rightScore) {
+            return leftScore > rightScore;
+        }
         return left.createdAt > right.createdAt;
     });
 
@@ -186,7 +221,11 @@ bool MemoryManager::remove(const QString &idOrKey)
 QString MemoryManager::userName() const
 {
     const QList<MemoryEntry> currentEntries = entries();
+    const QDateTime now = QDateTime::currentDateTimeUtc();
     for (const MemoryEntry &entry : currentEntries) {
+        if (entry.expiresAt.isValid() && entry.expiresAt < now) {
+            continue;
+        }
         if (entry.type == MemoryType::Fact && entry.key == QStringLiteral("name")) {
             return entry.value;
         }
@@ -253,6 +292,7 @@ void MemoryManager::loadFromDisk() const
         entry.source = object.value(QStringLiteral("source")).toString(QStringLiteral("memory"));
         entry.updatedAt = object.value(QStringLiteral("updatedAt")).toString();
         entry.createdAt = QDateTime::fromString(object.value(QStringLiteral("createdAt")).toString(), Qt::ISODate);
+        entry.expiresAt = QDateTime::fromString(object.value(QStringLiteral("expiresAt")).toString(), Qt::ISODate);
 
         const QJsonArray tags = object.value(QStringLiteral("tags")).toArray();
         for (const QJsonValue &tag : tags) {
@@ -282,6 +322,7 @@ bool MemoryManager::saveToDisk() const
         object.insert(QStringLiteral("content"), entry.content);
         object.insert(QStringLiteral("createdAt"), entry.createdAt.toUTC().toString(Qt::ISODate));
         object.insert(QStringLiteral("updatedAt"), entry.updatedAt);
+        object.insert(QStringLiteral("expiresAt"), entry.expiresAt.isValid() ? entry.expiresAt.toUTC().toString(Qt::ISODate) : QString{});
         object.insert(QStringLiteral("confidence"), entry.confidence);
         object.insert(QStringLiteral("secret"), entry.secret);
         object.insert(QStringLiteral("source"), entry.source);
@@ -343,6 +384,9 @@ MemoryEntry MemoryManager::normalize(const MemoryEntry &entry) const
     if (normalized.updatedAt.trimmed().isEmpty()) {
         normalized.updatedAt = normalized.createdAt.toUTC().toString(Qt::ISODate);
     }
+    if (normalized.type == MemoryType::Context && !normalized.expiresAt.isValid()) {
+        normalized.expiresAt = normalized.createdAt.addDays(7);
+    }
     if (normalized.id.trimmed().isEmpty()) {
         normalized.id = slugify(normalized.kind + QStringLiteral("-") + normalized.key);
     }
@@ -360,6 +404,10 @@ bool MemoryManager::shouldReject(const MemoryEntry &entry) const
     }
 
     if (entry.key.isEmpty() || entry.value.isEmpty()) {
+        return true;
+    }
+
+    if (entry.expiresAt.isValid() && entry.expiresAt <= entry.createdAt) {
         return true;
     }
 

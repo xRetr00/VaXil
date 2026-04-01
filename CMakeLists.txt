@@ -250,12 +250,17 @@ set(JARVIS_SOURCES
     src/audio/SileroVadSession.cpp
     src/core/agent/IntentDetector.cpp
     src/core/agent/IntentEngine.cpp
+    src/core/AiRequestCoordinator.cpp
     src/core/AssistantController.cpp
+    src/core/InputRouter.cpp
     src/core/IntentRouter.cpp
+    src/core/MemoryPolicyHandler.cpp
     src/core/ComputerControl.cpp
     src/core/LocalResponseEngine.cpp
+    src/core/ResponseFinalizer.cpp
     src/core/tasks/TaskDispatcher.cpp
     src/core/tasks/ToolWorker.cpp
+    src/core/tools/ToolExecutionService.cpp
     src/devices/DeviceManager.cpp
     src/devices/MockDevices.cpp
     src/gui/AgentViewModel.cpp
@@ -307,13 +312,18 @@ set(JARVIS_HEADERS
     src/audio/SileroVadSession.h
     src/core/agent/IntentDetector.h
     src/core/agent/IntentEngine.h
+    src/core/AiRequestCoordinator.h
     src/core/AssistantController.h
     src/core/AssistantTypes.h
     src/core/ComputerControl.h
+    src/core/InputRouter.h
     src/core/IntentRouter.h
     src/core/LocalResponseEngine.h
+    src/core/MemoryPolicyHandler.h
+    src/core/ResponseFinalizer.h
     src/core/tasks/TaskDispatcher.h
     src/core/tasks/ToolWorker.h
+    src/core/tools/ToolExecutionService.h
     src/devices/Device.h
     src/devices/DeviceManager.h
     src/devices/MockDevices.h

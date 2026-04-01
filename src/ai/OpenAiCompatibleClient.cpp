@@ -59,10 +59,14 @@ OpenAiCompatibleClient::OpenAiCompatibleClient(QObject *parent)
             return;
         }
 
+        QPointer<QNetworkReply> expiredReply = m_activeReply;
         m_activeRequestId = 0;
         m_activeReply = nullptr;
         m_streamBuffer.clear();
         m_streamedContent.clear();
+        if (expiredReply) {
+            expiredReply->abort();
+        }
         finishWithFailure(expiredRequestId, QStringLiteral("%1 request timed out").arg(providerDisplayName()));
     });
 }
@@ -305,11 +309,15 @@ quint64 OpenAiCompatibleClient::sendAgentRequest(const AgentRequest &request)
 
 void OpenAiCompatibleClient::cancelActiveRequest()
 {
+    QPointer<QNetworkReply> reply = m_activeReply;
     m_timeoutTimer->stop();
     m_activeRequestId = 0;
     m_activeReply = nullptr;
     m_streamBuffer.clear();
     m_streamedContent.clear();
+    if (reply) {
+        reply->abort();
+    }
 }
 
 void OpenAiCompatibleClient::finishWithFailure(quint64 requestId, const QString &errorText)
@@ -352,7 +360,7 @@ void OpenAiCompatibleClient::probeCapabilities()
         m_capabilities.responsesApi = responsesApi;
         m_capabilities.previousResponseId = responsesApi;
         m_capabilities.toolCalling = responsesApi;
-        m_capabilities.remoteMcp = responsesApi;
+        m_capabilities.remoteMcp = false;
         m_capabilities.selectedModelToolCapable = true;
         m_capabilities.agentEnabled = responsesApi;
         m_capabilities.providerMode = responsesApi ? QStringLiteral("responses") : QStringLiteral("chat_completions");

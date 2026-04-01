@@ -57,6 +57,16 @@ enum class TaskState {
     Expired
 };
 
+enum class ToolErrorKind {
+    None,
+    Transport,
+    Auth,
+    Capability,
+    Invalid,
+    Timeout,
+    Unknown
+};
+
 enum class MemoryType {
     Preference,
     Fact,
@@ -193,11 +203,34 @@ struct AgentTask {
     int retryCount = 0;
 };
 
+enum class InputRouteKind {
+    None,
+    LocalResponse,
+    DeterministicTasks,
+    BackgroundTasks,
+    Conversation,
+    AgentConversation,
+    CommandExtraction,
+    AgentCapabilityError
+};
+
+struct InputRouteDecision {
+    InputRouteKind kind = InputRouteKind::None;
+    IntentType intent = IntentType::GENERAL_CHAT;
+    ReasoningMode reasoningMode = ReasoningMode::Balanced;
+    bool useVisionContext = false;
+    bool speak = true;
+    QString message;
+    QString status;
+    QList<AgentTask> tasks;
+};
+
 struct BackgroundTaskResult {
     int taskId = 0;
     QString type;
     bool success = false;
     TaskState state = TaskState::Finished;
+    ToolErrorKind errorKind = ToolErrorKind::Unknown;
     QString title;
     QString summary;
     QString detail;
@@ -217,6 +250,28 @@ struct AgentToolResult {
     QString toolName;
     QString output;
     bool success = false;
+    ToolErrorKind errorKind = ToolErrorKind::Unknown;
+    QString summary;
+    QString detail;
+    QJsonObject payload;
+    QString rawProviderError;
+};
+
+struct ToolExecutionRequest {
+    QString toolName;
+    QString callId;
+    QJsonObject args;
+};
+
+struct ToolExecutionResult {
+    QString toolName;
+    QString callId;
+    bool success = false;
+    ToolErrorKind errorKind = ToolErrorKind::Unknown;
+    QString summary;
+    QString detail;
+    QJsonObject payload;
+    QString rawProviderError;
 };
 
 struct AgentResponse {
@@ -239,6 +294,7 @@ struct MemoryEntry {
     QString key;
     QString value;
     QDateTime createdAt;
+    QDateTime expiresAt;
     QString id;
     QString kind;
     QString title;
@@ -344,7 +400,10 @@ Q_DECLARE_METATYPE(AgentToolSpec)
 Q_DECLARE_METATYPE(QList<AgentToolSpec>)
 Q_DECLARE_METATYPE(IntentType)
 Q_DECLARE_METATYPE(TaskState)
+Q_DECLARE_METATYPE(ToolErrorKind)
 Q_DECLARE_METATYPE(MemoryType)
+Q_DECLARE_METATYPE(InputRouteKind)
+Q_DECLARE_METATYPE(InputRouteDecision)
 Q_DECLARE_METATYPE(AgentTask)
 Q_DECLARE_METATYPE(QList<AgentTask>)
 Q_DECLARE_METATYPE(BackgroundTaskResult)
@@ -353,6 +412,8 @@ Q_DECLARE_METATYPE(AgentToolCall)
 Q_DECLARE_METATYPE(QList<AgentToolCall>)
 Q_DECLARE_METATYPE(AgentToolResult)
 Q_DECLARE_METATYPE(QList<AgentToolResult>)
+Q_DECLARE_METATYPE(ToolExecutionRequest)
+Q_DECLARE_METATYPE(ToolExecutionResult)
 Q_DECLARE_METATYPE(AgentResponse)
 Q_DECLARE_METATYPE(AgentTraceEntry)
 Q_DECLARE_METATYPE(QList<AgentTraceEntry>)

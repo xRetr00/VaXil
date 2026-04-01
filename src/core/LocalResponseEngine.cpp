@@ -50,6 +50,26 @@ QHash<QString, QStringList> defaultResponses()
              QStringLiteral("That took too long to complete."),
              QStringLiteral("The request timed out.")
          }},
+        {QStringLiteral("error_auth"), {
+             QStringLiteral("The AI provider rejected the request credentials."),
+             QStringLiteral("Authentication failed for the AI provider."),
+             QStringLiteral("The AI provider needs valid credentials.")
+         }},
+        {QStringLiteral("error_capability"), {
+             QStringLiteral("That mode is not available with the current provider or model."),
+             QStringLiteral("The selected provider or model cannot handle that request mode."),
+             QStringLiteral("The current provider setup cannot execute that capability.")
+         }},
+        {QStringLiteral("error_invalid"), {
+             QStringLiteral("The backend returned an invalid response."),
+             QStringLiteral("I received malformed output and stopped the request."),
+             QStringLiteral("The response payload was invalid, so I stopped instead of guessing.")
+         }},
+        {QStringLiteral("error_transport"), {
+             QStringLiteral("I couldn't complete that because the backend connection failed."),
+             QStringLiteral("The backend connection failed before the request could finish."),
+             QStringLiteral("A transport error interrupted the backend request.")
+         }},
         {QStringLiteral("acknowledgement"), {
              QStringLiteral("Understood. Working on {target}."),
              QStringLiteral("All right. Handling {target}."),

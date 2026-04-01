@@ -25,6 +25,8 @@ private slots:
     void removeFalseWhenNotFound();
     void searchFiltersResults();
     void searchEmptyQueryReturnsAll();
+    void searchSkipsExpiredContextEntries();
+    void searchRanksExactKeyAheadOfRecentLooseMatch();
     void returnsUserName();
     void returnsEmptyUserNameWhenNotStored();
 };
@@ -231,6 +233,46 @@ void MemoryManagerTests::searchEmptyQueryReturnsAll()
 
     const auto results = manager.search(QStringLiteral(""));
     QCOMPARE(results.size(), 2);
+}
+
+void MemoryManagerTests::searchSkipsExpiredContextEntries()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    MemoryManager manager(dir.path() + QStringLiteral("/memory.json"));
+
+    MemoryEntry expired = makeEntry(QStringLiteral("weather-note"), QStringLiteral("stale weather"), MemoryType::Context);
+    expired.createdAt = QDateTime::currentDateTimeUtc().addDays(-10);
+    expired.expiresAt = QDateTime::currentDateTimeUtc().addDays(-2);
+    QVERIFY(manager.write(expired));
+
+    MemoryEntry fresh = makeEntry(QStringLiteral("weather-current"), QStringLiteral("fresh weather"), MemoryType::Context);
+    fresh.createdAt = QDateTime::currentDateTimeUtc();
+    fresh.expiresAt = QDateTime::currentDateTimeUtc().addDays(7);
+    QVERIFY(manager.write(fresh));
+
+    const auto results = manager.search(QStringLiteral("weather"));
+    QCOMPARE(results.size(), 1);
+    QCOMPARE(results.first().key, QStringLiteral("weather-current"));
+}
+
+void MemoryManagerTests::searchRanksExactKeyAheadOfRecentLooseMatch()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    MemoryManager manager(dir.path() + QStringLiteral("/memory.json"));
+
+    MemoryEntry exact = makeEntry(QStringLiteral("theme"), QStringLiteral("dark"), MemoryType::Preference);
+    exact.createdAt = QDateTime::currentDateTimeUtc().addDays(-5);
+    QVERIFY(manager.write(exact));
+
+    MemoryEntry recentLoose = makeEntry(QStringLiteral("general"), QStringLiteral("theme should maybe be blue"), MemoryType::Fact);
+    recentLoose.createdAt = QDateTime::currentDateTimeUtc();
+    QVERIFY(manager.write(recentLoose));
+
+    const auto results = manager.search(QStringLiteral("theme"));
+    QVERIFY(results.size() >= 2);
+    QCOMPARE(results.first().key, QStringLiteral("theme"));
 }
 
 void MemoryManagerTests::returnsUserName()

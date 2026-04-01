@@ -29,8 +29,12 @@
 #include "agent/AgentToolbox.h"
 #include "core/agent/IntentDetector.h"
 #include "core/agent/IntentEngine.h"
+#include "core/AiRequestCoordinator.h"
+#include "core/InputRouter.h"
 #include "core/IntentRouter.h"
 #include "core/LocalResponseEngine.h"
+#include "core/MemoryPolicyHandler.h"
+#include "core/ResponseFinalizer.h"
 #include "core/tasks/TaskDispatcher.h"
 #include "core/tasks/ToolWorker.h"
 #include "devices/DeviceManager.h"
@@ -416,11 +420,30 @@ QString extractJsonObjectPayload(const QString &payload)
     return trimmed.mid(start, end - start + 1);
 }
 
-QList<AgentTask> parseBackgroundTasks(const nlohmann::json &jsonObject)
+QList<AgentToolCall> parseAdapterToolCalls(const nlohmann::json &jsonObject)
 {
-    QList<AgentTask> tasks;
+    QList<AgentToolCall> toolCalls;
+    if (jsonObject.contains("tool_calls") && jsonObject.at("tool_calls").is_array()) {
+        for (const auto &callJson : jsonObject.at("tool_calls")) {
+            if (!callJson.is_object()) {
+                continue;
+            }
+
+            AgentToolCall call;
+            call.name = QString::fromStdString(callJson.value("name", std::string{}));
+            call.argumentsJson = QString::fromStdString(callJson.value("arguments_json", std::string{}));
+            if (call.argumentsJson.trimmed().isEmpty() && callJson.contains("args") && callJson.at("args").is_object()) {
+                call.argumentsJson = QString::fromStdString(callJson.at("args").dump());
+            }
+            if (!call.name.isEmpty()) {
+                toolCalls.push_back(call);
+            }
+        }
+        return toolCalls;
+    }
+
     if (!jsonObject.contains("background_tasks") || !jsonObject.at("background_tasks").is_array()) {
-        return tasks;
+        return toolCalls;
     }
 
     for (const auto &taskJson : jsonObject.at("background_tasks")) {
@@ -428,18 +451,17 @@ QList<AgentTask> parseBackgroundTasks(const nlohmann::json &jsonObject)
             continue;
         }
 
-        AgentTask task;
-        task.type = QString::fromStdString(taskJson.value("type", std::string{}));
-        task.priority = taskJson.value("priority", 50);
+        AgentToolCall call;
+        call.name = QString::fromStdString(taskJson.value("type", std::string{}));
         if (taskJson.contains("args") && taskJson.at("args").is_object()) {
-            task.args = QJsonDocument::fromJson(QByteArray::fromStdString(taskJson.at("args").dump())).object();
+            call.argumentsJson = QString::fromStdString(taskJson.at("args").dump());
         }
-        if (!task.type.isEmpty()) {
-            tasks.push_back(task);
+        if (!call.name.isEmpty()) {
+            toolCalls.push_back(call);
         }
     }
 
-    return tasks;
+    return toolCalls;
 }
 
 IntentType intentTypeFromString(const QString &value)
@@ -1046,8 +1068,6 @@ QString mcpPackageHealthLabel(const QString &mcpRootPath, const QString &package
 
 QString runtimeToolStatusSummary(const AppSettings *settings)
 {
-    const QString appDataRoot = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
-    const QString mcpRoot = appDataRoot.isEmpty() ? QString() : (appDataRoot + QStringLiteral("/tools/mcp"));
     const bool npmAvailable = !QStandardPaths::findExecutable(QStringLiteral("npm")).isEmpty()
         || !QStandardPaths::findExecutable(QStringLiteral("npm.cmd")).isEmpty();
 
@@ -1056,14 +1076,11 @@ QString runtimeToolStatusSummary(const AppSettings *settings)
     const QString mcpCatalog = settings != nullptr ? settings->mcpCatalogUrl().trimmed() : QString();
 
     QStringList lines;
-    lines.push_back(QStringLiteral("mcp_enabled=%1").arg(mcpEnabled ? QStringLiteral("true") : QStringLiteral("false")));
+    lines.push_back(QStringLiteral("mcp_runtime=disabled"));
+    lines.push_back(QStringLiteral("mcp_configured=%1").arg(mcpEnabled ? QStringLiteral("true") : QStringLiteral("false")));
     lines.push_back(QStringLiteral("npm_available=%1").arg(npmAvailable ? QStringLiteral("true") : QStringLiteral("false")));
     lines.push_back(QStringLiteral("mcp_server=%1").arg(mcpServer.isEmpty() ? QStringLiteral("unset") : mcpServer));
     lines.push_back(QStringLiteral("mcp_catalog=%1").arg(mcpCatalog.isEmpty() ? QStringLiteral("unset") : mcpCatalog));
-    lines.push_back(QStringLiteral("@playwright/mcp=%1").arg(mcpPackageHealthLabel(mcpRoot, QStringLiteral("@playwright/mcp"))));
-    lines.push_back(QStringLiteral("@modelcontextprotocol/server-filesystem=%1").arg(mcpPackageHealthLabel(mcpRoot, QStringLiteral("@modelcontextprotocol/server-filesystem"))));
-    lines.push_back(QStringLiteral("@modelcontextprotocol/server-memory=%1").arg(mcpPackageHealthLabel(mcpRoot, QStringLiteral("@modelcontextprotocol/server-memory"))));
-    lines.push_back(QStringLiteral("@modelcontextprotocol/server-brave-search=%1").arg(mcpPackageHealthLabel(mcpRoot, QStringLiteral("@modelcontextprotocol/server-brave-search"))));
     return lines.join(QStringLiteral("; "));
 }
 
@@ -1079,6 +1096,57 @@ MemoryRecord runtimeToolStatusMemory(const AppSettings *settings)
     return record;
 }
 
+QString configuredAgentProviderMode(const AppSettings *settings)
+{
+    const QString configured = settings != nullptr
+        ? settings->agentProviderMode().trimmed().toLower()
+        : QStringLiteral("auto");
+    if (configured == QStringLiteral("responses") || configured == QStringLiteral("chat_adapter")) {
+        return configured;
+    }
+    return QStringLiteral("auto");
+}
+
+QString effectiveAgentProviderModeText(const AppSettings *settings,
+                                       const AgentCapabilitySet &capabilities,
+                                       const QString &modelId,
+                                       const AiRequestCoordinator *coordinator)
+{
+    const QString configured = configuredAgentProviderMode(settings);
+    if (configured == QStringLiteral("responses") || configured == QStringLiteral("chat_adapter")) {
+        return configured;
+    }
+    if (coordinator != nullptr
+        && coordinator->resolveAgentTransport(capabilities, modelId) == AgentTransportMode::Responses) {
+        return QStringLiteral("responses");
+    }
+    return QStringLiteral("chat_adapter");
+}
+
+QString agentCapabilityStatusText(const AppSettings *settings,
+                                  const AgentCapabilitySet &capabilities,
+                                  const QString &modelId,
+                                  const AiRequestCoordinator *coordinator)
+{
+    if (settings != nullptr && !settings->agentEnabled()) {
+        return QStringLiteral("Agent disabled");
+    }
+    if (coordinator == nullptr) {
+        return capabilities.status;
+    }
+
+    switch (coordinator->resolveAgentTransport(capabilities, modelId)) {
+    case AgentTransportMode::Responses:
+        return QStringLiteral("Responses tool-calling ready");
+    case AgentTransportMode::ChatAdapter:
+        return QStringLiteral("Chat adapter fallback ready");
+    case AgentTransportMode::CapabilityError:
+        return coordinator->capabilityErrorText(capabilities, modelId);
+    }
+
+    return capabilities.status;
+}
+
 QString groundedToolInventoryText(const QList<AgentToolSpec> &tools, const AppSettings *settings)
 {
     QStringList names;
@@ -1088,7 +1156,7 @@ QString groundedToolInventoryText(const QList<AgentToolSpec> &tools, const AppSe
         }
     }
     names.removeDuplicates();
-    return QStringLiteral("I can use these tools right now: %1. File reads can access readable paths on this PC. File writes stay sandboxed to the app roots. Runtime MCP and tool health: %2")
+    return QStringLiteral("I can use these tools right now: %1. File reads can access readable paths on this PC. File writes stay sandboxed to the app roots. Runtime capability status: %2")
         .arg(names.join(QStringLiteral(", ")), runtimeToolStatusSummary(settings));
 }
 
@@ -1131,6 +1199,9 @@ AssistantController::AssistantController(
     m_promptAdapter = new PromptAdapter(this);
     m_streamAssembler = new StreamAssembler(this);
     m_memoryStore = new MemoryStore(this);
+    m_inputRouter = std::make_unique<InputRouter>();
+    m_aiRequestCoordinator = std::make_unique<AiRequestCoordinator>(m_settings, m_reasoningRouter);
+    m_memoryPolicyHandler = std::make_unique<MemoryPolicyHandler>(m_identityProfileService, m_memoryStore);
     m_skillStore = new SkillStore(this);
     m_agentToolbox = new AgentToolbox(m_settings, m_memoryStore, m_skillStore, m_loggingService, this);
     m_deviceManager = new DeviceManager(this);
@@ -1142,6 +1213,7 @@ AssistantController::AssistantController(
     m_toolWorker = new ToolWorker(backgroundAllowedRoots(), m_loggingService, m_settings);
     m_whisperSttEngine = new RuntimeSpeechRecognizer(m_voicePipelineRuntime, this);
     m_ttsEngine = new WorkerTtsEngine(m_voicePipelineRuntime, this);
+    m_responseFinalizer = std::make_unique<ResponseFinalizer>(m_memoryStore, m_ttsEngine, m_loggingService);
     m_worldStateCache = new WorldStateCache(15000, 2000, this);
     m_visionIngestService = new VisionIngestService(m_settings, m_loggingService, this);
     m_gestureInterpreter = new GestureInterpreter(this);
@@ -1264,12 +1336,14 @@ void AssistantController::initialize()
             || lowered.contains(QStringLiteral("gpt-oss"))
             || lowered.contains(QStringLiteral("tool"));
         m_agentCapabilities.agentEnabled = m_settings->agentEnabled();
-        m_agentCapabilities.providerMode = m_agentCapabilities.responsesApi
-            ? QStringLiteral("responses_hybrid")
-            : QStringLiteral("chat_hybrid");
-        m_agentCapabilities.status = m_agentCapabilities.responsesApi
-            ? QStringLiteral("Hybrid agent ready with responses backend")
-            : QStringLiteral("Hybrid agent ready with chat fallback");
+        m_agentCapabilities.providerMode = effectiveAgentProviderModeText(m_settings,
+                                                                          m_agentCapabilities,
+                                                                          modelId,
+                                                                          m_aiRequestCoordinator.get());
+        m_agentCapabilities.status = agentCapabilityStatusText(m_settings,
+                                                               m_agentCapabilities,
+                                                               modelId,
+                                                               m_aiRequestCoordinator.get());
         emit agentStateChanged();
         updateStartupState();
     });
@@ -1505,12 +1579,14 @@ void AssistantController::initialize()
     connect(m_aiBackendClient, &AiBackendClient::capabilitiesChanged, this, [this](const AgentCapabilitySet &capabilities) {
         m_agentCapabilities = capabilities;
         m_agentCapabilities.agentEnabled = m_settings->agentEnabled();
-        m_agentCapabilities.providerMode = capabilities.responsesApi
-            ? QStringLiteral("responses_hybrid")
-            : QStringLiteral("chat_hybrid");
-        m_agentCapabilities.status = capabilities.responsesApi
-            ? QStringLiteral("Hybrid agent ready with responses backend")
-            : QStringLiteral("Hybrid agent ready with chat fallback");
+        m_agentCapabilities.providerMode = effectiveAgentProviderModeText(m_settings,
+                                                                          m_agentCapabilities,
+                                                                          selectedModel(),
+                                                                          m_aiRequestCoordinator.get());
+        m_agentCapabilities.status = agentCapabilityStatusText(m_settings,
+                                                               m_agentCapabilities,
+                                                               selectedModel(),
+                                                               m_aiRequestCoordinator.get());
         emit agentStateChanged();
     });
     connect(m_aiBackendClient, &AiBackendClient::requestFinished, this, [this](quint64 requestId, const QString &fullText) {
@@ -1544,9 +1620,7 @@ void AssistantController::initialize()
                 m_loggingService->error(QStringLiteral("Local AI backend request failed. requestId=%1 error=\"%2\"")
                     .arg(QString::number(requestId), errorText));
             }
-            const QString errorGroup = errorText.contains(QStringLiteral("timed out"), Qt::CaseInsensitive)
-                ? QStringLiteral("error_timeout")
-                : QStringLiteral("ai_offline");
+            const QString errorGroup = m_aiRequestCoordinator->errorGroupFor(errorText);
             refreshConversationSession();
             setSurfaceError(QStringLiteral("assistant"), compactSurfaceText(errorText));
             deliverLocalResponse(
@@ -1700,7 +1774,7 @@ void AssistantController::submitText(const QString &text)
             .arg(wakeDetected ? QStringLiteral("true") : QStringLiteral("false"))
             .arg(routedInput.left(240)));
     }
-    updateUserProfileFromInput(effectiveInput);
+    m_memoryPolicyHandler->applyUserInput(effectiveInput);
     m_memoryStore->appendConversation(QStringLiteral("user"), trimmed);
 
     if (wakeDetected && routedInput.isEmpty()) {
@@ -2077,6 +2151,14 @@ void AssistantController::setSelectedModel(const QString &modelId)
         || modelId.toLower().contains(QStringLiteral("llama"))
         || modelId.toLower().contains(QStringLiteral("gpt-oss"))
         || modelId.toLower().contains(QStringLiteral("tool"));
+    m_agentCapabilities.providerMode = effectiveAgentProviderModeText(m_settings,
+                                                                      m_agentCapabilities,
+                                                                      modelId,
+                                                                      m_aiRequestCoordinator.get());
+    m_agentCapabilities.status = agentCapabilityStatusText(m_settings,
+                                                           m_agentCapabilities,
+                                                           modelId,
+                                                           m_aiRequestCoordinator.get());
     emit modelsChanged();
     emit agentStateChanged();
     refreshModels();
@@ -2932,19 +3014,20 @@ LocalResponseContext AssistantController::buildLocalResponseContext() const
 
 void AssistantController::deliverLocalResponse(const QString &text, const QString &status, bool speak)
 {
-    m_responseText = text;
-    emit responseTextChanged();
-    m_memoryStore->appendConversation(QStringLiteral("assistant"), text);
-    if (m_loggingService) {
-        m_loggingService->info(QStringLiteral("Local response delivered. status=\"%1\" text=\"%2\"")
-            .arg(status, text.left(240)));
-    }
-    logPromptResponsePair(text, QStringLiteral("local"), status);
-    setStatus(status);
-    if (speak) {
-        refreshConversationSession();
-        m_ttsEngine->speakText(text);
-    } else {
+    SpokenReply reply;
+    reply.displayText = text;
+    reply.spokenText = speak ? text : QString{};
+    reply.shouldSpeak = speak;
+    const bool spoke = m_responseFinalizer->finalizeResponse(
+        QStringLiteral("local"),
+        reply,
+        &m_responseText,
+        [this]() { emit responseTextChanged(); },
+        [this]() { refreshConversationSession(); },
+        [this](const QString &response, const QString &source, const QString &logStatus) { logPromptResponsePair(response, source, logStatus); },
+        status,
+        [this](const QString &newStatus) { setStatus(newStatus); });
+    if (!spoke) {
         setDuplexState(DuplexState::Open);
         if (conversationSessionShouldContinue()) {
             const int restartDelayMs = m_followUpListeningAfterWakeAck
@@ -2964,8 +3047,9 @@ void AssistantController::deliverLocalResponse(const QString &text, const QStrin
 
 void AssistantController::startConversationRequest(const QString &input)
 {
-    const ReasoningMode mode = m_reasoningRouter->chooseMode(input, m_settings->autoRoutingEnabled(), m_settings->defaultReasoningMode());
-    const QString modelId = m_settings->chatBackendModel().isEmpty() && !availableModelIds().isEmpty() ? availableModelIds().first() : m_settings->chatBackendModel();
+    const ReasoningMode mode = m_aiRequestCoordinator->chooseReasoningMode(input);
+    m_activeReasoningMode = mode;
+    const QString modelId = m_aiRequestCoordinator->resolveModelId(availableModelIds());
     if (modelId.isEmpty()) {
         setStatus(QStringLiteral("No local AI backend model selected"));
         emit idleRequested();
@@ -2978,8 +3062,7 @@ void AssistantController::startConversationRequest(const QString &input)
             .arg(modelId, userFacingPromptForLogging(input).left(240)));
     }
 
-    QList<MemoryRecord> requestMemory = m_memoryStore->relevantMemory(input);
-    requestMemory.push_front(runtimeToolStatusMemory(m_settings));
+    QList<MemoryRecord> requestMemory = m_memoryPolicyHandler->requestMemory(input, runtimeToolStatusMemory(m_settings));
 
     const auto messages = m_promptAdapter->buildConversationMessages(
         input,
@@ -3004,8 +3087,9 @@ void AssistantController::startConversationRequest(const QString &input)
 
 void AssistantController::startAgentConversationRequest(const QString &input, IntentType expectedIntent)
 {
-    const ReasoningMode mode = m_reasoningRouter->chooseMode(input, m_settings->autoRoutingEnabled(), m_settings->defaultReasoningMode());
-    const QString modelId = m_settings->chatBackendModel().isEmpty() && !availableModelIds().isEmpty() ? availableModelIds().first() : m_settings->chatBackendModel();
+    const ReasoningMode mode = m_aiRequestCoordinator->chooseReasoningMode(input);
+    m_activeReasoningMode = mode;
+    const QString modelId = m_aiRequestCoordinator->resolveModelId(availableModelIds());
     if (modelId.isEmpty()) {
         setStatus(QStringLiteral("No local AI backend model selected"));
         emit idleRequested();
@@ -3019,9 +3103,11 @@ void AssistantController::startAgentConversationRequest(const QString &input, In
     m_agentTrace.clear();
     emit agentTraceChanged();
     const QList<AgentToolSpec> relevantTools = m_promptAdapter->getRelevantTools(
+        input,
         expectedIntent,
         m_agentToolbox->builtInTools());
-    const bool directToolCalling = m_agentCapabilities.responsesApi && m_agentCapabilities.selectedModelToolCapable;
+    const AgentTransportMode transportMode = m_aiRequestCoordinator->resolveAgentTransport(m_agentCapabilities, modelId);
+    const bool directToolCalling = transportMode == AgentTransportMode::Responses;
     appendAgentTrace(QStringLiteral("session"),
                      QStringLiteral("Agent request"),
                      directToolCalling
@@ -3034,8 +3120,15 @@ void AssistantController::startAgentConversationRequest(const QString &input, In
             .arg(modelId, input.left(240)));
     }
 
-    QList<MemoryRecord> requestMemory = m_memoryStore->relevantMemory(input);
-    requestMemory.push_front(runtimeToolStatusMemory(m_settings));
+    QList<MemoryRecord> requestMemory = m_memoryPolicyHandler->requestMemory(input, runtimeToolStatusMemory(m_settings));
+
+    if (transportMode == AgentTransportMode::CapabilityError) {
+        deliverLocalResponse(
+            m_localResponseEngine->respondToError(QStringLiteral("error_capability"), buildLocalResponseContext()),
+            m_aiRequestCoordinator->capabilityErrorText(m_agentCapabilities, modelId),
+            true);
+        return;
+    }
 
     if (directToolCalling) {
         const QString visionContext = buildVisionPromptContext(input, expectedIntent);
@@ -3095,14 +3188,14 @@ void AssistantController::continueAgentConversation(const QList<AgentToolResult>
 
     ++m_activeAgentIteration;
     QList<AgentToolSpec> relevantTools = m_promptAdapter->getRelevantTools(
+        m_lastAgentInput,
         m_lastAgentIntent,
         m_agentToolbox->builtInTools());
     if (relevantTools.isEmpty()) {
         relevantTools = m_agentToolbox->builtInTools();
     }
 
-    QList<MemoryRecord> requestMemory = m_memoryStore->relevantMemory(m_lastAgentInput);
-    requestMemory.push_front(runtimeToolStatusMemory(m_settings));
+    QList<MemoryRecord> requestMemory = m_memoryPolicyHandler->requestMemory(m_lastAgentInput, runtimeToolStatusMemory(m_settings));
 
     const AgentRequest request{
         .model = selectedModel(),
@@ -3121,7 +3214,7 @@ void AssistantController::continueAgentConversation(const QList<AgentToolResult>
         .tools = relevantTools,
         .toolResults = results,
         .sampling = samplingProfile(),
-        .mode = m_settings->defaultReasoningMode(),
+        .mode = m_activeReasoningMode,
         .timeout = std::chrono::milliseconds(effectiveRequestTimeoutMs(m_settings))
     };
     m_activeRequestId = m_aiBackendClient->sendAgentRequest(request);
@@ -3380,7 +3473,8 @@ void AssistantController::handleGestureReject()
 
 void AssistantController::startCommandRequest(const QString &input)
 {
-    const QString modelId = m_settings->chatBackendModel().isEmpty() && !availableModelIds().isEmpty() ? availableModelIds().first() : m_settings->chatBackendModel();
+    m_activeReasoningMode = ReasoningMode::Fast;
+    const QString modelId = m_aiRequestCoordinator->resolveModelId(availableModelIds());
     if (modelId.isEmpty()) {
         setStatus(QStringLiteral("No local AI backend model selected"));
         emit idleRequested();
@@ -3412,14 +3506,17 @@ void AssistantController::startCommandRequest(const QString &input)
 void AssistantController::handleConversationFinished(const QString &text)
 {
     const SpokenReply reply = parseSpokenReply(text);
-    m_responseText = reply.displayText;
-    emit responseTextChanged();
-    m_memoryStore->appendConversation(QStringLiteral("assistant"), reply.displayText);
     m_streamAssembler->drainRemainingText();
-    if (reply.shouldSpeak && !reply.spokenText.isEmpty()) {
-        refreshConversationSession();
-        m_ttsEngine->speakText(reply.spokenText);
-    } else if (!m_ttsEngine->isSpeaking()) {
+    const bool spoke = m_responseFinalizer->finalizeResponse(
+        QStringLiteral("conversation"),
+        reply,
+        &m_responseText,
+        [this]() { emit responseTextChanged(); },
+        [this]() { refreshConversationSession(); },
+        [this](const QString &response, const QString &source, const QString &status) { logPromptResponsePair(response, source, status); },
+        QStringLiteral("Response ready"),
+        [this](const QString &status) { setStatus(status); });
+    if (!spoke && !m_ttsEngine->isSpeaking()) {
         setDuplexState(DuplexState::Open);
         if (conversationSessionShouldContinue()) {
             if (!scheduleConversationSessionListening(conversationSessionRestartDelayMs())) {
@@ -3432,8 +3529,6 @@ void AssistantController::handleConversationFinished(const QString &text)
         }
         emit idleRequested();
     }
-    logPromptResponsePair(reply.displayText, QStringLiteral("conversation"), QStringLiteral("Response ready"));
-    setStatus(QStringLiteral("Response ready"));
 }
 
 void AssistantController::handleHybridAgentFinished(const QString &payload)
@@ -3444,13 +3539,17 @@ void AssistantController::handleHybridAgentFinished(const QString &payload)
     const auto json = nlohmann::json::parse(jsonPayload.toStdString(), nullptr, false);
     if (json.is_discarded() || !json.is_object()) {
         appendAgentTrace(QStringLiteral("validation"), QStringLiteral("Hybrid payload rejected"), QStringLiteral("The model returned invalid JSON."), false);
-        handleConversationFinished(payload);
+        deliverLocalResponse(
+            m_localResponseEngine->respondToError(QStringLiteral("error_invalid"), buildLocalResponseContext()),
+            QStringLiteral("The chat adapter returned invalid JSON."),
+            true);
         return;
     }
 
     const IntentType returnedIntent = intentTypeFromString(QString::fromStdString(json.value("intent", std::string{})));
     const QString message = QString::fromStdString(json.value("message", std::string{})).trimmed();
     const QList<AgentToolSpec> relevantTools = m_promptAdapter->getRelevantTools(
+        m_lastAgentInput,
         m_lastAgentIntent,
         m_agentToolbox->builtInTools());
     const QStringList allowedTaskTypes = [&relevantTools]() {
@@ -3462,7 +3561,20 @@ void AssistantController::handleHybridAgentFinished(const QString &payload)
     }();
 
     QList<AgentTask> tasks;
-    for (const AgentTask &task : parseBackgroundTasks(json)) {
+    for (const AgentToolCall &call : parseAdapterToolCalls(json)) {
+        const QJsonDocument argsDocument = QJsonDocument::fromJson(call.argumentsJson.toUtf8());
+        if (!call.argumentsJson.trimmed().isEmpty() && !argsDocument.isObject()) {
+            appendAgentTrace(QStringLiteral("validation"),
+                             QStringLiteral("Rejected tool call"),
+                             QStringLiteral("Tool call %1 returned invalid arguments JSON.").arg(call.name),
+                             false);
+            continue;
+        }
+        QJsonObject args = argsDocument.object();
+        AgentTask task;
+        task.type = call.name;
+        task.args = args;
+        task.priority = 50;
         if (!allowedTaskTypes.isEmpty() && !allowedTaskTypes.contains(task.type)) {
             appendAgentTrace(QStringLiteral("validation"),
                              QStringLiteral("Rejected background task"),
@@ -3491,14 +3603,17 @@ void AssistantController::handleHybridAgentFinished(const QString &payload)
         : message;
 
     const SpokenReply reply = parseSpokenReply(effectiveMessage);
-    m_responseText = reply.displayText;
-    emit responseTextChanged();
-    m_memoryStore->appendConversation(QStringLiteral("assistant"), reply.displayText);
+    const bool spoke = m_responseFinalizer->finalizeResponse(
+        QStringLiteral("agent"),
+        reply,
+        &m_responseText,
+        [this]() { emit responseTextChanged(); },
+        [this]() { refreshConversationSession(); },
+        [this](const QString &response, const QString &source, const QString &status) { logPromptResponsePair(response, source, status); },
+        QStringLiteral("Response ready"),
+        [this](const QString &status) { setStatus(status); });
 
-    if (reply.shouldSpeak && !reply.spokenText.isEmpty()) {
-        refreshConversationSession();
-        m_ttsEngine->speakText(reply.spokenText);
-    } else if (!m_ttsEngine->isSpeaking()) {
+    if (!spoke && !m_ttsEngine->isSpeaking()) {
         setDuplexState(DuplexState::Open);
         if (conversationSessionShouldContinue()) {
             if (!scheduleConversationSessionListening(conversationSessionRestartDelayMs())) {
@@ -3522,7 +3637,6 @@ void AssistantController::handleHybridAgentFinished(const QString &payload)
                                            QStringLiteral("Response ready"));
     }
     m_lastPromptForAiLog.clear();
-    setStatus(QStringLiteral("Response ready"));
 }
 
 void AssistantController::handleAgentResponse(const AgentResponse &response)
@@ -3547,17 +3661,20 @@ void AssistantController::handleAgentResponse(const AgentResponse &response)
     }
 
     if (m_settings->memoryAutoWrite()) {
-        m_memoryStore->extractUserFacts(m_lastAgentInput);
+        m_memoryPolicyHandler->captureExplicitMemoryFromInput(m_lastAgentInput);
     }
 
     const SpokenReply reply = parseSpokenReply(response.outputText);
-    m_responseText = reply.displayText;
-    emit responseTextChanged();
-    m_memoryStore->appendConversation(QStringLiteral("assistant"), reply.displayText);
-    if (reply.shouldSpeak && !reply.spokenText.isEmpty()) {
-        refreshConversationSession();
-        m_ttsEngine->speakText(reply.spokenText);
-    } else if (!m_ttsEngine->isSpeaking()) {
+    const bool spoke = m_responseFinalizer->finalizeResponse(
+        QStringLiteral("agent"),
+        reply,
+        &m_responseText,
+        [this]() { emit responseTextChanged(); },
+        [this]() { refreshConversationSession(); },
+        [this](const QString &responseText, const QString &source, const QString &status) { logPromptResponsePair(responseText, source, status); },
+        QStringLiteral("Response ready"),
+        [this](const QString &status) { setStatus(status); });
+    if (!spoke && !m_ttsEngine->isSpeaking()) {
         setDuplexState(DuplexState::Open);
         if (conversationSessionShouldContinue()) {
             if (!scheduleConversationSessionListening(conversationSessionRestartDelayMs())) {
@@ -3581,7 +3698,6 @@ void AssistantController::handleAgentResponse(const AgentResponse &response)
                                            QStringLiteral("Response ready"));
     }
     m_lastPromptForAiLog.clear();
-    setStatus(QStringLiteral("Response ready"));
 }
 
 void AssistantController::handleCommandFinished(const QString &text)
@@ -3615,13 +3731,19 @@ void AssistantController::handleCommandFinished(const QString &text)
     const QString message = m_localResponseEngine->acknowledgement(command.target, buildLocalResponseContext())
         + QStringLiteral(" ")
         + result;
-    m_responseText = message;
-    emit responseTextChanged();
-    m_memoryStore->appendConversation(QStringLiteral("assistant"), message);
-    refreshConversationSession();
-    m_ttsEngine->speakText(message);
-    logPromptResponsePair(message, QStringLiteral("command"), QStringLiteral("Command executed"));
-    setStatus(QStringLiteral("Command executed"));
+    SpokenReply reply;
+    reply.displayText = message;
+    reply.spokenText = message;
+    reply.shouldSpeak = true;
+    m_responseFinalizer->finalizeResponse(
+        QStringLiteral("command"),
+        reply,
+        &m_responseText,
+        [this]() { emit responseTextChanged(); },
+        [this]() { refreshConversationSession(); },
+        [this](const QString &responseText, const QString &source, const QString &status) { logPromptResponsePair(responseText, source, status); },
+        QStringLiteral("Command executed"),
+        [this](const QString &status) { setStatus(status); });
 }
 
 void AssistantController::dispatchBackgroundTasks(const QList<AgentTask> &tasks)
@@ -3652,6 +3774,7 @@ void AssistantController::recordTaskResult(const QJsonObject &resultObject)
     result.type = resultObject.value(QStringLiteral("type")).toString();
     result.success = resultObject.value(QStringLiteral("success")).toBool();
     result.state = static_cast<TaskState>(resultObject.value(QStringLiteral("state")).toInt(static_cast<int>(TaskState::Finished)));
+    result.errorKind = static_cast<ToolErrorKind>(resultObject.value(QStringLiteral("errorKind")).toInt(static_cast<int>(ToolErrorKind::Unknown)));
     result.title = resultObject.value(QStringLiteral("title")).toString();
     result.summary = resultObject.value(QStringLiteral("summary")).toString();
     result.detail = resultObject.value(QStringLiteral("detail")).toString();

@@ -48,7 +48,9 @@ public:
         bool memoryAutoWrite,
         const QString &visionContext = QString()) const;
 
-    QList<AgentToolSpec> getRelevantTools(IntentType intent, const QList<AgentToolSpec> &availableTools) const;
+    QList<AgentToolSpec> getRelevantTools(const QString &input,
+                                          IntentType intent,
+                                          const QList<AgentToolSpec> &availableTools) const;
     QString buildAgentWorldContext(
         IntentType intent,
         const QList<AgentToolSpec> &availableTools,

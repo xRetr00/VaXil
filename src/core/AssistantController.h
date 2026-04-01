@@ -4,6 +4,7 @@
 #include <QObject>
 #include <QPair>
 #include <QThread>
+#include <memory>
 
 #include "core/AssistantTypes.h"
 
@@ -34,6 +35,10 @@ class VisionIngestService;
 class WakeWordEngine;
 class VoicePipelineRuntime;
 class WorldStateCache;
+class AiRequestCoordinator;
+class InputRouter;
+class MemoryPolicyHandler;
+class ResponseFinalizer;
 
 class AssistantController : public QObject
 {
@@ -256,6 +261,9 @@ private:
     PromptAdapter *m_promptAdapter = nullptr;
     StreamAssembler *m_streamAssembler = nullptr;
     MemoryStore *m_memoryStore = nullptr;
+    std::unique_ptr<InputRouter> m_inputRouter;
+    std::unique_ptr<AiRequestCoordinator> m_aiRequestCoordinator;
+    std::unique_ptr<MemoryPolicyHandler> m_memoryPolicyHandler;
     SkillStore *m_skillStore = nullptr;
     AgentToolbox *m_agentToolbox = nullptr;
     DeviceManager *m_deviceManager = nullptr;
@@ -288,6 +296,7 @@ private:
     QString m_lastPromptForAiLog;
     QString m_lastAgentInput;
     IntentType m_lastAgentIntent = IntentType::GENERAL_CHAT;
+    ReasoningMode m_activeReasoningMode = ReasoningMode::Balanced;
     QString m_previousAgentResponseId;
     int m_activeAgentIteration = 0;
     AgentCapabilitySet m_agentCapabilities;
@@ -326,6 +335,7 @@ private:
     bool m_wakeStartRequested = false;
     QString m_lastWakeError;
     QString m_startupBlockingIssue = QStringLiteral("Loading services...");
+    std::unique_ptr<ResponseFinalizer> m_responseFinalizer;
     QThread m_toolWorkerThread;
     QThread m_gestureActionRouterThread;
 };

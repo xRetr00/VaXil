@@ -14,6 +14,7 @@ private slots:
     void promptAdapterInjectsIdentityAndProfile();
     void promptAdapterInjectsRuntimeContext();
     void promptAdapterInjectsVisionContext();
+    void promptAdapterUsesCanonicalToolCallEnvelope();
     void promptAdapterSelectsComputerToolsForGeneralChat();
     void promptAdapterPrefersPlaywrightForBrowserRequests();
     void spokenReplyParsesStructuredPayload();
@@ -28,14 +29,14 @@ void AiServicesTests::promptAdapterAppliesNoThink()
 {
     PromptAdapter adapter;
     QCOMPARE(adapter.applyReasoningMode(QStringLiteral("turn on the light"), ReasoningMode::Fast),
-             QStringLiteral("turn on the light"));
+             QStringLiteral("[FAST MODE] turn on the light"));
 }
 
 void AiServicesTests::promptAdapterAppliesDeepPrefix()
 {
     PromptAdapter adapter;
     QCOMPARE(adapter.applyReasoningMode(QStringLiteral("Explain this"), ReasoningMode::Deep),
-             QStringLiteral("Explain this"));
+             QStringLiteral("[DEEP MODE] Explain this"));
 }
 
 void AiServicesTests::promptAdapterInjectsIdentityAndProfile()
@@ -59,7 +60,7 @@ void AiServicesTests::promptAdapterInjectsIdentityAndProfile()
         ReasoningMode::Balanced);
 
     QVERIFY(messages.first().content.contains(QStringLiteral("You are Vaxil")));
-    QVERIFY(messages.first().content.contains(QStringLiteral("user name: Alex")));
+    QVERIFY(messages.first().content.contains(QStringLiteral("User name: Alex")));
     QVERIFY(messages.first().content.contains(QStringLiteral("theme = dark")));
 }
 
@@ -80,7 +81,7 @@ void AiServicesTests::promptAdapterInjectsRuntimeContext()
         {},
         ReasoningMode::Balanced);
 
-    QVERIFY(messages.first().content.contains(QStringLiteral("Current runtime context:")));
+    QVERIFY(messages.first().content.contains(QStringLiteral("Runtime:")));
     QVERIFY(messages.first().content.contains(QStringLiteral("wake phrase: Hey Vaxil")));
     QVERIFY(messages.first().content.contains(QStringLiteral("timezone:")));
     QVERIFY(messages.first().content.contains(QStringLiteral("Spoken-safe output only")));
@@ -107,23 +108,59 @@ void AiServicesTests::promptAdapterInjectsVisionContext()
     QVERIFY(messages.first().content.contains(QStringLiteral("current scene summary: User appears to be holding a red can")));
 }
 
+void AiServicesTests::promptAdapterUsesCanonicalToolCallEnvelope()
+{
+    PromptAdapter adapter;
+
+    const auto messages = adapter.buildHybridAgentMessages(
+        QStringLiteral("list files in the project"),
+        {},
+        {
+            .assistantName = QStringLiteral("Vaxil"),
+            .personality = QStringLiteral("calm"),
+            .tone = QStringLiteral("confident"),
+            .addressingStyle = QStringLiteral("direct")
+        },
+        {},
+        QStringLiteral("D:/Vaxil"),
+        IntentType::LIST_FILES,
+        {{QStringLiteral("dir_list"), QStringLiteral("List a directory"), nlohmann::json::object()}},
+        ReasoningMode::Balanced);
+
+    QVERIFY(messages.first().content.contains(QStringLiteral("tool_calls")));
+    QVERIFY(!messages.first().content.contains(QStringLiteral("background_tasks")));
+    QVERIFY(messages.first().content.contains(QStringLiteral("<workspace_root>")));
+}
+
 void AiServicesTests::promptAdapterSelectsComputerToolsForGeneralChat()
 {
     PromptAdapter adapter;
     const QList<AgentToolSpec> tools = {
+        {QStringLiteral("browser_open"), {}, {}},
+        {QStringLiteral("dir_list"), {}, {}},
+        {QStringLiteral("file_search"), {}, {}},
+        {QStringLiteral("memory_search"), {}, {}},
+        {QStringLiteral("web_search"), {}, {}},
         {QStringLiteral("computer_open_url"), {}, {}},
         {QStringLiteral("computer_open_app"), {}, {}},
         {QStringLiteral("computer_write_file"), {}, {}},
-        {QStringLiteral("computer_set_timer"), {}, {}},
-        {QStringLiteral("web_search"), {}, {}}
+        {QStringLiteral("computer_set_timer"), {}, {}}
     };
 
-    const QList<AgentToolSpec> selected = adapter.getRelevantTools(IntentType::GENERAL_CHAT, tools);
+    const QList<AgentToolSpec> selected = adapter.getRelevantTools(
+        QStringLiteral("open the browser and search the web"),
+        IntentType::GENERAL_CHAT,
+        tools);
     QStringList names;
     for (const auto &tool : selected) {
         names.push_back(tool.name);
     }
 
+    QVERIFY(names.contains(QStringLiteral("browser_open")));
+    QVERIFY(names.contains(QStringLiteral("dir_list")));
+    QVERIFY(names.contains(QStringLiteral("file_search")));
+    QVERIFY(names.contains(QStringLiteral("memory_search")));
+    QVERIFY(names.contains(QStringLiteral("web_search")));
     QVERIFY(names.contains(QStringLiteral("computer_open_url")));
     QVERIFY(names.contains(QStringLiteral("computer_open_app")));
     QVERIFY(names.contains(QStringLiteral("computer_write_file")));

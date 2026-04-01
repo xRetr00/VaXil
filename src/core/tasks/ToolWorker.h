@@ -10,11 +10,10 @@
 #include <QStringList>
 
 #include "core/AssistantTypes.h"
-#include "memory/MemoryManager.h"
 
 class LoggingService;
 class AppSettings;
-class PythonRuntimeManager;
+class ToolExecutionService;
 
 class ToolWorker : public QObject
 {
@@ -46,32 +45,10 @@ private:
     QString cacheKeyFor(const AgentTask &task) const;
     bool isCooldownActive(const AgentTask &task) const;
     std::optional<QJsonObject> cachedResultFor(const AgentTask &task) const;
-    QJsonObject buildResult(const AgentTask &task,
-                            bool success,
-                            TaskState state,
-                            const QString &title,
-                            const QString &summary,
-                            const QString &detail,
-                            const QJsonObject &payload = {}) const;
-    QJsonObject processDirList(const AgentTask &task);
-    QJsonObject processFileRead(const AgentTask &task);
-    QJsonObject processFileWrite(const AgentTask &task);
-    QJsonObject processLogTail(const AgentTask &task);
-    QJsonObject processLogSearch(const AgentTask &task);
-    QJsonObject processAiLogRead(const AgentTask &task);
-    QJsonObject processWebSearch(const AgentTask &task);
-    QJsonObject processMemoryWrite(const AgentTask &task);
-    QJsonObject processComputerListApps(const AgentTask &task);
-    QJsonObject processComputerOpenApp(const AgentTask &task);
-    QJsonObject processComputerOpenUrl(const AgentTask &task);
-    QJsonObject processComputerWriteFile(const AgentTask &task);
-    QJsonObject processComputerSetTimer(const AgentTask &task);
-
     QStringList m_allowedRoots;
     LoggingService *m_loggingService = nullptr;
     AppSettings *m_settings = nullptr;
-    PythonRuntimeManager *m_pythonRuntime = nullptr;
-    std::unique_ptr<MemoryManager> m_memoryManager;
+    ToolExecutionService *m_toolExecutionService = nullptr;
     QHash<QString, QElapsedTimer> m_lastExecution;
     QHash<QString, CachedResult> m_cache;
     QSet<int> m_canceledTaskIds;
