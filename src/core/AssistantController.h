@@ -39,6 +39,10 @@ class AiRequestCoordinator;
 class InputRouter;
 class MemoryPolicyHandler;
 class ResponseFinalizer;
+class ToolCoordinator;
+struct InputRouterContext;
+struct IntentResult;
+struct SpokenReply;
 
 class AssistantController : public QObject
 {
@@ -209,11 +213,28 @@ private:
     int conversationSessionRestartDelayMs() const;
     int maxConversationSessionMisses() const;
     QString buildSttPrompt() const;
+    QString prepareSubmitInput(const QString &trimmed, bool *wakeDetected) const;
+    InputRouterContext buildInputRouteContext(const QString &routedInput,
+                                              const IntentResult &detectedIntent,
+                                              const IntentResult &effectiveIntent,
+                                              LocalIntent localIntent,
+                                              const AiAvailability &availability,
+                                              bool visionRelevantQuery,
+                                              qint64 nowMs) const;
+    bool executeRouteDecision(const InputRouteDecision &decision,
+                              const QString &routedInput,
+                              LocalIntent localIntent,
+                              qint64 nowMs);
     bool shouldIgnoreAmbiguousTranscript(const QString &transcript) const;
     bool shouldEndConversationSession(const QString &input) const;
     void handleConversationSessionMiss(const QString &statusText);
-    void updateUserProfileFromInput(const QString &input);
     LocalResponseContext buildLocalResponseContext() const;
+    bool finalizeReply(const QString &source,
+                       const SpokenReply &reply,
+                       const QString &status,
+                       int restartDelayMs,
+                       bool logAgentExchange = false,
+                       bool allowFollowUpWakeDelay = false);
     void deliverLocalResponse(const QString &text, const QString &status, bool speak = true);
     void scheduleWakeMonitorRestart(int delayMs = 250);
     bool canStartWakeMonitor() const;
@@ -238,8 +259,6 @@ private:
     void handleCommandFinished(const QString &text);
     void dispatchBackgroundTasks(const QList<AgentTask> &tasks);
     void recordTaskResult(const QJsonObject &resultObject);
-    void refreshBackgroundTaskSurface();
-    QPair<QString, QString> backgroundTaskSurfaceCopy(const AgentTask &task) const;
     void setSurfaceError(const QString &source, const QString &primary, const QString &secondary = QString());
     void clearSurfaceError(const QString &source = QString());
     void startWebSearchSummaryRequest(const BackgroundTaskResult &result);
@@ -265,6 +284,7 @@ private:
     std::unique_ptr<InputRouter> m_inputRouter;
     std::unique_ptr<AiRequestCoordinator> m_aiRequestCoordinator;
     std::unique_ptr<MemoryPolicyHandler> m_memoryPolicyHandler;
+    std::unique_ptr<ToolCoordinator> m_toolCoordinator;
     SkillStore *m_skillStore = nullptr;
     AgentToolbox *m_agentToolbox = nullptr;
     DeviceManager *m_deviceManager = nullptr;
@@ -308,16 +328,6 @@ private:
     QString m_lastVisionGestureAction;
     qint64 m_lastVisionQueryMs = 0;
     bool m_backgroundPanelVisible = false;
-    QString m_latestTaskToast;
-    QString m_latestTaskToastTone = QStringLiteral("status");
-    int m_latestTaskToastTaskId = -1;
-    QString m_latestTaskToastType = QStringLiteral("background");
-    int m_nextTaskId = 1;
-    QHash<QString, int> m_activeBackgroundTaskIds;
-    QHash<int, AgentTask> m_knownBackgroundTasks;
-    int m_surfaceBackgroundTaskId = -1;
-    QString m_surfaceBackgroundPrimary;
-    QString m_surfaceBackgroundSecondary;
     QString m_surfaceErrorSource;
     QString m_surfaceErrorPrimary;
     QString m_surfaceErrorSecondary;

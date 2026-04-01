@@ -35,6 +35,7 @@
 #include "core/LocalResponseEngine.h"
 #include "core/MemoryPolicyHandler.h"
 #include "core/ResponseFinalizer.h"
+#include "core/ToolCoordinator.h"
 #include "core/tasks/TaskDispatcher.h"
 #include "core/tasks/ToolWorker.h"
 #include "devices/DeviceManager.h"
@@ -1204,6 +1205,7 @@ AssistantController::AssistantController(
     m_inputRouter = std::make_unique<InputRouter>();
     m_aiRequestCoordinator = std::make_unique<AiRequestCoordinator>(m_settings, m_reasoningRouter);
     m_memoryPolicyHandler = std::make_unique<MemoryPolicyHandler>(m_identityProfileService, m_memoryStore);
+    m_toolCoordinator = std::make_unique<ToolCoordinator>(m_loggingService);
     m_skillStore = new SkillStore(this);
     m_agentToolbox = new AgentToolbox(m_settings, m_memoryStore, m_skillStore, m_loggingService, this);
     m_deviceManager = new DeviceManager(this);
@@ -1232,26 +1234,14 @@ AssistantController::AssistantController(
     connect(m_taskDispatcher, &TaskDispatcher::taskReady, m_toolWorker, &ToolWorker::processTask, Qt::QueuedConnection);
     connect(m_taskDispatcher, &TaskDispatcher::taskCanceled, m_toolWorker, &ToolWorker::cancelTask, Qt::QueuedConnection);
     connect(m_taskDispatcher, &TaskDispatcher::taskCanceled, this, [this](int taskId) {
-        m_knownBackgroundTasks.remove(taskId);
-
-        for (auto it = m_activeBackgroundTaskIds.begin(); it != m_activeBackgroundTaskIds.end();) {
-            if (it.value() == taskId) {
-                it = m_activeBackgroundTaskIds.erase(it);
-            } else {
-                ++it;
-            }
+        if (m_toolCoordinator->handleTaskCanceled(taskId)) {
+            emit assistantSurfaceChanged();
         }
-
-        refreshBackgroundTaskSurface();
     });
     connect(m_taskDispatcher, &TaskDispatcher::activeTaskChanged, this, [this](const QString &taskKey, int taskId) {
-        m_activeBackgroundTaskIds.insert(taskKey, taskId);
-        if (m_knownBackgroundTasks.contains(taskId)) {
-            AgentTask task = m_knownBackgroundTasks.value(taskId);
-            task.state = TaskState::Running;
-            m_knownBackgroundTasks.insert(taskId, task);
+        if (m_toolCoordinator->handleTaskActivated(taskKey, taskId)) {
+            emit assistantSurfaceChanged();
         }
-        refreshBackgroundTaskSurface();
     });
     connect(m_toolWorker, &ToolWorker::taskStarted, m_taskDispatcher, &TaskDispatcher::handleTaskStarted, Qt::QueuedConnection);
     connect(m_toolWorker, &ToolWorker::taskFinished, m_taskDispatcher, &TaskDispatcher::handleTaskFinished, Qt::QueuedConnection);
@@ -1649,7 +1639,9 @@ AssistantSurfaceState AssistantController::assistantSurfaceState() const
     if (!m_surfaceErrorPrimary.trimmed().isEmpty()) {
         return AssistantSurfaceState::Error;
     }
-    if (m_surfaceBackgroundTaskId >= 0 && !m_surfaceBackgroundPrimary.trimmed().isEmpty()) {
+    if (m_toolCoordinator != nullptr
+        && m_toolCoordinator->surfaceBackgroundTaskId() >= 0
+        && !m_toolCoordinator->surfaceBackgroundPrimary().trimmed().isEmpty()) {
         return AssistantSurfaceState::ToolRunning;
     }
 
@@ -1671,7 +1663,7 @@ QString AssistantController::assistantSurfaceActivityPrimary() const
     if (!m_surfaceErrorPrimary.trimmed().isEmpty()) {
         return m_surfaceErrorPrimary;
     }
-    return m_surfaceBackgroundPrimary;
+    return m_toolCoordinator ? m_toolCoordinator->surfaceBackgroundPrimary() : QString{};
 }
 
 QString AssistantController::assistantSurfaceActivitySecondary() const
@@ -1679,7 +1671,7 @@ QString AssistantController::assistantSurfaceActivitySecondary() const
     if (!m_surfaceErrorPrimary.trimmed().isEmpty()) {
         return m_surfaceErrorSecondary;
     }
-    return m_surfaceBackgroundSecondary;
+    return m_toolCoordinator ? m_toolCoordinator->surfaceBackgroundSecondary() : QString{};
 }
 bool AssistantController::startupReady() const { return m_startupReady; }
 bool AssistantController::startupBlocked() const { return m_startupBlocked; }
@@ -1708,12 +1700,12 @@ SamplingProfile AssistantController::samplingProfile() const
         .maxOutputTokens = m_settings->maxOutputTokens()
     };
 }
-QList<BackgroundTaskResult> AssistantController::backgroundTaskResults() const { return m_backgroundTaskResults; }
+QList<BackgroundTaskResult> AssistantController::backgroundTaskResults() const { return m_toolCoordinator ? m_toolCoordinator->backgroundTaskResults() : QList<BackgroundTaskResult>{}; }
 bool AssistantController::backgroundPanelVisible() const { return m_backgroundPanelVisible; }
-QString AssistantController::latestTaskToast() const { return m_latestTaskToast; }
-QString AssistantController::latestTaskToastTone() const { return m_latestTaskToastTone; }
-int AssistantController::latestTaskToastTaskId() const { return m_latestTaskToastTaskId; }
-QString AssistantController::latestTaskToastType() const { return m_latestTaskToastType; }
+QString AssistantController::latestTaskToast() const { return m_toolCoordinator ? m_toolCoordinator->latestTaskToast() : QString{}; }
+QString AssistantController::latestTaskToastTone() const { return m_toolCoordinator ? m_toolCoordinator->latestTaskToastTone() : QStringLiteral("status"); }
+int AssistantController::latestTaskToastTaskId() const { return m_toolCoordinator ? m_toolCoordinator->latestTaskToastTaskId() : -1; }
+QString AssistantController::latestTaskToastType() const { return m_toolCoordinator ? m_toolCoordinator->latestTaskToastType() : QStringLiteral("background"); }
 bool AssistantController::installSkill(const QString &url, QString *error)
 {
     const bool ok = m_skillStore->installSkill(url, error);
@@ -1737,6 +1729,121 @@ void AssistantController::refreshModels()
     m_modelCatalogService->refresh();
 }
 
+QString AssistantController::prepareSubmitInput(const QString &trimmed, bool *wakeDetected) const
+{
+    const bool detected = WakeWordDetector::isWakeWordDetected(trimmed);
+    if (wakeDetected != nullptr) {
+        *wakeDetected = detected;
+    }
+
+    return detected
+        ? normalizeForRouting(WakeWordDetector::stripWakeWordPrefix(trimmed))
+        : trimmed;
+}
+
+InputRouterContext AssistantController::buildInputRouteContext(const QString &routedInput,
+                                                              const IntentResult &detectedIntent,
+                                                              const IntentResult &effectiveIntent,
+                                                              LocalIntent localIntent,
+                                                              const AiAvailability &availability,
+                                                              bool visionRelevantQuery,
+                                                              qint64 nowMs) const
+{
+    Q_UNUSED(nowMs);
+
+    QString extractedWebQuery;
+    if (!visionRelevantQuery) {
+        extractedWebQuery = extractWebSearchQuery(routedInput);
+        if (isWebSearchVerificationQuery(routedInput)) {
+            extractedWebQuery = defaultWebSearchProbeQuery();
+        }
+        if (extractedWebQuery.isEmpty()) {
+            extractedWebQuery = routedInput;
+        }
+    }
+
+    InputRouterContext routeContext;
+    routeContext.backgroundIntentReady = detectedIntent.confidence > 0.8f && !detectedIntent.tasks.isEmpty();
+    routeContext.backgroundTasks = detectedIntent.tasks;
+    routeContext.backgroundSpokenMessage = detectedIntent.spokenMessage;
+    routeContext.localIntent = localIntent;
+    routeContext.visionRelevant = visionRelevantQuery;
+    routeContext.directVisionResponse = visionRelevantQuery && !isExplicitComputerControlQuery(routedInput)
+        ? buildDirectVisionResponse(routedInput)
+        : QString{};
+    routeContext.aiAvailable = availability.online && availability.modelAvailable;
+    routeContext.explicitToolInventory = isExplicitToolInventoryQuery(routedInput);
+    routeContext.toolInventoryText = groundedToolInventoryText(m_agentToolbox->builtInTools(), m_settings);
+    routeContext.explicitWebSearch = !visionRelevantQuery && isExplicitWebSearchQuery(routedInput);
+    routeContext.explicitWebQuery = extractedWebQuery;
+    routeContext.freshnessCode = freshnessCodeForQuery(routedInput);
+    routeContext.likelyKnowledgeLookup = !visionRelevantQuery && m_settings->agentEnabled() && isLikelyKnowledgeLookupQuery(routedInput);
+    routeContext.freshnessSensitive = !visionRelevantQuery && m_settings->agentEnabled() && isFreshnessSensitiveQuery(routedInput);
+    routeContext.agentEnabled = m_settings->agentEnabled();
+    routeContext.explicitAgentWorldQuery = isExplicitAgentWorldQuery(routedInput);
+    routeContext.likelyCommand = m_reasoningRouter->isLikelyCommand(routedInput);
+    routeContext.effectiveIntent = effectiveIntent.type;
+    routeContext.effectiveIntentConfidence = effectiveIntent.confidence;
+    routeContext.explicitComputerControl = isExplicitComputerControlQuery(routedInput);
+    return routeContext;
+}
+
+bool AssistantController::executeRouteDecision(const InputRouteDecision &decision,
+                                               const QString &routedInput,
+                                               LocalIntent localIntent,
+                                               qint64 nowMs)
+{
+    switch (decision.kind) {
+    case InputRouteKind::LocalResponse: {
+        QString response = decision.message;
+        if (response.isEmpty() && (localIntent == LocalIntent::Greeting || localIntent == LocalIntent::SmallTalk)) {
+            response = m_localResponseEngine->respondToIntent(localIntent, buildLocalResponseContext());
+        }
+        if (decision.status == QStringLiteral("Vision response")) {
+            m_lastVisionQueryMs = nowMs;
+        }
+        if (response.isEmpty()) {
+            response = m_localResponseEngine->respondToError(QStringLiteral("error_invalid"), buildLocalResponseContext());
+        }
+        deliverLocalResponse(response, decision.status.isEmpty() ? QStringLiteral("Local response") : decision.status, decision.speak);
+        return true;
+    }
+    case InputRouteKind::AgentCapabilityError:
+        deliverLocalResponse(
+            m_localResponseEngine->respondToError(QStringLiteral("ai_offline"), buildLocalResponseContext()),
+            QStringLiteral("AI unavailable"),
+            true);
+        return true;
+    case InputRouteKind::BackgroundTasks:
+    case InputRouteKind::DeterministicTasks:
+        if (decision.tasks.isEmpty()) {
+            return false;
+        }
+        dispatchBackgroundTasks(decision.tasks);
+        deliverLocalResponse(
+            decision.message.isEmpty() ? QStringLiteral("All right, I'm handling that now.") : decision.message,
+            decision.status.isEmpty() ? QStringLiteral("Background task queued") : decision.status,
+            decision.speak);
+        return true;
+    case InputRouteKind::AgentConversation:
+        startAgentConversationRequest(routedInput, decision.intent);
+        return true;
+    case InputRouteKind::CommandExtraction:
+        startCommandRequest(routedInput);
+        return true;
+    case InputRouteKind::Conversation:
+        if (decision.useVisionContext && !isExplicitComputerControlQuery(routedInput) && m_loggingService) {
+            m_loggingService->info(QStringLiteral("Routing vision-relevant query through conversation. input=\"%1\"")
+                                       .arg(routedInput.left(240)));
+        }
+        startConversationRequest(routedInput);
+        return true;
+    case InputRouteKind::None:
+    default:
+        return false;
+    }
+}
+
 void AssistantController::submitText(const QString &text)
 {
     const QString trimmed = text.trimmed();
@@ -1748,10 +1855,8 @@ void AssistantController::submitText(const QString &text)
     m_lastPromptForAiLog = trimmed;
     invalidateWakeMonitorResume();
 
-    const bool wakeDetected = WakeWordDetector::isWakeWordDetected(trimmed);
-    QString routedInput = wakeDetected
-        ? normalizeForRouting(WakeWordDetector::stripWakeWordPrefix(trimmed))
-        : trimmed;
+    bool wakeDetected = false;
+    const QString routedInput = prepareSubmitInput(trimmed, &wakeDetected);
     const QString effectiveInput = routedInput.isEmpty() ? trimmed : routedInput;
 
     if (wakeDetected) {
@@ -1776,8 +1881,7 @@ void AssistantController::submitText(const QString &text)
             .arg(wakeDetected ? QStringLiteral("true") : QStringLiteral("false"))
             .arg(routedInput.left(240)));
     }
-    m_memoryPolicyHandler->applyUserInput(effectiveInput);
-    m_memoryStore->appendConversation(QStringLiteral("user"), trimmed);
+    m_memoryPolicyHandler->processUserTurn(trimmed, effectiveInput);
 
     if (wakeDetected && routedInput.isEmpty()) {
         m_followUpListeningAfterWakeAck = true;
@@ -1843,102 +1947,18 @@ void AssistantController::submitText(const QString &text)
     const bool recentVisionQuery = (nowMs - m_lastVisionQueryMs) <= 12000;
     const bool visionRelevantQuery = isVisionRelevantQuery(routedInput)
         || (recentVisionQuery && isVisionFollowUpQuery(routedInput));
-    QString extractedWebQuery;
-    if (!visionRelevantQuery) {
-        extractedWebQuery = extractWebSearchQuery(routedInput);
-        if (isWebSearchVerificationQuery(routedInput)) {
-            extractedWebQuery = defaultWebSearchProbeQuery();
-        }
-        if (extractedWebQuery.isEmpty()) {
-            extractedWebQuery = routedInput;
-        }
-    }
-
-    InputRouterContext routeContext;
-    routeContext.backgroundIntentReady = detectedIntent.confidence > 0.8f && !detectedIntent.tasks.isEmpty();
-    routeContext.backgroundTasks = detectedIntent.tasks;
-    routeContext.backgroundSpokenMessage = detectedIntent.spokenMessage;
-    routeContext.localIntent = intent;
-    routeContext.visionRelevant = visionRelevantQuery;
-    routeContext.directVisionResponse = visionRelevantQuery && !isExplicitComputerControlQuery(routedInput)
-        ? buildDirectVisionResponse(routedInput)
-        : QString{};
-    routeContext.aiAvailable = availability.online && availability.modelAvailable;
-    routeContext.explicitToolInventory = isExplicitToolInventoryQuery(routedInput);
-    routeContext.toolInventoryText = groundedToolInventoryText(m_agentToolbox->builtInTools(), m_settings);
-    routeContext.explicitWebSearch = !visionRelevantQuery && isExplicitWebSearchQuery(routedInput);
-    routeContext.explicitWebQuery = extractedWebQuery;
-    routeContext.freshnessCode = freshnessCodeForQuery(routedInput);
-    routeContext.likelyKnowledgeLookup = !visionRelevantQuery && m_settings->agentEnabled() && isLikelyKnowledgeLookupQuery(routedInput);
-    routeContext.freshnessSensitive = !visionRelevantQuery && m_settings->agentEnabled() && isFreshnessSensitiveQuery(routedInput);
-    routeContext.agentEnabled = m_settings->agentEnabled();
-    routeContext.explicitAgentWorldQuery = isExplicitAgentWorldQuery(routedInput);
-    routeContext.likelyCommand = m_reasoningRouter->isLikelyCommand(routedInput);
-    routeContext.effectiveIntent = effectiveIntent.type;
-    routeContext.effectiveIntentConfidence = effectiveIntent.confidence;
-    routeContext.explicitComputerControl = isExplicitComputerControlQuery(routedInput);
-
+    const InputRouterContext routeContext = buildInputRouteContext(
+        routedInput,
+        detectedIntent,
+        effectiveIntent,
+        intent,
+        availability,
+        visionRelevantQuery,
+        nowMs);
     const InputRouteDecision decision = m_inputRouter->decide(routeContext);
-    switch (decision.kind) {
-    case InputRouteKind::LocalResponse: {
-        QString response = decision.message;
-        if (response.isEmpty() && (intent == LocalIntent::Greeting || intent == LocalIntent::SmallTalk)) {
-            response = m_localResponseEngine->respondToIntent(intent, buildLocalResponseContext());
-        }
-        if (decision.status == QStringLiteral("Vision response")) {
-            m_lastVisionQueryMs = nowMs;
-        }
-        if (response.isEmpty()) {
-            response = m_localResponseEngine->respondToError(QStringLiteral("error_invalid"), buildLocalResponseContext());
-        }
-        deliverLocalResponse(response, decision.status.isEmpty() ? QStringLiteral("Local response") : decision.status, decision.speak);
-        return;
-    }
-    case InputRouteKind::AgentCapabilityError:
-        deliverLocalResponse(
-            m_localResponseEngine->respondToError(QStringLiteral("ai_offline"), buildLocalResponseContext()),
-            QStringLiteral("AI unavailable"),
-            true);
-        return;
-    case InputRouteKind::BackgroundTasks:
-        if (decision.tasks.isEmpty()) {
-            break;
-        }
-        dispatchBackgroundTasks(decision.tasks);
-        deliverLocalResponse(
-            decision.message.isEmpty() ? QStringLiteral("All right, I'm handling that now.") : decision.message,
-            decision.status.isEmpty() ? QStringLiteral("Background task queued") : decision.status,
-            true);
-        return;
-    case InputRouteKind::AgentConversation:
-        startAgentConversationRequest(routedInput, decision.intent);
-        return;
-    case InputRouteKind::CommandExtraction:
-        startCommandRequest(routedInput);
-        return;
-    case InputRouteKind::Conversation:
-        if (decision.useVisionContext && !routeContext.explicitComputerControl && m_loggingService) {
-            m_loggingService->info(QStringLiteral("Routing vision-relevant query through conversation. input=\"%1\"")
-                                       .arg(routedInput.left(240)));
-        }
+    if (!executeRouteDecision(decision, routedInput, intent, nowMs)) {
         startConversationRequest(routedInput);
-        return;
-    case InputRouteKind::DeterministicTasks:
-        if (!decision.tasks.isEmpty()) {
-            dispatchBackgroundTasks(decision.tasks);
-            deliverLocalResponse(
-                decision.message,
-                decision.status.isEmpty() ? QStringLiteral("Background task queued") : decision.status,
-                decision.speak);
-            return;
-        }
-        break;
-    case InputRouteKind::None:
-    default:
-        break;
     }
-
-    startConversationRequest(routedInput);
 }
 
 void AssistantController::startListening()
@@ -2950,19 +2970,6 @@ bool AssistantController::startAudioCapture(AudioCaptureMode mode, bool announce
     return true;
 }
 
-void AssistantController::updateUserProfileFromInput(const QString &input)
-{
-    const QString lowered = input.toLower();
-    if (lowered.startsWith(QStringLiteral("my name is "))) {
-        m_identityProfileService->setUserName(input.mid(11).trimmed());
-        return;
-    }
-
-    if (lowered.startsWith(QStringLiteral("i prefer "))) {
-        m_identityProfileService->setPreference(QStringLiteral("general"), input.mid(9).trimmed());
-    }
-}
-
 LocalResponseContext AssistantController::buildLocalResponseContext() const
 {
     const QDateTime now = QDateTime::currentDateTime();
@@ -2990,28 +2997,30 @@ LocalResponseContext AssistantController::buildLocalResponseContext() const
     };
 }
 
-void AssistantController::deliverLocalResponse(const QString &text, const QString &status, bool speak)
+bool AssistantController::finalizeReply(const QString &source,
+                                        const SpokenReply &reply,
+                                        const QString &status,
+                                        int restartDelayMs,
+                                        bool logAgentExchange,
+                                        bool allowFollowUpWakeDelay)
 {
-    SpokenReply reply;
-    reply.displayText = text;
-    reply.spokenText = speak ? text : QString{};
-    reply.shouldSpeak = speak;
     const bool spoke = m_responseFinalizer->finalizeResponse(
-        QStringLiteral("local"),
+        source,
         reply,
         &m_responseText,
         [this]() { emit responseTextChanged(); },
         [this]() { refreshConversationSession(); },
-        [this](const QString &response, const QString &source, const QString &logStatus) { logPromptResponsePair(response, source, logStatus); },
+        [this](const QString &response, const QString &responseSource, const QString &logStatus) { logPromptResponsePair(response, responseSource, logStatus); },
         status,
         [this](const QString &newStatus) { setStatus(newStatus); });
-    if (!spoke) {
+
+    if (!spoke && !m_ttsEngine->isSpeaking()) {
         setDuplexState(DuplexState::Open);
         if (conversationSessionShouldContinue()) {
-            const int restartDelayMs = m_followUpListeningAfterWakeAck
+            const int nextRestartDelayMs = allowFollowUpWakeDelay && m_followUpListeningAfterWakeAck
                 ? followUpListeningDelayMs()
-                : conversationSessionRestartDelayMs();
-            if (!scheduleConversationSessionListening(restartDelayMs)) {
+                : restartDelayMs;
+            if (!scheduleConversationSessionListening(nextRestartDelayMs)) {
                 endConversationSession();
                 scheduleWakeMonitorRestart();
             }
@@ -3021,6 +3030,33 @@ void AssistantController::deliverLocalResponse(const QString &text, const QStrin
         }
         emit idleRequested();
     }
+
+    if (logAgentExchange && m_loggingService) {
+        m_loggingService->logAgentExchange(m_lastPromptForAiLog,
+                                           reply.displayText,
+                                           source,
+                                           m_agentCapabilities,
+                                           samplingProfile(),
+                                           m_agentTrace,
+                                           status);
+        m_lastPromptForAiLog.clear();
+    }
+
+    return spoke;
+}
+
+void AssistantController::deliverLocalResponse(const QString &text, const QString &status, bool speak)
+{
+    SpokenReply reply;
+    reply.displayText = text;
+    reply.spokenText = speak ? text : QString{};
+    reply.shouldSpeak = speak;
+    finalizeReply(QStringLiteral("local"),
+                  reply,
+                  status,
+                  conversationSessionRestartDelayMs(),
+                  false,
+                  true);
 }
 
 void AssistantController::startConversationRequest(const QString &input)
@@ -3040,27 +3076,23 @@ void AssistantController::startConversationRequest(const QString &input)
             .arg(modelId, userFacingPromptForLogging(input).left(240)));
     }
 
-    QList<MemoryRecord> requestMemory = m_memoryPolicyHandler->requestMemory(input, runtimeToolStatusMemory(m_settings));
-
-    const auto messages = m_promptAdapter->buildConversationMessages(
-        input,
-        m_memoryStore->recentMessages(8),
-        requestMemory,
-        m_identityProfileService->identity(),
-        m_identityProfileService->userProfile(),
-        mode,
-        buildVisionPromptContext(input, IntentType::GENERAL_CHAT));
-
-    m_activeRequestId = m_aiBackendClient->sendChatRequest(messages, modelId, {
-        .mode = mode,
-        .kind = RequestKind::Conversation,
-        .stream = m_settings->streamingEnabled(),
-        .temperature = m_settings->conversationTemperature(),
-        .topP = m_settings->conversationTopP(),
-        .providerTopK = m_settings->providerTopK(),
-        .maxTokens = m_settings->maxOutputTokens(),
-        .timeout = std::chrono::milliseconds(effectiveRequestTimeoutMs(m_settings))
-    });
+    const ConversationRequestContext requestContext{
+        .modelId = modelId,
+        .input = input,
+        .history = m_memoryStore->recentMessages(8),
+        .memory = m_memoryPolicyHandler->requestMemory(input, runtimeToolStatusMemory(m_settings)),
+        .identity = m_identityProfileService->identity(),
+        .userProfile = m_identityProfileService->userProfile(),
+        .visionContext = buildVisionPromptContext(input, IntentType::GENERAL_CHAT),
+        .sampling = samplingProfile(),
+        .streaming = m_settings->streamingEnabled(),
+        .timeoutMs = effectiveRequestTimeoutMs(m_settings)
+    };
+    m_activeRequestId = m_aiRequestCoordinator->startConversationRequest(
+        m_aiBackendClient,
+        m_promptAdapter,
+        requestContext,
+        mode);
 }
 
 void AssistantController::startAgentConversationRequest(const QString &input, IntentType expectedIntent)
@@ -3100,8 +3132,6 @@ void AssistantController::startAgentConversationRequest(const QString &input, In
             .arg(modelId, input.left(240)));
     }
 
-    QList<MemoryRecord> requestMemory = m_memoryPolicyHandler->requestMemory(input, runtimeToolStatusMemory(m_settings));
-
     if (transportMode == AgentTransportMode::CapabilityError) {
         deliverLocalResponse(
             m_localResponseEngine->respondToError(QStringLiteral("error_capability"), buildLocalResponseContext()),
@@ -3110,53 +3140,29 @@ void AssistantController::startAgentConversationRequest(const QString &input, In
         return;
     }
 
-    if (directToolCalling) {
-        const QString visionContext = buildVisionPromptContext(input, expectedIntent);
-        const AgentRequest request{
-            .model = modelId,
-            .instructions = m_promptAdapter->buildAgentInstructions(
-                requestMemory,
-                m_skillStore->listSkills(),
-                relevantTools,
-                m_identityProfileService->identity(),
-                m_identityProfileService->userProfile(),
-                QDir::currentPath(),
-                expectedIntent,
-                m_settings->memoryAutoWrite(),
-                visionContext),
-            .inputText = input,
-            .previousResponseId = {},
-            .tools = relevantTools,
-            .toolResults = {},
-            .sampling = samplingProfile(),
-            .mode = mode,
-            .timeout = std::chrono::milliseconds(effectiveRequestTimeoutMs(m_settings))
-        };
-        m_activeRequestId = m_aiBackendClient->sendAgentRequest(request);
-        return;
-    }
-
-    const auto messages = m_promptAdapter->buildHybridAgentMessages(
-        input,
-        requestMemory,
-        m_identityProfileService->identity(),
-        m_identityProfileService->userProfile(),
-        QDir::currentPath(),
-        expectedIntent,
-        relevantTools,
-        mode,
-        buildVisionPromptContext(input, expectedIntent));
-
-    m_activeRequestId = m_aiBackendClient->sendChatRequest(messages, modelId, {
+    const AgentRequestContext requestContext{
+        .modelId = modelId,
+        .input = input,
+        .intent = expectedIntent,
+        .memory = m_memoryPolicyHandler->requestMemory(input, runtimeToolStatusMemory(m_settings)),
+        .skills = m_skillStore->listSkills(),
+        .tools = relevantTools,
+        .identity = m_identityProfileService->identity(),
+        .userProfile = m_identityProfileService->userProfile(),
+        .workspaceRoot = QDir::currentPath(),
+        .visionContext = buildVisionPromptContext(input, expectedIntent),
+        .sampling = samplingProfile(),
         .mode = mode,
-        .kind = RequestKind::AgentConversation,
-        .stream = false,
-        .temperature = m_settings->conversationTemperature(),
-        .topP = m_settings->conversationTopP(),
-        .providerTopK = m_settings->providerTopK(),
-        .maxTokens = m_settings->maxOutputTokens(),
-        .timeout = std::chrono::milliseconds(effectiveRequestTimeoutMs(m_settings))
-    });
+        .memoryAutoWrite = m_settings->memoryAutoWrite(),
+        .timeoutMs = effectiveRequestTimeoutMs(m_settings)
+    };
+    const AgentStartRequestResult startResult = m_aiRequestCoordinator->startAgentRequest(
+        m_aiBackendClient,
+        m_promptAdapter,
+        m_agentCapabilities,
+        requestContext);
+    m_activeAgentUsesResponses = startResult.transportMode == AgentTransportMode::Responses;
+    m_activeRequestId = startResult.requestId;
 }
 
 void AssistantController::continueAgentConversation(const QList<AgentToolResult> &results)
@@ -3175,7 +3181,6 @@ void AssistantController::continueAgentConversation(const QList<AgentToolResult>
         relevantTools = m_agentToolbox->builtInTools();
     }
 
-    QList<MemoryRecord> requestMemory = m_memoryPolicyHandler->requestMemory(m_lastAgentInput, runtimeToolStatusMemory(m_settings));
     const QString visionContext = buildVisionPromptContext(m_lastAgentInput, m_lastAgentIntent);
     const QString modelId = m_aiRequestCoordinator->resolveModelId(availableModelIds());
     if (modelId.isEmpty()) {
@@ -3186,66 +3191,43 @@ void AssistantController::continueAgentConversation(const QList<AgentToolResult>
         return;
     }
 
-    if (m_activeAgentUsesResponses) {
-        const AgentRequest request{
-            .model = modelId,
-            .instructions = m_promptAdapter->buildAgentInstructions(
-                requestMemory,
-                m_skillStore->listSkills(),
-                relevantTools,
-                m_identityProfileService->identity(),
-                m_identityProfileService->userProfile(),
-                QDir::currentPath(),
-                m_lastAgentIntent,
-                m_settings->memoryAutoWrite(),
-                visionContext),
-            .inputText = {},
-            .previousResponseId = m_previousAgentResponseId,
-            .tools = relevantTools,
-            .toolResults = results,
-            .sampling = samplingProfile(),
-            .mode = m_activeReasoningMode,
-            .timeout = std::chrono::milliseconds(effectiveRequestTimeoutMs(m_settings))
-        };
-        m_activeRequestId = m_aiBackendClient->sendAgentRequest(request);
-        return;
-    }
-
-    const auto messages = m_promptAdapter->buildHybridAgentContinuationMessages(
-        m_lastAgentInput,
-        results,
-        requestMemory,
-        m_identityProfileService->identity(),
-        m_identityProfileService->userProfile(),
-        QDir::currentPath(),
-        m_lastAgentIntent,
-        relevantTools,
-        m_activeReasoningMode,
-        visionContext);
-
-    m_activeRequestId = m_aiBackendClient->sendChatRequest(messages, modelId, {
+    const AgentRequestContext requestContext{
+        .modelId = modelId,
+        .input = m_lastAgentInput,
+        .previousResponseId = m_previousAgentResponseId,
+        .intent = m_lastAgentIntent,
+        .memory = m_memoryPolicyHandler->requestMemory(m_lastAgentInput, runtimeToolStatusMemory(m_settings)),
+        .skills = m_skillStore->listSkills(),
+        .tools = relevantTools,
+        .toolResults = results,
+        .identity = m_identityProfileService->identity(),
+        .userProfile = m_identityProfileService->userProfile(),
+        .workspaceRoot = QDir::currentPath(),
+        .visionContext = visionContext,
+        .sampling = samplingProfile(),
         .mode = m_activeReasoningMode,
-        .kind = RequestKind::AgentConversation,
-        .stream = false,
-        .temperature = m_settings->conversationTemperature(),
-        .topP = m_settings->conversationTopP(),
-        .providerTopK = m_settings->providerTopK(),
-        .maxTokens = m_settings->maxOutputTokens(),
-        .timeout = std::chrono::milliseconds(effectiveRequestTimeoutMs(m_settings))
-    });
+        .memoryAutoWrite = m_settings->memoryAutoWrite(),
+        .timeoutMs = effectiveRequestTimeoutMs(m_settings)
+    };
+    m_activeRequestId = m_aiRequestCoordinator->continueAgentRequest(
+        m_aiBackendClient,
+        m_promptAdapter,
+        m_activeAgentUsesResponses,
+        requestContext);
 }
 
 QList<AgentToolResult> AssistantController::executeAgentToolCalls(const QList<AgentToolCall> &toolCalls)
 {
-    QList<AgentToolResult> results;
-    results.reserve(toolCalls.size());
-    for (const AgentToolCall &toolCall : toolCalls) {
-        appendAgentTrace(QStringLiteral("tool_call"), toolCall.name, toolCall.argumentsJson.left(500), true);
-        const AgentToolResult result = m_agentToolbox->execute(toolCall);
-        appendAgentTrace(QStringLiteral("tool_result"), result.toolName, result.output.left(800), result.success);
-        results.push_back(result);
+    if (!m_toolCoordinator) {
+        return {};
     }
-    return results;
+
+    return m_toolCoordinator->executeAgentToolCalls(
+        toolCalls,
+        m_agentToolbox,
+        [this](const QString &kind, const QString &title, const QString &detail, bool success) {
+            appendAgentTrace(kind, title, detail, success);
+        });
 }
 
 void AssistantController::handleVisionSnapshot(const VisionSnapshot &snapshot)
@@ -3514,49 +3496,30 @@ void AssistantController::startCommandRequest(const QString &input)
         m_loggingService->info(QStringLiteral("Starting command extraction request. model=\"%1\" input=\"%2\"")
             .arg(modelId, input.left(240)));
     }
-    m_activeRequestId = m_aiBackendClient->sendChatRequest(
-        m_promptAdapter->buildCommandMessages(
-            input,
-            m_identityProfileService->identity(),
-            m_identityProfileService->userProfile(),
-            ReasoningMode::Fast),
-        modelId,
-        {.mode = ReasoningMode::Fast,
-         .kind = RequestKind::CommandExtraction,
-         .stream = false,
-         .temperature = m_settings->toolUseTemperature(),
-         .topP = m_settings->conversationTopP(),
-         .providerTopK = m_settings->providerTopK(),
-         .maxTokens = m_settings->maxOutputTokens(),
-         .timeout = std::chrono::milliseconds(effectiveRequestTimeoutMs(m_settings))});
+    m_activeRequestId = m_aiRequestCoordinator->startCommandRequest(
+        m_aiBackendClient,
+        m_promptAdapter,
+        {
+            .modelId = modelId,
+            .input = input,
+            .identity = m_identityProfileService->identity(),
+            .userProfile = m_identityProfileService->userProfile(),
+            .timeoutMs = effectiveRequestTimeoutMs(m_settings),
+            .temperature = m_settings->toolUseTemperature(),
+            .topP = m_settings->conversationTopP(),
+            .providerTopK = m_settings->providerTopK(),
+            .maxTokens = m_settings->maxOutputTokens()
+        });
 }
 
 void AssistantController::handleConversationFinished(const QString &text)
 {
     const SpokenReply reply = parseSpokenReply(text);
     m_streamAssembler->drainRemainingText();
-    const bool spoke = m_responseFinalizer->finalizeResponse(
-        QStringLiteral("conversation"),
-        reply,
-        &m_responseText,
-        [this]() { emit responseTextChanged(); },
-        [this]() { refreshConversationSession(); },
-        [this](const QString &response, const QString &source, const QString &status) { logPromptResponsePair(response, source, status); },
-        QStringLiteral("Response ready"),
-        [this](const QString &status) { setStatus(status); });
-    if (!spoke && !m_ttsEngine->isSpeaking()) {
-        setDuplexState(DuplexState::Open);
-        if (conversationSessionShouldContinue()) {
-            if (!scheduleConversationSessionListening(conversationSessionRestartDelayMs())) {
-                endConversationSession();
-                scheduleWakeMonitorRestart();
-            }
-        } else {
-            endConversationSession();
-            scheduleWakeMonitorRestart();
-        }
-        emit idleRequested();
-    }
+    finalizeReply(QStringLiteral("conversation"),
+                  reply,
+                  QStringLiteral("Response ready"),
+                  conversationSessionRestartDelayMs());
 }
 
 void AssistantController::handleHybridAgentFinished(const QString &payload)
@@ -3630,40 +3593,11 @@ void AssistantController::handleHybridAgentFinished(const QString &payload)
     const SpokenReply reply = parseSpokenReply(message.isEmpty()
                                                    ? QStringLiteral("I finished that request.")
                                                    : message);
-    const bool spoke = m_responseFinalizer->finalizeResponse(
-        QStringLiteral("agent"),
-        reply,
-        &m_responseText,
-        [this]() { emit responseTextChanged(); },
-        [this]() { refreshConversationSession(); },
-        [this](const QString &response, const QString &source, const QString &status) { logPromptResponsePair(response, source, status); },
-        QStringLiteral("Response ready"),
-        [this](const QString &status) { setStatus(status); });
-
-    if (!spoke && !m_ttsEngine->isSpeaking()) {
-        setDuplexState(DuplexState::Open);
-        if (conversationSessionShouldContinue()) {
-            if (!scheduleConversationSessionListening(conversationSessionRestartDelayMs())) {
-                endConversationSession();
-                scheduleWakeMonitorRestart();
-            }
-        } else {
-            endConversationSession();
-            scheduleWakeMonitorRestart();
-        }
-        emit idleRequested();
-    }
-
-    if (m_loggingService) {
-        m_loggingService->logAgentExchange(m_lastPromptForAiLog,
-                                           reply.displayText,
-                                           QStringLiteral("agent"),
-                                           m_agentCapabilities,
-                                           samplingProfile(),
-                                           m_agentTrace,
-                                           QStringLiteral("Response ready"));
-    }
-    m_lastPromptForAiLog.clear();
+    finalizeReply(QStringLiteral("agent"),
+                  reply,
+                  QStringLiteral("Response ready"),
+                  conversationSessionRestartDelayMs(),
+                  true);
 }
 
 void AssistantController::handleAgentResponse(const AgentResponse &response)
@@ -3685,39 +3619,11 @@ void AssistantController::handleAgentResponse(const AgentResponse &response)
     }
 
     const SpokenReply reply = parseSpokenReply(response.outputText);
-    const bool spoke = m_responseFinalizer->finalizeResponse(
-        QStringLiteral("agent"),
-        reply,
-        &m_responseText,
-        [this]() { emit responseTextChanged(); },
-        [this]() { refreshConversationSession(); },
-        [this](const QString &responseText, const QString &source, const QString &status) { logPromptResponsePair(responseText, source, status); },
-        QStringLiteral("Response ready"),
-        [this](const QString &status) { setStatus(status); });
-    if (!spoke && !m_ttsEngine->isSpeaking()) {
-        setDuplexState(DuplexState::Open);
-        if (conversationSessionShouldContinue()) {
-            if (!scheduleConversationSessionListening(conversationSessionRestartDelayMs())) {
-                endConversationSession();
-                scheduleWakeMonitorRestart();
-            }
-        } else {
-            endConversationSession();
-            scheduleWakeMonitorRestart();
-        }
-        emit idleRequested();
-    }
-
-    if (m_loggingService) {
-        m_loggingService->logAgentExchange(m_lastPromptForAiLog,
-                                           reply.displayText,
-                                           QStringLiteral("agent"),
-                                           m_agentCapabilities,
-                                           samplingProfile(),
-                                           m_agentTrace,
-                                           QStringLiteral("Response ready"));
-    }
-    m_lastPromptForAiLog.clear();
+    finalizeReply(QStringLiteral("agent"),
+                  reply,
+                  QStringLiteral("Response ready"),
+                  conversationSessionRestartDelayMs(),
+                  true);
 }
 
 void AssistantController::handleCommandFinished(const QString &text)
@@ -3755,226 +3661,50 @@ void AssistantController::handleCommandFinished(const QString &text)
     reply.displayText = message;
     reply.spokenText = message;
     reply.shouldSpeak = true;
-    m_responseFinalizer->finalizeResponse(
-        QStringLiteral("command"),
-        reply,
-        &m_responseText,
-        [this]() { emit responseTextChanged(); },
-        [this]() { refreshConversationSession(); },
-        [this](const QString &responseText, const QString &source, const QString &status) { logPromptResponsePair(responseText, source, status); },
-        QStringLiteral("Command executed"),
-        [this](const QString &status) { setStatus(status); });
+    finalizeReply(QStringLiteral("command"),
+                  reply,
+                  QStringLiteral("Command executed"),
+                  conversationSessionRestartDelayMs());
 }
 
 void AssistantController::dispatchBackgroundTasks(const QList<AgentTask> &tasks)
 {
-    QList<AgentTask> sortedTasks = tasks;
-    std::sort(sortedTasks.begin(), sortedTasks.end(), [](const AgentTask &left, const AgentTask &right) {
-        return left.priority > right.priority;
-    });
-
-    for (AgentTask task : sortedTasks) {
-        task.id = m_nextTaskId++;
-        task.createdAtMs = QDateTime::currentMSecsSinceEpoch();
-        task.state = TaskState::Pending;
-        m_knownBackgroundTasks.insert(task.id, task);
-        if (m_loggingService) {
-            m_loggingService->info(QStringLiteral("[TaskDispatcher] created %1 #%2").arg(task.type).arg(task.id));
-        }
-        m_taskDispatcher->enqueue(task);
+    if (m_toolCoordinator == nullptr || m_taskDispatcher == nullptr || tasks.isEmpty()) {
+        return;
     }
 
-    refreshBackgroundTaskSurface();
+    m_toolCoordinator->dispatchBackgroundTasks(m_taskDispatcher, tasks);
+    emit assistantSurfaceChanged();
 }
 
 void AssistantController::recordTaskResult(const QJsonObject &resultObject)
 {
-    BackgroundTaskResult result;
-    result.taskId = resultObject.value(QStringLiteral("taskId")).toInt();
-    result.type = resultObject.value(QStringLiteral("type")).toString();
-    result.success = resultObject.value(QStringLiteral("success")).toBool();
-    result.state = static_cast<TaskState>(resultObject.value(QStringLiteral("state")).toInt(static_cast<int>(TaskState::Finished)));
-    result.errorKind = static_cast<ToolErrorKind>(resultObject.value(QStringLiteral("errorKind")).toInt(static_cast<int>(ToolErrorKind::Unknown)));
-    result.title = resultObject.value(QStringLiteral("title")).toString();
-    result.summary = resultObject.value(QStringLiteral("summary")).toString();
-    result.detail = resultObject.value(QStringLiteral("detail")).toString();
-    result.payload = resultObject.value(QStringLiteral("payload")).toObject();
-    result.finishedAt = resultObject.value(QStringLiteral("finishedAt")).toString();
-    result.taskKey = resultObject.value(QStringLiteral("taskKey")).toString();
-
-    const QString activeKey = result.taskKey.isEmpty() ? result.type : result.taskKey;
-    const int activeTaskId = m_activeBackgroundTaskIds.value(activeKey, -1);
-    if (activeTaskId != result.taskId) {
-        m_knownBackgroundTasks.remove(result.taskId);
-        if (m_loggingService) {
-            m_loggingService->info(QStringLiteral("[UI] ignored stale task id=%1 type=%2 key=%3 active=%4")
-                .arg(result.taskId)
-                .arg(result.type)
-                .arg(activeKey)
-                .arg(activeTaskId));
-        }
+    if (m_toolCoordinator == nullptr) {
         return;
     }
 
-    if (result.state == TaskState::Canceled) {
-        m_knownBackgroundTasks.remove(result.taskId);
-        if (m_activeBackgroundTaskIds.value(activeKey, -1) == result.taskId) {
-            m_activeBackgroundTaskIds.remove(activeKey);
-        }
-        refreshBackgroundTaskSurface();
-        if (m_loggingService) {
-            m_loggingService->info(QStringLiteral("[UI] ignored canceled task id=%1 type=%2 key=%3")
-                .arg(result.taskId)
-                .arg(result.type)
-                .arg(activeKey));
-        }
+    const ToolResultHandling handling = m_toolCoordinator->handleTaskResult(resultObject, m_backgroundPanelVisible);
+    if (handling.ignored) {
         return;
     }
 
-    if (m_loggingService) {
-        m_loggingService->info(QStringLiteral("[TaskDispatcher] finished %1 #%2")
-            .arg(result.type)
-            .arg(result.taskId));
+    if (handling.surfaceChanged) {
+        emit assistantSurfaceChanged();
     }
-
-    m_knownBackgroundTasks.remove(result.taskId);
-    if (m_activeBackgroundTaskIds.value(activeKey, -1) == result.taskId) {
-        m_activeBackgroundTaskIds.remove(activeKey);
-    }
-    refreshBackgroundTaskSurface();
-
-    m_backgroundTaskResults.prepend(result);
-    while (m_backgroundTaskResults.size() > 40) {
-        m_backgroundTaskResults.removeLast();
-    }
-    if (m_backgroundPanelVisible) {
+    if (handling.resultsChanged) {
         emit backgroundTaskResultsChanged();
     }
-
-    m_latestTaskToastTaskId = result.taskId;
-    m_latestTaskToast = result.summary.isEmpty() ? result.title : result.summary;
-    m_latestTaskToastTone = result.success ? QStringLiteral("response") : QStringLiteral("error");
-    m_latestTaskToastType = result.type;
-    emit latestTaskToastChanged();
-
-    appendAgentTrace(QStringLiteral("tool_result"),
-                     result.type,
-                     result.detail.left(600),
-                     result.success);
-
-    if (result.type == QStringLiteral("web_search") && result.success) {
-        startWebSearchSummaryRequest(result);
+    if (handling.toastChanged) {
+        emit latestTaskToastChanged();
     }
-}
-
-void AssistantController::refreshBackgroundTaskSurface()
-{
-    int nextTaskId = -1;
-    QString nextPrimary;
-    QString nextSecondary;
-    qint64 nextCreatedAt = -1;
-
-    for (auto it = m_activeBackgroundTaskIds.cbegin(); it != m_activeBackgroundTaskIds.cend(); ++it) {
-        const int taskId = it.value();
-        const AgentTask task = m_knownBackgroundTasks.value(taskId);
-        if (task.id <= 0 || task.type.isEmpty()) {
-            continue;
-        }
-
-        const auto copy = backgroundTaskSurfaceCopy(task);
-        if (copy.first.isEmpty()) {
-            continue;
-        }
-
-        if (task.createdAtMs >= nextCreatedAt) {
-            nextCreatedAt = task.createdAtMs;
-            nextTaskId = taskId;
-            nextPrimary = copy.first;
-            nextSecondary = copy.second;
-        }
+    if (handling.appendTrace) {
+        appendAgentTrace(handling.traceKind, handling.traceTitle, handling.traceDetail, handling.traceSuccess);
     }
-
-    if (m_surfaceBackgroundTaskId == nextTaskId
-        && m_surfaceBackgroundPrimary == nextPrimary
-        && m_surfaceBackgroundSecondary == nextSecondary) {
-        return;
+    if (handling.completedResult.has_value()
+        && handling.completedResult->type == QStringLiteral("web_search")
+        && handling.completedResult->success) {
+        startWebSearchSummaryRequest(*handling.completedResult);
     }
-
-    m_surfaceBackgroundTaskId = nextTaskId;
-    m_surfaceBackgroundPrimary = nextPrimary;
-    m_surfaceBackgroundSecondary = nextSecondary;
-    emit assistantSurfaceChanged();
-}
-
-QPair<QString, QString> AssistantController::backgroundTaskSurfaceCopy(const AgentTask &task) const
-{
-    const QJsonObject &args = task.args;
-    const QString type = task.type.trimmed().toLower();
-
-    if (type == QStringLiteral("web_search")) {
-        return {
-            QStringLiteral("Searching the web..."),
-            compactSurfaceText(firstNonEmptyArg(args, {QStringLiteral("query"), QStringLiteral("q")}), 64)
-        };
-    }
-
-    if (type == QStringLiteral("dir_list")) {
-        return {
-            QStringLiteral("Listing files..."),
-            compactPathForSurface(firstNonEmptyArg(args, {QStringLiteral("path"), QStringLiteral("directory"), QStringLiteral("dir")}))
-        };
-    }
-
-    if (type == QStringLiteral("file_read")) {
-        return {
-            QStringLiteral("Opening file..."),
-            compactPathForSurface(firstNonEmptyArg(args, {QStringLiteral("path"), QStringLiteral("file"), QStringLiteral("filename")}))
-        };
-    }
-
-    if (type == QStringLiteral("file_write") || type == QStringLiteral("computer_write_file")) {
-        return {
-            QStringLiteral("Writing file..."),
-            compactPathForSurface(firstNonEmptyArg(args, {QStringLiteral("path"), QStringLiteral("file"), QStringLiteral("filename")}))
-        };
-    }
-
-    if (type == QStringLiteral("memory_write")) {
-        return {
-            QStringLiteral("Saving memory..."),
-            compactSurfaceText(firstNonEmptyArg(args, {QStringLiteral("summary"), QStringLiteral("title"), QStringLiteral("memory"), QStringLiteral("content")}), 60)
-        };
-    }
-
-    if (type == QStringLiteral("computer_open_app")) {
-        return {
-            QStringLiteral("Opening app..."),
-            compactSurfaceText(firstNonEmptyArg(args, {QStringLiteral("app"), QStringLiteral("name"), QStringLiteral("application")}), 48)
-        };
-    }
-
-    if (type == QStringLiteral("computer_open_url") || type == QStringLiteral("browser_open")) {
-        return {
-            QStringLiteral("Opening link..."),
-            compactUrlForSurface(firstNonEmptyArg(args, {QStringLiteral("url"), QStringLiteral("link")}))
-        };
-    }
-
-    if (type == QStringLiteral("computer_set_timer")) {
-        QString secondary;
-        const int seconds = args.value(QStringLiteral("seconds")).toInt();
-        if (seconds > 0) {
-            secondary = formatDurationForSurface(seconds);
-        } else {
-            secondary = compactSurfaceText(firstNonEmptyArg(args, {QStringLiteral("duration"), QStringLiteral("label")}), 48);
-        }
-        return {QStringLiteral("Setting timer..."), secondary};
-    }
-
-    return {
-        QStringLiteral("Tool running..."),
-        compactSurfaceText(firstNonEmptyArg(args, {QStringLiteral("query"), QStringLiteral("path"), QStringLiteral("file"), QStringLiteral("url"), QStringLiteral("name")}), 56)
-    };
 }
 
 void AssistantController::setSurfaceError(const QString &source, const QString &primary, const QString &secondary)
@@ -4018,48 +3748,26 @@ void AssistantController::clearSurfaceError(const QString &source)
 
 void AssistantController::startWebSearchSummaryRequest(const BackgroundTaskResult &result)
 {
-    const QString query = result.payload.value(QStringLiteral("query")).toString().trimmed();
-    const QString provider = result.payload.value(QStringLiteral("provider")).toString().trimmed();
-    const QString content = result.payload.value(QStringLiteral("content")).toString();
-    const bool reliable = result.payload.value(QStringLiteral("reliable")).toBool(true);
-    const QString reliabilityReason = result.payload.value(QStringLiteral("reliability_reason")).toString().trimmed();
-    if (query.isEmpty() || content.trimmed().isEmpty()) {
+    if (m_toolCoordinator == nullptr) {
         return;
     }
 
-    if (!reliable) {
-        deliverLocalResponse(
-            QStringLiteral("I couldn't verify reliable web sources for that yet. Please try a more specific query or ask for source details."),
-            reliabilityReason.isEmpty() ? QStringLiteral("Web search low confidence") : reliabilityReason,
-            true);
+    const std::optional<WebSearchFollowUp> followUp = m_toolCoordinator->buildWebSearchFollowUp(result);
+    if (!followUp.has_value()) {
         return;
     }
 
-    const QString clippedContent = content.left(12000);
-    const bool wantsDetails = asksForDetailedAnswer(query);
+    if (followUp->deliverLocalResponse) {
+        deliverLocalResponse(followUp->localResponseText, followUp->localResponseStatus, true);
+        return;
+    }
 
-    const QString synthesisInput = wantsDetails
-        ? QStringLiteral(
-              "You previously asked me to search the web. "
-              "Provide the final answer using only the fetched payload below. "
-              "Keep it concise, accurate, and include uncertainty only if needed. "
-              "Do not claim hidden browsing beyond this data.\n\n"
-              "User query: %1\n"
-              "Search provider: %2\n"
-              "Fetched payload (JSON/text):\n%3")
-              .arg(query, provider.isEmpty() ? QStringLiteral("unknown") : provider, clippedContent)
-        : QStringLiteral(
-              "You previously asked me to search the web. "
-              "Return ONLY the direct answer from the fetched payload below. "
-              "Do not provide explanations, context, caveats, or extra sentences unless the user asked for details. "
-              "Use one short sentence, ideally 4-12 words.\n\n"
-              "User query: %1\n"
-              "Search provider: %2\n"
-              "Fetched payload (JSON/text):\n%3")
-              .arg(query, provider.isEmpty() ? QStringLiteral("unknown") : provider, clippedContent);
+    if (followUp->synthesisInput.isEmpty()) {
+        return;
+    }
 
-    m_lastPromptForAiLog = query;
-    startConversationRequest(synthesisInput);
+    m_lastPromptForAiLog = followUp->logPrompt;
+    startConversationRequest(followUp->synthesisInput);
 }
 
 QStringList AssistantController::backgroundAllowedRoots() const

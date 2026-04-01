@@ -12,6 +12,7 @@ class MemoryPolicyHandler
 public:
     MemoryPolicyHandler(IdentityProfileService *identityProfileService, MemoryStore *memoryStore);
 
+    void processUserTurn(const QString &rawInput, const QString &effectiveInput) const;
     void applyUserInput(const QString &input) const;
     QList<MemoryRecord> requestMemory(const QString &query, const MemoryRecord &runtimeRecord) const;
     void captureExplicitMemoryFromInput(const QString &input) const;

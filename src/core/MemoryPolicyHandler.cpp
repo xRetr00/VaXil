@@ -9,6 +9,14 @@ MemoryPolicyHandler::MemoryPolicyHandler(IdentityProfileService *identityProfile
 {
 }
 
+void MemoryPolicyHandler::processUserTurn(const QString &rawInput, const QString &effectiveInput) const
+{
+    applyUserInput(effectiveInput);
+    if (m_memoryStore) {
+        m_memoryStore->appendConversation(QStringLiteral("user"), rawInput);
+    }
+}
+
 void MemoryPolicyHandler::applyUserInput(const QString &input) const
 {
     const QString lowered = input.trimmed().toLower();

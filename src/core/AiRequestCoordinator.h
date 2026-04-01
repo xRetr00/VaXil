@@ -3,12 +3,63 @@
 #include "core/AssistantTypes.h"
 
 class AppSettings;
+class AiBackendClient;
+class PromptAdapter;
 class ReasoningRouter;
 
 enum class AgentTransportMode {
     Responses,
     ChatAdapter,
     CapabilityError
+};
+
+struct ConversationRequestContext {
+    QString modelId;
+    QString input;
+    QList<AiMessage> history;
+    QList<MemoryRecord> memory;
+    AssistantIdentity identity;
+    UserProfile userProfile;
+    QString visionContext;
+    SamplingProfile sampling;
+    bool streaming = true;
+    int timeoutMs = 12000;
+};
+
+struct AgentRequestContext {
+    QString modelId;
+    QString input;
+    QString previousResponseId;
+    IntentType intent = IntentType::GENERAL_CHAT;
+    QList<MemoryRecord> memory;
+    QList<SkillManifest> skills;
+    QList<AgentToolSpec> tools;
+    QList<AgentToolResult> toolResults;
+    AssistantIdentity identity;
+    UserProfile userProfile;
+    QString workspaceRoot;
+    QString visionContext;
+    SamplingProfile sampling;
+    ReasoningMode mode = ReasoningMode::Balanced;
+    bool memoryAutoWrite = false;
+    int timeoutMs = 12000;
+};
+
+struct CommandRequestContext {
+    QString modelId;
+    QString input;
+    AssistantIdentity identity;
+    UserProfile userProfile;
+    int timeoutMs = 12000;
+    double temperature = 0.2;
+    std::optional<double> topP;
+    std::optional<int> providerTopK;
+    std::optional<int> maxTokens;
+};
+
+struct AgentStartRequestResult {
+    quint64 requestId = 0;
+    AgentTransportMode transportMode = AgentTransportMode::ChatAdapter;
 };
 
 class AiRequestCoordinator
@@ -21,6 +72,21 @@ public:
     AgentTransportMode resolveAgentTransport(const AgentCapabilitySet &capabilities, const QString &modelId) const;
     QString capabilityErrorText(const AgentCapabilitySet &capabilities, const QString &modelId) const;
     QString errorGroupFor(const QString &errorText) const;
+    quint64 startConversationRequest(AiBackendClient *backendClient,
+                                     PromptAdapter *promptAdapter,
+                                     const ConversationRequestContext &context,
+                                     ReasoningMode mode) const;
+    AgentStartRequestResult startAgentRequest(AiBackendClient *backendClient,
+                                              PromptAdapter *promptAdapter,
+                                              const AgentCapabilitySet &capabilities,
+                                              const AgentRequestContext &context) const;
+    quint64 continueAgentRequest(AiBackendClient *backendClient,
+                                 PromptAdapter *promptAdapter,
+                                 bool useResponses,
+                                 const AgentRequestContext &context) const;
+    quint64 startCommandRequest(AiBackendClient *backendClient,
+                                PromptAdapter *promptAdapter,
+                                const CommandRequestContext &context) const;
 
 private:
     AppSettings *m_settings = nullptr;

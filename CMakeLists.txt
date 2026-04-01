@@ -258,6 +258,7 @@ set(JARVIS_SOURCES
     src/core/ComputerControl.cpp
     src/core/LocalResponseEngine.cpp
     src/core/ResponseFinalizer.cpp
+    src/core/ToolCoordinator.cpp
     src/core/tasks/TaskDispatcher.cpp
     src/core/tasks/ToolWorker.cpp
     src/core/tools/ToolExecutionService.cpp
@@ -321,6 +322,7 @@ set(JARVIS_HEADERS
     src/core/LocalResponseEngine.h
     src/core/MemoryPolicyHandler.h
     src/core/ResponseFinalizer.h
+    src/core/ToolCoordinator.h
     src/core/tasks/TaskDispatcher.h
     src/core/tasks/ToolWorker.h
     src/core/tools/ToolExecutionService.h

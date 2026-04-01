@@ -1,5 +1,7 @@
 #include "core/AiRequestCoordinator.h"
 
+#include "ai/AiBackendClient.h"
+#include "ai/PromptAdapter.h"
 #include "ai/ReasoningRouter.h"
 #include "settings/AppSettings.h"
 
@@ -73,4 +75,176 @@ QString AiRequestCoordinator::errorGroupFor(const QString &errorText) const
         return QStringLiteral("error_transport");
     }
     return QStringLiteral("ai_offline");
+}
+
+quint64 AiRequestCoordinator::startConversationRequest(AiBackendClient *backendClient,
+                                                       PromptAdapter *promptAdapter,
+                                                       const ConversationRequestContext &context,
+                                                       ReasoningMode mode) const
+{
+    if (backendClient == nullptr || promptAdapter == nullptr) {
+        return 0;
+    }
+
+    const auto messages = promptAdapter->buildConversationMessages(
+        context.input,
+        context.history,
+        context.memory,
+        context.identity,
+        context.userProfile,
+        mode,
+        context.visionContext);
+
+    return backendClient->sendChatRequest(messages,
+                                          context.modelId,
+                                          {.mode = mode,
+                                           .kind = RequestKind::Conversation,
+                                           .stream = context.streaming,
+                                           .temperature = context.sampling.conversationTemperature,
+                                           .topP = context.sampling.conversationTopP,
+                                           .providerTopK = context.sampling.providerTopK,
+                                           .maxTokens = context.sampling.maxOutputTokens,
+                                           .timeout = std::chrono::milliseconds(context.timeoutMs)});
+}
+
+AgentStartRequestResult AiRequestCoordinator::startAgentRequest(AiBackendClient *backendClient,
+                                                                PromptAdapter *promptAdapter,
+                                                                const AgentCapabilitySet &capabilities,
+                                                                const AgentRequestContext &context) const
+{
+    AgentStartRequestResult result;
+    result.transportMode = resolveAgentTransport(capabilities, context.modelId);
+    if (backendClient == nullptr || promptAdapter == nullptr || result.transportMode == AgentTransportMode::CapabilityError) {
+        return result;
+    }
+
+    if (result.transportMode == AgentTransportMode::Responses) {
+        const AgentRequest request{
+            .model = context.modelId,
+            .instructions = promptAdapter->buildAgentInstructions(
+                context.memory,
+                context.skills,
+                context.tools,
+                context.identity,
+                context.userProfile,
+                context.workspaceRoot,
+                context.intent,
+                context.memoryAutoWrite,
+                context.visionContext),
+            .inputText = context.input,
+            .previousResponseId = {},
+            .tools = context.tools,
+            .toolResults = {},
+            .sampling = context.sampling,
+            .mode = context.mode,
+            .timeout = std::chrono::milliseconds(context.timeoutMs)
+        };
+        result.requestId = backendClient->sendAgentRequest(request);
+        return result;
+    }
+
+    const auto messages = promptAdapter->buildHybridAgentMessages(
+        context.input,
+        context.memory,
+        context.identity,
+        context.userProfile,
+        context.workspaceRoot,
+        context.intent,
+        context.tools,
+        context.mode,
+        context.visionContext);
+
+    result.requestId = backendClient->sendChatRequest(messages,
+                                                      context.modelId,
+                                                      {.mode = context.mode,
+                                                       .kind = RequestKind::AgentConversation,
+                                                       .stream = false,
+                                                       .temperature = context.sampling.conversationTemperature,
+                                                       .topP = context.sampling.conversationTopP,
+                                                       .providerTopK = context.sampling.providerTopK,
+                                                       .maxTokens = context.sampling.maxOutputTokens,
+                                                       .timeout = std::chrono::milliseconds(context.timeoutMs)});
+    return result;
+}
+
+quint64 AiRequestCoordinator::continueAgentRequest(AiBackendClient *backendClient,
+                                                   PromptAdapter *promptAdapter,
+                                                   bool useResponses,
+                                                   const AgentRequestContext &context) const
+{
+    if (backendClient == nullptr || promptAdapter == nullptr) {
+        return 0;
+    }
+
+    if (useResponses) {
+        const AgentRequest request{
+            .model = context.modelId,
+            .instructions = promptAdapter->buildAgentInstructions(
+                context.memory,
+                context.skills,
+                context.tools,
+                context.identity,
+                context.userProfile,
+                context.workspaceRoot,
+                context.intent,
+                context.memoryAutoWrite,
+                context.visionContext),
+            .inputText = {},
+            .previousResponseId = context.previousResponseId,
+            .tools = context.tools,
+            .toolResults = context.toolResults,
+            .sampling = context.sampling,
+            .mode = context.mode,
+            .timeout = std::chrono::milliseconds(context.timeoutMs)
+        };
+        return backendClient->sendAgentRequest(request);
+    }
+
+    const auto messages = promptAdapter->buildHybridAgentContinuationMessages(
+        context.input,
+        context.toolResults,
+        context.memory,
+        context.identity,
+        context.userProfile,
+        context.workspaceRoot,
+        context.intent,
+        context.tools,
+        context.mode,
+        context.visionContext);
+
+    return backendClient->sendChatRequest(messages,
+                                          context.modelId,
+                                          {.mode = context.mode,
+                                           .kind = RequestKind::AgentConversation,
+                                           .stream = false,
+                                           .temperature = context.sampling.conversationTemperature,
+                                           .topP = context.sampling.conversationTopP,
+                                           .providerTopK = context.sampling.providerTopK,
+                                           .maxTokens = context.sampling.maxOutputTokens,
+                                           .timeout = std::chrono::milliseconds(context.timeoutMs)});
+}
+
+quint64 AiRequestCoordinator::startCommandRequest(AiBackendClient *backendClient,
+                                                  PromptAdapter *promptAdapter,
+                                                  const CommandRequestContext &context) const
+{
+    if (backendClient == nullptr || promptAdapter == nullptr) {
+        return 0;
+    }
+
+    return backendClient->sendChatRequest(
+        promptAdapter->buildCommandMessages(
+            context.input,
+            context.identity,
+            context.userProfile,
+            ReasoningMode::Fast),
+        context.modelId,
+        {.mode = ReasoningMode::Fast,
+         .kind = RequestKind::CommandExtraction,
+         .stream = false,
+         .temperature = context.temperature,
+         .topP = context.topP,
+         .providerTopK = context.providerTopK,
+         .maxTokens = context.maxTokens,
+         .timeout = std::chrono::milliseconds(context.timeoutMs)});
 }
