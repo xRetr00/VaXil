@@ -1,102 +1,102 @@
-#define TAU 6.28318530718
+#define MAX_RAY_MARCH_STEPS 32
+#define MAX_DISTANCE 4.0
+#define SURFACE_DISTANCE 0.002
 
-float rand(vec2 n) { 
-	return fract(sin(dot(n, vec2(12.9898, 4.1414))) * 43758.5453);
-}
-
-float noise(vec2 p) {
-	vec2 ip = floor(p);
-	vec2 u = fract(p);
-	u = u*u*(3.0-2.0*u);
-	float res = mix(
-		mix(rand(ip),rand(ip+vec2(1.0,0.0)),u.x),
-		mix(rand(ip+vec2(0.0,1.0)),rand(ip+vec2(1.0,1.0)),u.x),u.y);
-	return res*res;	
-}
-
-float fbm(vec2 p, int octaves) {
-	float s = 0.0;
-	float m = 0.0;
-	float a = 0.5;
-	
-	if (octaves >= 1)
-	{
-		s += a * noise(p);
-		m += a;
-		a *= 0.5;
-		p *= 2.0;
-	}
-	
-	if (octaves >= 2)
-	{
-		s += a * noise(p);
-		m += a;
-		a *= 0.5;
-		p *= 2.0;
-	}
-	
-	if (octaves >= 3)
-	{
-		s += a * noise(p);
-		m += a;
-		a *= 0.5;
-		p *= 2.0;
-	}
-	
-	if (octaves >= 4)
-	{
-		s += a * noise(p);
-		m += a;
-		a *= 0.5;
-		p *= 2.0;
-	}
-	return s / m;
-}
-
-vec3 pal(float t, vec3 a, vec3 b, vec3 c, vec3 d) {
-    return a + b * cos(TAU * (c * t + d));
-}
-
-float luma(vec3 color) {
-  return dot(color, vec3(0.299, 0.587, 0.114));
-}
-
-void mainImage( out vec4 fragColor, in vec2 fragCoord )
+struct Hit
 {
-    float min_res = min(iResolution.x, iResolution.y);
-    vec2 uv = (fragCoord * 2.0 - iResolution.xy) / min_res * 1.5;
-    float t = iTime;
+    float dist;
+    float closest_dist;
+    vec3 p;
+};
+    
+float specularBlinnPhong(vec3 light_dir, vec3 ray_dir, vec3 normal)
+{
+    vec3 halfway = normalize(light_dir + ray_dir);
+    return max(0.0, dot(normal, halfway));
+}
 
-    float l = dot(uv, uv);
-    fragColor = vec4(0);
-    if (l > 2.5)
+vec4 mod289(vec4 x){return x - floor(x * (1.0 / 289.0)) * 289.0;}
+vec4 perm(vec4 x){return mod289(((x * 34.0) + 1.0) * x);}
+
+float noise(vec3 p)
+{
+    vec3 a = floor(p);
+    vec3 d = p - a;
+    d = d * d * (3.0 - 2.0 * d);
+
+    vec4 b = a.xxyy + vec4(0.0, 1.0, 0.0, 1.0);
+    vec4 k1 = perm(b.xyxy);
+    vec4 k2 = perm(k1.xyxy + b.zzww);
+
+    vec4 c = k2 + a.zzzz;
+    vec4 k3 = perm(c);
+    vec4 k4 = perm(c + 1.0);
+
+    vec4 o1 = fract(k3 * (1.0 / 41.0));
+    vec4 o2 = fract(k4 * (1.0 / 41.0));
+
+    vec4 o3 = o2 * d.z + o1 * (1.0 - d.z);
+    vec2 o4 = o3.yw * d.x + o3.xz * (1.0 - d.x);
+
+    return o4.y * d.y + o4.x * (1.0 - d.y);
+}
+
+float SDF(vec3 point)
+{
+    vec3 p = vec3(point.xy, iTime * 0.3 + point.z);
+    float n = (noise(p) + noise(p * 2.0) * 0.5 + noise(p * 4.0) * 0.25) * 0.57;
+    return length(point) - 0.35 - n * 0.3;
+}
+
+vec3 getNormal(vec3 point)
+{
+    vec2 e = vec2(0.002, 0.0);
+    return normalize(SDF(point) - vec3(SDF(point - e.xyy), SDF(point - e.yxy), SDF(point - e.yyx)));
+}
+
+Hit raymarch(vec3 p, vec3 d)
+{
+    Hit hit;
+    hit.closest_dist = MAX_DISTANCE;
+    for (int i = 0; i < MAX_RAY_MARCH_STEPS; ++i)
+    {
+        float sdf = SDF(p);
+        p += d * sdf; 
+        hit.closest_dist = min(hit.closest_dist, sdf);
+        hit.dist += sdf;
+        if (hit.dist >= MAX_DISTANCE || abs(sdf) <= SURFACE_DISTANCE)
+            break; 
+    }
+    
+    hit.p = p;
+    return hit;
+}
+
+void mainImage(out vec4 fragColor, in vec2 fragCoord)
+{
+    vec2 uv = (fragCoord * 2.0 - iResolution.xy) / iResolution.y;
+    fragColor = vec4(0, 0, 0, 1);
+    if (dot(uv, uv) > 1.0) return;
+    vec3 pos = vec3(0, 0, -1);
+    vec3 dir = normalize(vec3(uv, 1));
+    
+    Hit hit = raymarch(pos, dir);
+    fragColor = vec4(pow(max(0.0, 1.0 - hit.closest_dist), 32.0) * (max(0.0, dot(uv, vec2(0.707))) * vec3(0.3, 0.65, 1.0) + max(0.0, dot(uv, vec2(-0.707))) * vec3(0.6, 0.35, 1.0) + vec3(0.4, 0.5, 1.0)), max(0.0, hit.closest_dist));
+    if (hit.closest_dist >= SURFACE_DISTANCE)
         return;
-    float sm = smoothstep(1.02, 0.98, l);
-    float d = sm * l * l * l * 2.0;
-    vec3 norm = normalize(vec3(uv.x, uv.y, .7 - d));
-    float nx = fbm(uv * 2.0 + t * 0.4 + 25.69, 4);
-    float ny = fbm(uv * 2.0 + t * 0.4 + 86.31, 4);
-    float n = fbm(uv * 3.0 + 2.0 * vec2(nx, ny), 3);
-    vec3 col = vec3(n * 0.5 + 0.25);
-    float a = atan(uv.y, uv.x) / TAU + t * 0.1;
-    col *= pal(a, vec3(0.3),vec3(0.5, 0.5, 0.5),vec3(1),vec3(0.0,0.8,0.8));
-    col *= 2.0;  
-    vec3 cd = abs(col);
-    vec3 c = col * d;
-    c += (c * 0.5 + vec3(1.0) - luma(c)) * vec3(max(0.0, pow(dot(norm, vec3(0, 0, -1)), 5.0) * 3.0));
-    float g = 1.5 * smoothstep(0.6, 1.0, fbm(norm.xy * 3.0 / (1.0 + norm.z), 2)) * d;
-    c += g;
-    col = c + col * pow((1.0 - smoothstep(1.0, 0.98, l) - pow(max(0.0, length(uv) - 1.0), 0.2)) * 2.0, 4.0);
-    float f = fbm(normalize(uv) * 2. + t, 2) + 0.1;
-    uv *= f + 0.1;
-    uv *= 0.5;
-    l = dot(uv, uv);
-    vec3 ins = normalize(cd) + 0.1;
-    float ind = 0.2 + pow(smoothstep(0.0, 1.5, sqrt(l)) * 48.0, 0.25);
-    ind *= ind * ind * ind;
-    ind = 1.0 / ind;
-    ins *= ind;
-    col += ins * ins * sm * smoothstep(0.7, 1.0, ind);
-    col += abs(norm) * (1.0 - d) * sm * 0.25;
-    fragColor = vec4(col, 1.0);
+    vec3 normal = getNormal(hit.p);
+
+    vec3 ray_dir = normalize(pos - hit.p);
+    float facing = max(0.0, sqrt(dot(normal, vec3(0.707, 0.707, 0))) * 1.5 - dot(normal, -dir));
+    fragColor = mix(vec4(0), vec4(0.3, 0.65, 1.0, 1.0), 0.75 * facing * facing * facing);
+    
+    facing = max(0.0, sqrt(dot(normal, vec3(-0.707, -0.707, 0))) * 1.5 - dot(normal, -dir));
+    fragColor = vec4(fragColor.rgb, 0) + mix(vec4(0), vec4(0.6, 0.35, 1.0, 1.0), 0.75 * facing * facing * facing);
+    
+    facing = max(0.0, sqrt(dot(normal, vec3(0.0, 0.0, -1.0))) * 1.5 - dot(normal, -dir));
+    fragColor = vec4(fragColor.rgb, 0) + mix(vec4(0), vec4(0.4, 0.5, 1.0, 1.0), 0.5 * facing * facing * facing);
+    
+    fragColor = vec4(fragColor.rgb, 0) + mix(vec4(0), vec4(0.4, 0.625, 1.0, 1.0), pow(specularBlinnPhong(normalize(vec3(600, 800, -500) - hit.p), ray_dir, normal), 12.0) * 1.0);
+    fragColor = vec4(fragColor.rgb, 0) + mix(vec4(0), vec4(0.6, 0.5625, 1.0, 1.0), pow(specularBlinnPhong(normalize(vec3(-600, -800, -00) - hit.p), ray_dir, normal), 16.0) * 0.75);
+    fragColor.rgb = pow(fragColor.rgb, vec3(1.25));
 }

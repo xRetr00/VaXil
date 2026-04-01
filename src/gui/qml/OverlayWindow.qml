@@ -56,14 +56,10 @@ Window {
         }
     }
 
-    function compactText(rawText, fallbackText, maxLength) {
+    function normalizedSurfaceText(rawText, fallbackText) {
         let text = (rawText || "").toString().replace(/\s+/g, " ").trim()
         if (text.length === 0) {
             text = fallbackText || ""
-        }
-        const limit = maxLength || 72
-        if (text.length > limit) {
-            text = text.slice(0, limit - 3).trim() + "..."
         }
         return text
     }
@@ -86,12 +82,12 @@ Window {
     }
 
     function surfacePrimaryText() {
-        const response = compactText(agentVm.responseText, "", 112)
+        const response = normalizedSurfaceText(agentVm.responseText, "")
         if (response.length > 0) {
             return response
         }
 
-        const activity = compactText(agentVm.assistantSurfaceActivityPrimary, "", 92)
+        const activity = normalizedSurfaceText(agentVm.assistantSurfaceActivityPrimary, "")
         if (activity.length > 0) {
             return activity
         }
@@ -100,17 +96,17 @@ Window {
     }
 
     function surfaceSecondaryText(primary) {
-        const activitySecondary = compactText(agentVm.assistantSurfaceActivitySecondary, "", 68)
+        const activitySecondary = normalizedSurfaceText(agentVm.assistantSurfaceActivitySecondary, "")
         if (activitySecondary.length > 0) {
             return activitySecondary
         }
 
-        const status = compactText(agentVm.statusText, "", 72)
+        const status = normalizedSurfaceText(agentVm.statusText, "")
         if (status.length === 0) {
             return ""
         }
 
-        const primaryNormalized = compactText(primary, "", 120).toLowerCase()
+        const primaryNormalized = normalizedSurfaceText(primary, "").toLowerCase()
         const statusNormalized = status.toLowerCase()
         if (statusNormalized === primaryNormalized) {
             return ""
@@ -189,7 +185,8 @@ Window {
                 secondaryText: assistantSurfaceCluster.secondaryText
                 preferredMode: assistantSurfaceCluster.preferredMode
                 dpiScale: root.dpiScale
-                maxWidth: Math.min(root.width * 0.22, 300 * root.dpiScale)
+                maxWidth: Math.min(root.width * 0.3, 440 * root.dpiScale)
+                maxHeight: Math.min(root.height * 0.34, 360 * root.dpiScale)
             }
         }
 
