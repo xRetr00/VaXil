@@ -2678,3 +2678,18 @@ bool BackendFacade::installMcpPackage(const QString &packageSpec, const QString 
     emit settingsChanged();
     return true;
 }
+
+QVariantList BackendFacade::recentBehaviorEvents(int limit) const
+{
+    return m_loggingService ? m_loggingService->recentBehaviorEvents(limit) : QVariantList();
+}
+
+QString BackendFacade::behaviorLedgerDatabasePath() const
+{
+    return m_loggingService ? m_loggingService->behaviorLedgerDatabasePath() : QString();
+}
+
+QString BackendFacade::behaviorLedgerNdjsonPath() const
+{
+    return m_loggingService ? m_loggingService->behaviorLedgerNdjsonPath() : QString();
+}

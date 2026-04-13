@@ -268,6 +268,9 @@ public:
                                             const QString &mcpServerUrl);
     Q_INVOKABLE bool installMcpQuickServer(const QString &presetId);
     Q_INVOKABLE bool installMcpPackage(const QString &packageSpec, const QString &serverIdHint);
+    Q_INVOKABLE QVariantList recentBehaviorEvents(int limit = 50) const;
+    Q_INVOKABLE QString behaviorLedgerDatabasePath() const;
+    Q_INVOKABLE QString behaviorLedgerNdjsonPath() const;
     Q_INVOKABLE void activateFocusMode(int durationMinutes = 0, bool allowCriticalAlerts = true);
     Q_INVOKABLE void deactivateFocusMode();
     Q_INVOKABLE void setPrivateModeEnabled(bool enabled);

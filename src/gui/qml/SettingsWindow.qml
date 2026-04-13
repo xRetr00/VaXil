@@ -1594,6 +1594,12 @@ Window {
                     }
                 }
             }
+
+            JarvisUi.BehaviorTimelinePanel {
+                width: parent.width
+                visible: settingsVm.tracePanelEnabled
+                viewModel: settingsVm
+            }
         }
     }
 }

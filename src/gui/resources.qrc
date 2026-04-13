@@ -8,6 +8,7 @@
         <file alias="qml/AnimationController.qml">qml/AnimationController.qml</file>
         <file alias="qml/AssistantStateIndicator.qml">qml/AssistantStateIndicator.qml</file>
         <file alias="qml/AssistantStatusSurface.qml">qml/AssistantStatusSurface.qml</file>
+        <file alias="qml/BehaviorTimelinePanel.qml">qml/BehaviorTimelinePanel.qml</file>
         <file alias="qml/CompanionModeBadge.qml">qml/CompanionModeBadge.qml</file>
         <file alias="qml/VisionGlassPanel.qml">qml/VisionGlassPanel.qml</file>
         <file alias="qml/VisionGlyph.qml">qml/VisionGlyph.qml</file>

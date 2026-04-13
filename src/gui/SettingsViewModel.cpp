@@ -744,6 +744,21 @@ bool SettingsViewModel::installMcpPackage(const QString &packageSpec, const QStr
     return m_backend && m_backend->installMcpPackage(packageSpec, serverIdHint);
 }
 
+QVariantList SettingsViewModel::recentBehaviorEvents(int limit) const
+{
+    return m_backend ? m_backend->recentBehaviorEvents(limit) : QVariantList();
+}
+
+QString SettingsViewModel::behaviorLedgerDatabasePath() const
+{
+    return m_backend ? m_backend->behaviorLedgerDatabasePath() : QString();
+}
+
+QString SettingsViewModel::behaviorLedgerNdjsonPath() const
+{
+    return m_backend ? m_backend->behaviorLedgerNdjsonPath() : QString();
+}
+
 void SettingsViewModel::activateFocusMode(int durationMinutes, bool allowCriticalAlerts)
 {
     if (m_backend) {
