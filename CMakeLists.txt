@@ -46,12 +46,14 @@ find_package(Qt6 6.6 REQUIRED COMPONENTS
     Multimedia
     Quick
     QuickControls2
+    Sql
     Svg
     Test
     WebSockets
     Widgets
 )
 find_package(Qt6ShaderToolsTools REQUIRED)
+find_package(Python3 COMPONENTS Interpreter QUIET)
 find_package(nlohmann_json CONFIG QUIET)
 if(NOT nlohmann_json_FOUND)
     FetchContent_Declare(
@@ -261,6 +263,8 @@ set(JARVIS_SOURCES
     src/core/LocalResponseEngine.cpp
     src/core/ResponseFinalizer.cpp
     src/core/ToolCoordinator.cpp
+    src/cognition/CooldownEngine.cpp
+    src/cognition/FocusModePolicy.cpp
     src/core/tasks/TaskDispatcher.cpp
     src/core/tasks/ToolWorker.cpp
     src/core/tools/ToolExecutionService.cpp
@@ -284,6 +288,7 @@ set(JARVIS_SOURCES
     src/tools/ToolManager.cpp
     src/tts/PiperTtsEngine.cpp
     src/tts/WorkerTtsEngine.cpp
+    src/telemetry/BehavioralEventLedger.cpp
     src/vision/VisionIngestService.cpp
     src/vision/GestureInterpreter.cpp
     src/vision/GestureStateMachine.cpp
@@ -327,9 +332,31 @@ set(JARVIS_HEADERS
     src/core/MemoryPolicyHandler.h
     src/core/ResponseFinalizer.h
     src/core/ToolCoordinator.h
+    src/cognition/CooldownEngine.h
+    src/cognition/FocusModePolicy.h
     src/core/tasks/TaskDispatcher.h
     src/core/tasks/ToolWorker.h
     src/core/tools/ToolExecutionService.h
+    src/companion/contracts/ActionOutcome.h
+    src/companion/contracts/ActionProposal.h
+    src/companion/contracts/BehaviorDecision.h
+    src/companion/contracts/BehaviorTraceEvent.h
+    src/companion/contracts/CompanionContextSnapshot.h
+    src/companion/contracts/ContextThreadId.h
+    src/companion/contracts/CooldownState.h
+    src/companion/contracts/CriticalAlertPolicy.h
+    src/companion/contracts/FeedbackSignal.h
+    src/companion/contracts/FocusModeState.h
+    src/companion/contracts/MemoryQuery.h
+    src/companion/contracts/MemoryRecord.h
+    src/companion/contracts/PerceptionEvent.h
+    src/companion/contracts/PermissionGrant.h
+    src/companion/contracts/PolicySnapshot.h
+    src/companion/contracts/PromptAssembly.h
+    src/companion/contracts/RiskAssessment.h
+    src/companion/contracts/TaskRecord.h
+    src/companion/contracts/ToolExposurePlan.h
+    src/companion/contracts/TriggerRule.h
     src/devices/Device.h
     src/devices/DeviceManager.h
     src/devices/MockDevices.h
@@ -351,6 +378,7 @@ set(JARVIS_HEADERS
     src/stt/WhisperSttEngine.h
     src/stt/SpeechRecognizer.h
     src/stt/RuntimeSpeechRecognizer.h
+    src/telemetry/BehavioralEventLedger.h
     src/tools/ToolManager.h
     src/tts/TtsEngine.h
     src/tts/PiperTtsEngine.h
@@ -532,6 +560,7 @@ target_link_libraries(jarvis_lib
         Qt6::Network
         Qt6::Quick
         Qt6::QuickControls2
+        Qt6::Sql
         Qt6::Svg
         Qt6::WebSockets
         Qt6::Widgets
@@ -546,6 +575,18 @@ endif()
 
 if(TARGET rnnoise)
     target_link_libraries(jarvis_lib PUBLIC rnnoise)
+endif()
+
+if(Python3_EXECUTABLE)
+    add_custom_target(jarvis_file_cap_check
+        COMMAND ${Python3_EXECUTABLE}
+            ${CMAKE_SOURCE_DIR}/scripts/check_file_caps.py
+            --root ${CMAKE_SOURCE_DIR}
+            --allowlist ${CMAKE_SOURCE_DIR}/config/file_caps_legacy_allowlist.txt
+            --max-lines 500
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        COMMENT "Checking authored file size caps"
+    )
 endif()
 
 function(jarvis_copy_optional_runtime_libraries target_name)
@@ -866,6 +907,45 @@ if(JARVIS_BUILD_TESTS)
     add_test(NAME jarvis_settings_tests COMMAND jarvis_settings_tests)
     set_tests_properties(jarvis_settings_tests PROPERTIES ENVIRONMENT "PATH=${QT_BIN_DIR}${JARVIS_PATH_ENV_SEPARATOR}$ENV{PATH}")
     jarvis_copy_optional_runtime_libraries(jarvis_settings_tests)
+
+    qt_add_executable(jarvis_cooldown_tests
+        tests/CooldownEngineTests.cpp
+    )
+
+    target_link_libraries(jarvis_cooldown_tests
+        PRIVATE
+            jarvis_lib
+            Qt6::Test
+    )
+
+    add_test(NAME jarvis_cooldown_tests COMMAND jarvis_cooldown_tests)
+    set_tests_properties(jarvis_cooldown_tests PROPERTIES ENVIRONMENT "PATH=${QT_BIN_DIR}${JARVIS_PATH_ENV_SEPARATOR}$ENV{PATH}")
+    jarvis_copy_optional_runtime_libraries(jarvis_cooldown_tests)
+
+    qt_add_executable(jarvis_behavioral_ledger_tests
+        tests/BehavioralEventLedgerTests.cpp
+    )
+
+    target_link_libraries(jarvis_behavioral_ledger_tests
+        PRIVATE
+            jarvis_lib
+            Qt6::Test
+    )
+
+    add_test(NAME jarvis_behavioral_ledger_tests COMMAND jarvis_behavioral_ledger_tests)
+    set_tests_properties(jarvis_behavioral_ledger_tests PROPERTIES ENVIRONMENT "PATH=${QT_BIN_DIR}${JARVIS_PATH_ENV_SEPARATOR}$ENV{PATH}")
+    jarvis_copy_optional_runtime_libraries(jarvis_behavioral_ledger_tests)
+
+    if(Python3_EXECUTABLE)
+        add_test(
+            NAME jarvis_file_cap_check
+            COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_SOURCE_DIR}/scripts/check_file_caps.py
+                --root ${CMAKE_SOURCE_DIR}
+                --allowlist ${CMAKE_SOURCE_DIR}/config/file_caps_legacy_allowlist.txt
+                --max-lines 500
+        )
+    endif()
 
     qt_add_executable(jarvis_wakeword_tests
         tests/WakeWordDetectorTests.cpp

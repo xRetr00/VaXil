@@ -27,6 +27,8 @@
 #include <windows.h>
 #endif
 
+#include "companion/contracts/BehaviorTraceEvent.h"
+#include "companion/contracts/FocusModeState.h"
 #include "core/AssistantController.h"
 #include "logging/LoggingService.h"
 #include "overlay/OverlayController.h"
@@ -1384,6 +1386,11 @@ QVariantList BackendFacade::mcpQuickServers() const
     }
     return list;
 }
+bool BackendFacade::focusModeEnabled() const { return m_settings->focusModeEnabled(); }
+bool BackendFacade::focusModeAllowCriticalAlerts() const { return m_settings->focusModeAllowCriticalAlerts(); }
+int BackendFacade::focusModeDurationMinutes() const { return m_settings->focusModeDurationMinutes(); }
+qlonglong BackendFacade::focusModeUntilEpochMs() const { return m_settings->focusModeUntilEpochMs(); }
+bool BackendFacade::privateModeEnabled() const { return m_settings->privateModeEnabled(); }
 bool BackendFacade::tracePanelEnabled() const { return m_settings->tracePanelEnabled(); }
 QString BackendFacade::agentStatus() const { return m_assistantController->agentCapabilities().status; }
 bool BackendFacade::agentAvailable() const { return m_settings->agentEnabled(); }
@@ -1500,6 +1507,77 @@ void BackendFacade::setWakeEngineKind(const QString &kind)
     m_settings->save();
     emit settingsChanged();
 }
+
+void BackendFacade::activateFocusMode(int durationMinutes, bool allowCriticalAlerts)
+{
+    const int normalizedMinutes = qMax(0, durationMinutes);
+    const qint64 untilEpochMs = normalizedMinutes > 0
+        ? QDateTime::currentMSecsSinceEpoch() + (static_cast<qint64>(normalizedMinutes) * 60 * 1000)
+        : 0;
+
+    m_settings->setFocusModeEnabled(true);
+    m_settings->setFocusModeAllowCriticalAlerts(allowCriticalAlerts);
+    m_settings->setFocusModeDurationMinutes(normalizedMinutes);
+    m_settings->setFocusModeUntilEpochMs(untilEpochMs);
+    m_settings->save();
+
+    if (m_loggingService) {
+        FocusModeState state;
+        state.enabled = true;
+        state.allowCriticalAlerts = allowCriticalAlerts;
+        state.durationMinutes = normalizedMinutes;
+        state.untilEpochMs = untilEpochMs;
+        state.source = QStringLiteral("backend_facade");
+        m_loggingService->logFocusModeTransition(state,
+                                                QStringLiteral("manual"),
+                                                QStringLiteral("focus_mode.enabled"));
+    }
+
+    emit settingsChanged();
+}
+
+void BackendFacade::deactivateFocusMode()
+{
+    m_settings->setFocusModeEnabled(false);
+    m_settings->setFocusModeDurationMinutes(0);
+    m_settings->setFocusModeUntilEpochMs(0);
+    m_settings->save();
+
+    if (m_loggingService) {
+        FocusModeState state;
+        state.enabled = false;
+        state.allowCriticalAlerts = m_settings->focusModeAllowCriticalAlerts();
+        state.source = QStringLiteral("backend_facade");
+        m_loggingService->logFocusModeTransition(state,
+                                                QStringLiteral("manual"),
+                                                QStringLiteral("focus_mode.disabled"));
+    }
+
+    emit settingsChanged();
+}
+
+void BackendFacade::setPrivateModeEnabled(bool enabled)
+{
+    m_settings->setPrivateModeEnabled(enabled);
+    m_settings->save();
+
+    if (m_loggingService) {
+        BehaviorTraceEvent event = BehaviorTraceEvent::create(
+            QStringLiteral("private_mode"),
+            QStringLiteral("state_transition"),
+            enabled ? QStringLiteral("private_mode.enabled") : QStringLiteral("private_mode.disabled"),
+            {
+                { QStringLiteral("enabled"), enabled }
+            },
+            QStringLiteral("user"));
+        event.capabilityId = QStringLiteral("private_mode");
+        event.threadId = QStringLiteral("companion::private_mode");
+        m_loggingService->logBehaviorEvent(event);
+    }
+
+    emit settingsChanged();
+}
+
 void BackendFacade::setTtsEngineKind(const QString &kind)
 {
     Q_UNUSED(kind);

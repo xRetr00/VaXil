@@ -32,6 +32,9 @@ private slots:
     void wakeWordPhraseDefaultsWhenEmpty();
     void wakeEngineKindDefaultsWhenEmpty();
     void ttsEngineKindDefaultsWhenEmpty();
+    void focusModeDefaultsDisabled();
+    void focusModeDurationClamps();
+    void privateModeDefaultsDisabled();
     void settingsChangedEmittedOnSetter();
 };
 
@@ -58,6 +61,11 @@ void AppSettingsTests::hasExpectedDefaults()
     QVERIFY(settings.aecEnabled());
     QVERIFY(!settings.rnnoiseEnabled());
     QVERIFY(settings.tracePanelEnabled());
+    QVERIFY(!settings.focusModeEnabled());
+    QVERIFY(settings.focusModeAllowCriticalAlerts());
+    QCOMPARE(settings.focusModeDurationMinutes(), 0);
+    QCOMPARE(settings.focusModeUntilEpochMs(), 0);
+    QVERIFY(!settings.privateModeEnabled());
     QVERIFY(!settings.initialSetupCompleted());
 }
 
@@ -222,11 +230,35 @@ void AppSettingsTests::ttsEngineKindDefaultsWhenEmpty()
     QCOMPARE(settings.ttsEngineKind(), QStringLiteral("piper"));
 }
 
+void AppSettingsTests::focusModeDefaultsDisabled()
+{
+    AppSettings settings;
+    QVERIFY(!settings.focusModeEnabled());
+    QVERIFY(settings.focusModeAllowCriticalAlerts());
+    QCOMPARE(settings.focusModeDurationMinutes(), 0);
+}
+
+void AppSettingsTests::focusModeDurationClamps()
+{
+    AppSettings settings;
+    settings.setFocusModeDurationMinutes(-10);
+    QCOMPARE(settings.focusModeDurationMinutes(), 0);
+
+    settings.setFocusModeDurationMinutes(24 * 60 + 25);
+    QCOMPARE(settings.focusModeDurationMinutes(), 24 * 60);
+}
+
+void AppSettingsTests::privateModeDefaultsDisabled()
+{
+    AppSettings settings;
+    QVERIFY(!settings.privateModeEnabled());
+}
+
 void AppSettingsTests::settingsChangedEmittedOnSetter()
 {
     AppSettings settings;
     QSignalSpy spy(&settings, &AppSettings::settingsChanged);
-    settings.setVoiceSpeed(0.89);
+    settings.setFocusModeEnabled(true);
     QCOMPARE(spy.count(), 1);
 }
 

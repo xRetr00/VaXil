@@ -110,6 +110,11 @@ int clampGestureStabilityMs(int value)
     return std::clamp(value, 100, 1500);
 }
 
+int clampFocusModeDurationMinutes(int value)
+{
+    return std::clamp(value, 0, 24 * 60);
+}
+
 double clampVisionConfidence(double value, double fallback)
 {
     if (std::isnan(value)) {
@@ -208,6 +213,11 @@ bool AppSettings::load()
     m_gestureStabilityMs = clampGestureStabilityMs(parsed.value("gestureStabilityMs", 180));
     m_gestureCooldownMs = clampGestureCooldownMs(parsed.value("gestureCooldownMs", 500));
     m_tracePanelEnabled = parsed.value("tracePanelEnabled", true);
+    m_focusModeEnabled = parsed.value("focusModeEnabled", false);
+    m_focusModeAllowCriticalAlerts = parsed.value("focusModeAllowCriticalAlerts", true);
+    m_focusModeDurationMinutes = clampFocusModeDurationMinutes(parsed.value("focusModeDurationMinutes", 0));
+    m_focusModeUntilEpochMs = parsed.value("focusModeUntilEpochMs", static_cast<qint64>(0));
+    m_privateModeEnabled = parsed.value("privateModeEnabled", false);
     m_whisperExecutable = QString::fromStdString(parsed.value("whisperExecutable", std::string{}));
     m_whisperModelPath = QString::fromStdString(parsed.value("whisperModelPath", std::string{}));
     m_intentModelPath = QString::fromStdString(parsed.value("intentModelPath", std::string{}));
@@ -306,6 +316,11 @@ bool AppSettings::save() const
         {"gestureStabilityMs", m_gestureStabilityMs},
         {"gestureCooldownMs", m_gestureCooldownMs},
         {"tracePanelEnabled", m_tracePanelEnabled},
+        {"focusModeEnabled", m_focusModeEnabled},
+        {"focusModeAllowCriticalAlerts", m_focusModeAllowCriticalAlerts},
+        {"focusModeDurationMinutes", m_focusModeDurationMinutes},
+        {"focusModeUntilEpochMs", m_focusModeUntilEpochMs},
+        {"privateModeEnabled", m_privateModeEnabled},
         {"whisperExecutable", m_whisperExecutable.toStdString()},
         {"whisperModelPath", m_whisperModelPath.toStdString()},
         {"intentModelPath", m_intentModelPath.toStdString()},
@@ -524,6 +539,16 @@ void AppSettings::setGestureCooldownMs(int cooldownMs)
 }
 bool AppSettings::tracePanelEnabled() const { return m_tracePanelEnabled; }
 void AppSettings::setTracePanelEnabled(bool enabled) { m_tracePanelEnabled = enabled; emit settingsChanged(); }
+bool AppSettings::focusModeEnabled() const { return m_focusModeEnabled; }
+void AppSettings::setFocusModeEnabled(bool enabled) { m_focusModeEnabled = enabled; emit settingsChanged(); }
+bool AppSettings::focusModeAllowCriticalAlerts() const { return m_focusModeAllowCriticalAlerts; }
+void AppSettings::setFocusModeAllowCriticalAlerts(bool enabled) { m_focusModeAllowCriticalAlerts = enabled; emit settingsChanged(); }
+int AppSettings::focusModeDurationMinutes() const { return m_focusModeDurationMinutes; }
+void AppSettings::setFocusModeDurationMinutes(int minutes) { m_focusModeDurationMinutes = clampFocusModeDurationMinutes(minutes); emit settingsChanged(); }
+qint64 AppSettings::focusModeUntilEpochMs() const { return m_focusModeUntilEpochMs; }
+void AppSettings::setFocusModeUntilEpochMs(qint64 epochMs) { m_focusModeUntilEpochMs = std::max<qint64>(0, epochMs); emit settingsChanged(); }
+bool AppSettings::privateModeEnabled() const { return m_privateModeEnabled; }
+void AppSettings::setPrivateModeEnabled(bool enabled) { m_privateModeEnabled = enabled; emit settingsChanged(); }
 QString AppSettings::whisperExecutable() const { return m_whisperExecutable; }
 void AppSettings::setWhisperExecutable(const QString &path) { m_whisperExecutable = path; emit settingsChanged(); }
 QString AppSettings::whisperModelPath() const { return m_whisperModelPath; }

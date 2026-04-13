@@ -5,8 +5,13 @@
 #include <QObject>
 #include <QHash>
 #include <QMutex>
+#include <QVariantList>
 
+#include "companion/contracts/BehaviorTraceEvent.h"
+#include "companion/contracts/FocusModeState.h"
 #include "core/AssistantTypes.h"
+
+class BehavioralEventLedger;
 
 namespace spdlog {
 class logger;
@@ -34,6 +39,13 @@ public:
                        const QString &detail = QString(),
                        const QString &rateLimitKey = QStringLiteral("vision_drop"),
                        int intervalMs = 1500) const;
+    bool logBehaviorEvent(const BehaviorTraceEvent &event) const;
+    bool logFocusModeTransition(const FocusModeState &state,
+                                const QString &source,
+                                const QString &reasonCode) const;
+    QVariantList recentBehaviorEvents(int limit = 50) const;
+    QString behaviorLedgerDatabasePath() const;
+    QString behaviorLedgerNdjsonPath() const;
     bool logAiExchange(const QString &prompt, const QString &response, const QString &source, const QString &status = QString()) const;
     bool logAgentExchange(const QString &prompt,
                           const QString &response,
@@ -56,6 +68,7 @@ private:
     std::shared_ptr<spdlog::logger> m_ttsLogger;
     std::shared_ptr<spdlog::logger> m_sttLogger;
     std::shared_ptr<spdlog::logger> m_orbLogger;
+    std::unique_ptr<BehavioralEventLedger> m_behavioralLedger;
     QString m_logFilePath;
     mutable QHash<QString, qint64> m_rateLimitedLogTimes;
     mutable QMutex m_rateLimitMutex;

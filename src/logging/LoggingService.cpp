@@ -1,5 +1,7 @@
 #include "logging/LoggingService.h"
 
+#include "telemetry/BehavioralEventLedger.h"
+
 #include <QCoreApplication>
 #include <QDateTime>
 #include <QDir>
@@ -119,6 +121,10 @@ bool LoggingService::initialize()
         m_ttsLogger = makeFileLogger(QStringLiteral("vaxil_tts"), QStringLiteral("tts.log"));
         m_sttLogger = makeFileLogger(QStringLiteral("vaxil_stt"), QStringLiteral("stt.log"));
         m_orbLogger = makeFileLogger(QStringLiteral("vaxil_orb"), QStringLiteral("orb_render.log"));
+        m_behavioralLedger = std::make_unique<BehavioralEventLedger>(root + QStringLiteral("/behavior"));
+        if (m_behavioralLedger) {
+            m_behavioralLedger->initialize();
+        }
         return true;
     } catch (...) {
         return false;
@@ -268,6 +274,50 @@ void LoggingService::logVisionDrop(const QString &reason,
     infoFor(QStringLiteral("vision"), QStringLiteral("Vision snapshot dropped. snapshot_dropped_reason=\"%1\" detail=\"%2\"")
              .arg(reason.trimmed().isEmpty() ? QStringLiteral("unknown") : reason.trimmed(),
                   detail.trimmed()));
+}
+
+bool LoggingService::logBehaviorEvent(const BehaviorTraceEvent &event) const
+{
+    return m_behavioralLedger ? m_behavioralLedger->recordEvent(event) : false;
+}
+
+bool LoggingService::logFocusModeTransition(const FocusModeState &state,
+                                            const QString &source,
+                                            const QString &reasonCode) const
+{
+    BehaviorTraceEvent event = BehaviorTraceEvent::create(
+        QStringLiteral("focus_mode"),
+        QStringLiteral("state_transition"),
+        reasonCode.trimmed().isEmpty() ? QStringLiteral("focus_mode.changed") : reasonCode.trimmed(),
+        state.toVariantMap(),
+        QStringLiteral("user"));
+    event.capabilityId = QStringLiteral("focus_mode");
+    event.threadId = QStringLiteral("companion::focus_mode");
+    event.payload.insert(QStringLiteral("source"), source.trimmed().isEmpty() ? QStringLiteral("unknown") : source.trimmed());
+    return logBehaviorEvent(event);
+}
+
+QVariantList LoggingService::recentBehaviorEvents(int limit) const
+{
+    QVariantList rows;
+    if (!m_behavioralLedger) {
+        return rows;
+    }
+
+    for (const BehaviorTraceEvent &event : m_behavioralLedger->recentEvents(limit)) {
+        rows.push_back(event.toVariantMap());
+    }
+    return rows;
+}
+
+QString LoggingService::behaviorLedgerDatabasePath() const
+{
+    return m_behavioralLedger ? m_behavioralLedger->databasePath() : QString();
+}
+
+QString LoggingService::behaviorLedgerNdjsonPath() const
+{
+    return m_behavioralLedger ? m_behavioralLedger->ndjsonPath() : QString();
 }
 
 bool LoggingService::logAiExchange(const QString &prompt, const QString &response, const QString &source, const QString &status) const

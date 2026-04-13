@@ -82,6 +82,11 @@ class SettingsViewModel : public QObject
     Q_PROPERTY(QString mcpCatalogUrl READ mcpCatalogUrl NOTIFY settingsChanged)
     Q_PROPERTY(QString mcpServerUrl READ mcpServerUrl NOTIFY settingsChanged)
     Q_PROPERTY(QVariantList mcpQuickServers READ mcpQuickServers NOTIFY settingsChanged)
+    Q_PROPERTY(bool focusModeEnabled READ focusModeEnabled NOTIFY settingsChanged)
+    Q_PROPERTY(bool focusModeAllowCriticalAlerts READ focusModeAllowCriticalAlerts NOTIFY settingsChanged)
+    Q_PROPERTY(int focusModeDurationMinutes READ focusModeDurationMinutes NOTIFY settingsChanged)
+    Q_PROPERTY(qlonglong focusModeUntilEpochMs READ focusModeUntilEpochMs NOTIFY settingsChanged)
+    Q_PROPERTY(bool privateModeEnabled READ privateModeEnabled NOTIFY settingsChanged)
     Q_PROPERTY(bool tracePanelEnabled READ tracePanelEnabled NOTIFY agentStateChanged)
     Q_PROPERTY(QString agentStatus READ agentStatus NOTIFY agentStateChanged)
     Q_PROPERTY(bool agentAvailable READ agentAvailable NOTIFY agentStateChanged)
@@ -168,6 +173,11 @@ public:
     QString mcpCatalogUrl() const;
     QString mcpServerUrl() const;
     QVariantList mcpQuickServers() const;
+    bool focusModeEnabled() const;
+    bool focusModeAllowCriticalAlerts() const;
+    int focusModeDurationMinutes() const;
+    qlonglong focusModeUntilEpochMs() const;
+    bool privateModeEnabled() const;
     bool tracePanelEnabled() const;
     QString agentStatus() const;
     bool agentAvailable() const;
@@ -258,6 +268,9 @@ public:
                                             const QString &mcpServerUrl);
     Q_INVOKABLE bool installMcpQuickServer(const QString &presetId);
     Q_INVOKABLE bool installMcpPackage(const QString &packageSpec, const QString &serverIdHint);
+    Q_INVOKABLE void activateFocusMode(int durationMinutes = 0, bool allowCriticalAlerts = true);
+    Q_INVOKABLE void deactivateFocusMode();
+    Q_INVOKABLE void setPrivateModeEnabled(bool enabled);
     Q_INVOKABLE void startListening();
     Q_INVOKABLE bool runSetupScenario(const QString &userName,
                                       const QString &providerKind,

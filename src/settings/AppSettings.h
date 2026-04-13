@@ -117,6 +117,21 @@ public:
     bool tracePanelEnabled() const;
     void setTracePanelEnabled(bool enabled);
 
+    bool focusModeEnabled() const;
+    void setFocusModeEnabled(bool enabled);
+
+    bool focusModeAllowCriticalAlerts() const;
+    void setFocusModeAllowCriticalAlerts(bool enabled);
+
+    int focusModeDurationMinutes() const;
+    void setFocusModeDurationMinutes(int minutes);
+
+    qint64 focusModeUntilEpochMs() const;
+    void setFocusModeUntilEpochMs(qint64 epochMs);
+
+    bool privateModeEnabled() const;
+    void setPrivateModeEnabled(bool enabled);
+
     QString whisperExecutable() const;
     void setWhisperExecutable(const QString &path);
 
@@ -233,6 +248,11 @@ private:
     int m_gestureStabilityMs = 180;
     int m_gestureCooldownMs = 500;
     bool m_tracePanelEnabled = true;
+    bool m_focusModeEnabled = false;
+    bool m_focusModeAllowCriticalAlerts = true;
+    int m_focusModeDurationMinutes = 0;
+    qint64 m_focusModeUntilEpochMs = 0;
+    bool m_privateModeEnabled = false;
     QString m_whisperExecutable;
     QString m_whisperModelPath;
     QString m_intentModelPath;

@@ -382,6 +382,31 @@ QVariantList SettingsViewModel::mcpQuickServers() const
     return m_backend ? m_backend->mcpQuickServers() : QVariantList();
 }
 
+bool SettingsViewModel::focusModeEnabled() const
+{
+    return m_backend && m_backend->focusModeEnabled();
+}
+
+bool SettingsViewModel::focusModeAllowCriticalAlerts() const
+{
+    return m_backend && m_backend->focusModeAllowCriticalAlerts();
+}
+
+int SettingsViewModel::focusModeDurationMinutes() const
+{
+    return m_backend ? m_backend->focusModeDurationMinutes() : 0;
+}
+
+qlonglong SettingsViewModel::focusModeUntilEpochMs() const
+{
+    return m_backend ? m_backend->focusModeUntilEpochMs() : 0;
+}
+
+bool SettingsViewModel::privateModeEnabled() const
+{
+    return m_backend && m_backend->privateModeEnabled();
+}
+
 bool SettingsViewModel::tracePanelEnabled() const
 {
     return m_backend && m_backend->tracePanelEnabled();
@@ -717,6 +742,27 @@ bool SettingsViewModel::installMcpQuickServer(const QString &presetId)
 bool SettingsViewModel::installMcpPackage(const QString &packageSpec, const QString &serverIdHint)
 {
     return m_backend && m_backend->installMcpPackage(packageSpec, serverIdHint);
+}
+
+void SettingsViewModel::activateFocusMode(int durationMinutes, bool allowCriticalAlerts)
+{
+    if (m_backend) {
+        m_backend->activateFocusMode(durationMinutes, allowCriticalAlerts);
+    }
+}
+
+void SettingsViewModel::deactivateFocusMode()
+{
+    if (m_backend) {
+        m_backend->deactivateFocusMode();
+    }
+}
+
+void SettingsViewModel::setPrivateModeEnabled(bool enabled)
+{
+    if (m_backend) {
+        m_backend->setPrivateModeEnabled(enabled);
+    }
 }
 
 void SettingsViewModel::startListening()
