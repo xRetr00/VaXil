@@ -38,6 +38,7 @@
 #include "core/MemoryPolicyHandler.h"
 #include "core/ResponseFinalizer.h"
 #include "core/ToolCoordinator.h"
+#include "cognition/ProactiveSuggestionGate.h"
 #include "core/tasks/TaskDispatcher.h"
 #include "core/tasks/ToolWorker.h"
 #include "cognition/DesktopContextSelectionBuilder.h"
@@ -3210,6 +3211,81 @@ QString AssistantController::wakeEngineDisplayName() const
     return QStringLiteral("sherpa-onnx");
 }
 
+FocusModeState AssistantController::currentFocusModeState() const
+{
+    return {
+        .enabled = m_settings != nullptr && m_settings->focusModeEnabled(),
+        .allowCriticalAlerts = m_settings != nullptr && m_settings->focusModeAllowCriticalAlerts(),
+        .durationMinutes = m_settings != nullptr ? m_settings->focusModeDurationMinutes() : 0,
+        .untilEpochMs = m_settings != nullptr ? m_settings->focusModeUntilEpochMs() : 0,
+        .source = QStringLiteral("settings")
+    };
+}
+
+ActionProposal AssistantController::buildNextStepProposal(const QString &hint,
+                                                          const QString &sourceKind,
+                                                          const QString &taskType,
+                                                          bool success) const
+{
+    ActionProposal proposal;
+    proposal.proposalId = QStringLiteral("next_step_%1")
+                              .arg(QString::number(QDateTime::currentMSecsSinceEpoch()));
+    proposal.capabilityId = QStringLiteral("next_step_hint");
+    proposal.title = QStringLiteral("Suggested next step");
+    proposal.summary = hint.trimmed();
+    proposal.priority = success ? QStringLiteral("medium") : QStringLiteral("high");
+    proposal.arguments = {
+        {QStringLiteral("sourceKind"), sourceKind},
+        {QStringLiteral("taskType"), taskType},
+        {QStringLiteral("success"), success}
+    };
+    return proposal;
+}
+
+QString AssistantController::gateNextStepHint(const QString &hint,
+                                              const QString &sourceKind,
+                                              const QString &taskType,
+                                              bool success) const
+{
+    const QString trimmedHint = hint.trimmed();
+    if (trimmedHint.isEmpty()) {
+        return {};
+    }
+
+    const ActionProposal proposal = buildNextStepProposal(trimmedHint, sourceKind, taskType, success);
+    const BehaviorDecision decision = ProactiveSuggestionGate::evaluate({
+        .proposal = proposal,
+        .desktopContext = m_latestDesktopContext,
+        .desktopContextAtMs = m_latestDesktopContextAtMs,
+        .focusMode = currentFocusModeState(),
+        .nowMs = QDateTime::currentMSecsSinceEpoch()
+    });
+
+    if (m_loggingService != nullptr) {
+        QVariantMap payload = proposal.toVariantMap();
+        const QVariantMap decisionMap = decision.toVariantMap();
+        for (auto it = decisionMap.constBegin(); it != decisionMap.constEnd(); ++it) {
+            payload.insert(it.key(), it.value());
+        }
+        payload.insert(QStringLiteral("sourceKind"), sourceKind);
+        payload.insert(QStringLiteral("taskType"), taskType);
+        payload.insert(QStringLiteral("desktopSummary"), m_latestDesktopContextSummary);
+        payload.insert(QStringLiteral("desktopTaskId"), m_latestDesktopContext.value(QStringLiteral("taskId")).toString());
+        payload.insert(QStringLiteral("desktopThreadId"), m_latestDesktopContext.value(QStringLiteral("threadId")).toString());
+        BehaviorTraceEvent event = BehaviorTraceEvent::create(
+            QStringLiteral("action_proposal"),
+            QStringLiteral("gated"),
+            decision.reasonCode,
+            payload,
+            QStringLiteral("system"));
+        event.capabilityId = QStringLiteral("proactive_suggestion_gate");
+        event.threadId = m_latestDesktopContext.value(QStringLiteral("threadId")).toString();
+        m_loggingService->logBehaviorEvent(event);
+    }
+
+    return decision.allowed ? trimmedHint : QString{};
+}
+
 bool AssistantController::startAudioCapture(AudioCaptureMode mode, bool announceListening)
 {
     invalidateWakeMonitorResume();
@@ -3276,10 +3352,16 @@ bool AssistantController::finalizeReply(const QString &source,
                                         bool logAgentExchange,
                                         bool allowFollowUpWakeDelay)
 {
+    ActionSession finalSession = m_activeActionSession;
+    finalSession.nextStepHint = gateNextStepHint(
+        finalSession.nextStepHint,
+        source,
+        m_recentActionThread.has_value() ? m_recentActionThread->taskType : QStringLiteral("conversation"),
+        !m_recentActionThread.has_value() || m_recentActionThread->success);
     const bool spoke = m_responseFinalizer->finalizeResponse(
         source,
         reply,
-        m_activeActionSession,
+        finalSession,
         &m_responseText,
         [this]() { emit responseTextChanged(); },
         [this]() { refreshConversationSession(); },
@@ -4441,10 +4523,17 @@ void AssistantController::startActionThreadCompletionRequest(const ActionThread 
         return;
     }
 
-    m_lastPromptForAiLog = thread.userGoal.trimmed().isEmpty()
-        ? thread.taskType
-        : thread.userGoal;
-    startConversationRequest(buildActionThreadCompletionInput(thread));
+    ActionThread gatedThread = thread;
+    gatedThread.nextStepHint = gateNextStepHint(
+        thread.nextStepHint,
+        QStringLiteral("completion_prompt"),
+        thread.taskType,
+        thread.success);
+
+    m_lastPromptForAiLog = gatedThread.userGoal.trimmed().isEmpty()
+        ? gatedThread.taskType
+        : gatedThread.userGoal;
+    startConversationRequest(buildActionThreadCompletionInput(gatedThread));
 }
 
 bool AssistantController::shouldContinueActionThread(const QString &input,

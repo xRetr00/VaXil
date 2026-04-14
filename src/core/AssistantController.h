@@ -7,6 +7,8 @@
 #include <optional>
 #include <memory>
 
+#include "companion/contracts/ActionProposal.h"
+#include "companion/contracts/FocusModeState.h"
 #include "core/AssistantTypes.h"
 
 class AppSettings;
@@ -306,6 +308,15 @@ private:
     QString resolveWakeEngineRuntimePath() const;
     QString resolveWakeEngineModelPath() const;
     QString wakeEngineDisplayName() const;
+    FocusModeState currentFocusModeState() const;
+    ActionProposal buildNextStepProposal(const QString &hint,
+                                         const QString &sourceKind,
+                                         const QString &taskType,
+                                         bool success) const;
+    QString gateNextStepHint(const QString &hint,
+                             const QString &sourceKind,
+                             const QString &taskType,
+                             bool success) const;
 
     AppSettings *m_settings = nullptr;
     IdentityProfileService *m_identityProfileService = nullptr;

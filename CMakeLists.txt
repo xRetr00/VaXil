@@ -266,6 +266,7 @@ set(JARVIS_SOURCES
     src/cognition/CooldownEngine.cpp
     src/cognition/DesktopContextSelectionBuilder.cpp
     src/cognition/FocusModePolicy.cpp
+    src/cognition/ProactiveSuggestionGate.cpp
     src/cognition/ProactiveSurfaceGate.cpp
     src/core/tasks/TaskDispatcher.cpp
     src/core/tasks/ToolWorker.cpp
@@ -341,6 +342,7 @@ set(JARVIS_HEADERS
     src/cognition/CooldownEngine.h
     src/cognition/DesktopContextSelectionBuilder.h
     src/cognition/FocusModePolicy.h
+    src/cognition/ProactiveSuggestionGate.h
     src/cognition/ProactiveSurfaceGate.h
     src/core/tasks/TaskDispatcher.h
     src/core/tasks/ToolWorker.h
@@ -1034,6 +1036,18 @@ if(JARVIS_BUILD_TESTS)
     add_test(NAME jarvis_proactive_surface_tests COMMAND jarvis_proactive_surface_tests)
     set_tests_properties(jarvis_proactive_surface_tests PROPERTIES ENVIRONMENT "PATH=${QT_BIN_DIR}${JARVIS_PATH_ENV_SEPARATOR}$ENV{PATH}")
     jarvis_copy_optional_runtime_libraries(jarvis_proactive_surface_tests)
+
+    qt_add_executable(jarvis_proactive_suggestion_tests
+        tests/ProactiveSuggestionGateTests.cpp
+        src/cognition/ProactiveSuggestionGate.cpp
+    )
+
+    target_include_directories(jarvis_proactive_suggestion_tests PRIVATE src)
+    target_link_libraries(jarvis_proactive_suggestion_tests PRIVATE Qt6::Core Qt6::Test nlohmann_json::nlohmann_json)
+
+    add_test(NAME jarvis_proactive_suggestion_tests COMMAND jarvis_proactive_suggestion_tests)
+    set_tests_properties(jarvis_proactive_suggestion_tests PROPERTIES ENVIRONMENT "PATH=${QT_BIN_DIR}${JARVIS_PATH_ENV_SEPARATOR}$ENV{PATH}")
+    jarvis_copy_optional_runtime_libraries(jarvis_proactive_suggestion_tests)
 
     qt_add_executable(jarvis_python_runtime_tests
         tests/PythonRuntimeTests.cpp

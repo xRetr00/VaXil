@@ -44,6 +44,9 @@ JarvisUi.VisionGlassPanel {
         if (family === "selection_context") {
             return "#8ff0c8"
         }
+        if (family === "action_proposal") {
+            return "#f3d78a"
+        }
         if (family === "ui_presentation") {
             return "#ffb6d9"
         }
@@ -108,6 +111,23 @@ JarvisUi.VisionGlassPanel {
             const taskId = (entry.desktopTaskId || "").toString()
             const topic = (entry.desktopTopic || "").toString()
             return "Desktop context affected selection" + (taskId ? " for " + taskId : "") + (topic ? " (" + topic + ")" : "")
+        }
+        if (family === "action_proposal") {
+            const title = (entry.title || "").toString()
+            const action = (entry.action || "").toString()
+            const priority = (entry.priority || "").toString()
+            const reasonCode = (entry.reasonCode || "").toString()
+            let text = "Proposal " + (action.length > 0 ? action : "decision")
+            if (title.length > 0) {
+                text += ": " + title
+            }
+            if (priority.length > 0) {
+                text += " [" + priority + "]"
+            }
+            if (reasonCode.length > 0) {
+                text += " because " + reasonCode
+            }
+            return text
         }
         if (family === "ui_presentation") {
             const taskType = (entry.taskType || "").toString()
@@ -195,7 +215,7 @@ JarvisUi.VisionGlassPanel {
         }
 
         Text {
-            text: "Perception, context-thread, cooldown, selection-context, and UI-presentation events from the behavioral ledger."
+            text: "Perception, context-thread, cooldown, selection-context, action-proposal, and UI-presentation events from the behavioral ledger."
             color: "#8099b8"
             font.pixelSize: 14
             wrapMode: Text.Wrap
