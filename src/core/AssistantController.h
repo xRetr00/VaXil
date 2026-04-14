@@ -331,7 +331,12 @@ private:
     void logPlannedSuggestion(const ProactiveSuggestionPlan &plan,
                               const QString &sourceKind,
                               const QString &taskType) const;
+    void commitProactivePresentation(const QString &surfaceKind,
+                                     const QString &taskType,
+                                     const QString &priority,
+                                     const QString &reasonCode);
     void considerDesktopContextSuggestion(const QString &summary, const QVariantMap &context);
+    void considerTaskResultSuggestion(const BackgroundTaskResult &result);
     void setLatestProactiveSuggestion(const QString &message,
                                       const QString &tone,
                                       const QString &type);

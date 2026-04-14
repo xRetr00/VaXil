@@ -15,6 +15,8 @@ private slots:
     void appliesCooldownPenaltyToMediumProposal();
     void buildsClipboardProposal();
     void buildsNotificationProposal();
+    void buildsScheduleProposal();
+    void buildsInboxProposal();
     void plansClipboardSuggestionWhenContextIsIdle();
     void suppressesPlannedSuggestionDuringFocusMode();
     void suppressesPlannedSuggestionDuringActiveCooldownSameThread();
@@ -159,6 +161,48 @@ void SuggestionProposalPlannerTests::buildsNotificationProposal()
     }
 
     QVERIFY(foundNotification);
+}
+
+void SuggestionProposalPlannerTests::buildsScheduleProposal()
+{
+    const QList<ActionProposal> proposals = SuggestionProposalBuilder::build({
+        .sourceKind = QStringLiteral("task_result"),
+        .taskType = QStringLiteral("calendar_review"),
+        .resultSummary = QStringLiteral("Upcoming meetings were collected."),
+        .sourceUrls = {},
+        .success = true
+    });
+
+    bool foundSchedule = false;
+    for (const ActionProposal &proposal : proposals) {
+        if (proposal.capabilityId == QStringLiteral("schedule_follow_up")) {
+            foundSchedule = true;
+            break;
+        }
+    }
+
+    QVERIFY(foundSchedule);
+}
+
+void SuggestionProposalPlannerTests::buildsInboxProposal()
+{
+    const QList<ActionProposal> proposals = SuggestionProposalBuilder::build({
+        .sourceKind = QStringLiteral("task_result"),
+        .taskType = QStringLiteral("email_fetch"),
+        .resultSummary = QStringLiteral("Unread email messages were fetched."),
+        .sourceUrls = {},
+        .success = true
+    });
+
+    bool foundInbox = false;
+    for (const ActionProposal &proposal : proposals) {
+        if (proposal.capabilityId == QStringLiteral("inbox_follow_up")) {
+            foundInbox = true;
+            break;
+        }
+    }
+
+    QVERIFY(foundInbox);
 }
 
 void SuggestionProposalPlannerTests::plansClipboardSuggestionWhenContextIsIdle()

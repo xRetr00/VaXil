@@ -29,6 +29,9 @@ public:
                           const QString &status,
                           const std::function<void(const QString &)> &setStatus) const;
 
+    [[nodiscard]] bool willAppendHint(const ActionSession &session,
+                                      const SpokenReply &reply) const;
+
 private:
     MemoryStore *m_memoryStore = nullptr;
     TtsEngine *m_ttsEngine = nullptr;

@@ -9,8 +9,11 @@ class ProactiveSurfaceGateTests : public QObject
 private slots:
     void suppressesSuccessToastDuringFocusMode();
     void suppressesInspectionToastDuringFocusedDesktopWork();
+    void suppressesSuccessToastDuringActiveCooldown();
+    void allowsToastOnMeaningfulThreadShift();
     void keepsFailureToastVisible();
     void suppressesCompletionFollowUpDuringFocusMode();
+    void suppressesCompletionFollowUpDuringActiveCooldown();
     void allowsFailureFollowUpEvenInFocusMode();
 };
 
@@ -43,6 +46,38 @@ void ProactiveSurfaceGateTests::suppressesInspectionToastDuringFocusedDesktopWor
     QCOMPARE(decision.reasonCode, QStringLiteral("surface.focused_context_suppressed"));
 }
 
+void ProactiveSurfaceGateTests::suppressesSuccessToastDuringActiveCooldown()
+{
+    ProactiveSurfaceGate::Input input;
+    input.result.type = QStringLiteral("web_search");
+    input.result.success = true;
+    input.desktopContext.insert(QStringLiteral("threadId"), QStringLiteral("browser::research"));
+    input.desktopContextAtMs = 1000;
+    input.cooldownState.threadId = QStringLiteral("browser::research");
+    input.cooldownState.activeUntilEpochMs = 3000;
+    input.nowMs = 1500;
+
+    const BehaviorDecision decision = ProactiveSurfaceGate::evaluateTaskToast(input);
+    QVERIFY(!decision.allowed);
+    QCOMPARE(decision.reasonCode, QStringLiteral("surface.cooldown_suppressed"));
+}
+
+void ProactiveSurfaceGateTests::allowsToastOnMeaningfulThreadShift()
+{
+    ProactiveSurfaceGate::Input input;
+    input.result.type = QStringLiteral("web_search");
+    input.result.success = true;
+    input.desktopContext.insert(QStringLiteral("threadId"), QStringLiteral("browser::research"));
+    input.desktopContextAtMs = 1000;
+    input.cooldownState.threadId = QStringLiteral("editor::coding");
+    input.cooldownState.activeUntilEpochMs = 3000;
+    input.nowMs = 1500;
+
+    const BehaviorDecision decision = ProactiveSurfaceGate::evaluateTaskToast(input);
+    QVERIFY(decision.allowed);
+    QCOMPARE(decision.reasonCode, QStringLiteral("surface.cooldown_thread_shift"));
+}
+
 void ProactiveSurfaceGateTests::keepsFailureToastVisible()
 {
     FocusModeState focusMode;
@@ -71,6 +106,22 @@ void ProactiveSurfaceGateTests::suppressesCompletionFollowUpDuringFocusMode()
     const BehaviorDecision decision = ProactiveSurfaceGate::evaluateCompletionFollowUp(input, true);
     QVERIFY(!decision.allowed);
     QCOMPARE(decision.reasonCode, QStringLiteral("surface.follow_up_focus_mode_suppressed"));
+}
+
+void ProactiveSurfaceGateTests::suppressesCompletionFollowUpDuringActiveCooldown()
+{
+    ProactiveSurfaceGate::Input input;
+    input.result.type = QStringLiteral("web_search");
+    input.result.success = true;
+    input.desktopContext.insert(QStringLiteral("threadId"), QStringLiteral("browser::research"));
+    input.desktopContextAtMs = 1000;
+    input.cooldownState.threadId = QStringLiteral("browser::research");
+    input.cooldownState.activeUntilEpochMs = 3000;
+    input.nowMs = 1500;
+
+    const BehaviorDecision decision = ProactiveSurfaceGate::evaluateCompletionFollowUp(input, true);
+    QVERIFY(!decision.allowed);
+    QCOMPARE(decision.reasonCode, QStringLiteral("surface.follow_up_cooldown_suppressed"));
 }
 
 void ProactiveSurfaceGateTests::allowsFailureFollowUpEvenInFocusMode()

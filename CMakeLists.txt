@@ -264,6 +264,7 @@ set(JARVIS_SOURCES
     src/core/ResponseFinalizer.cpp
     src/core/ToolCoordinator.cpp
     src/cognition/CooldownEngine.cpp
+    src/cognition/ProactiveCooldownTracker.cpp
     src/cognition/DesktopContextSelectionBuilder.cpp
     src/cognition/FocusModePolicy.cpp
     src/cognition/ProactiveSuggestionGate.cpp
@@ -1056,6 +1057,7 @@ if(JARVIS_BUILD_TESTS)
 
     qt_add_executable(jarvis_suggestion_planner_tests
         tests/SuggestionProposalPlannerTests.cpp
+        src/cognition/CooldownEngine.cpp
         src/cognition/ProactiveSuggestionPlanner.cpp
         src/cognition/ProactiveSuggestionGate.cpp
         src/cognition/SuggestionProposalBuilder.cpp

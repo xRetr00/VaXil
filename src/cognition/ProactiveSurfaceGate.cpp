@@ -9,6 +9,11 @@ bool isWorkspaceInspectionTask(const QString &taskType)
         || taskType == QStringLiteral("dir_list")
         || taskType == QStringLiteral("browser_fetch_text");
 }
+
+QString desktopThreadId(const QVariantMap &desktopContext)
+{
+    return desktopContext.value(QStringLiteral("threadId")).toString().trimmed();
+}
 }
 
 BehaviorDecision ProactiveSurfaceGate::evaluateTaskToast(const Input &input)
@@ -46,9 +51,22 @@ BehaviorDecision ProactiveSurfaceGate::evaluateTaskToast(const Input &input)
         return decision;
     }
 
+    if (input.cooldownState.isActive(input.nowMs) && !hasMeaningfulThreadShift(input)) {
+        decision.allowed = false;
+        decision.action = QStringLiteral("suppress_toast");
+        decision.reasonCode = QStringLiteral("surface.cooldown_suppressed");
+        decision.score = 0.9;
+        return decision;
+    }
+
     if (hasFreshDesktopContext(input)) {
-        decision.reasonCode = QStringLiteral("surface.context_checked_allow");
-        decision.score = 0.8;
+        if (hasMeaningfulThreadShift(input)) {
+            decision.reasonCode = QStringLiteral("surface.cooldown_thread_shift");
+            decision.score = 0.86;
+        } else {
+            decision.reasonCode = QStringLiteral("surface.context_checked_allow");
+            decision.score = 0.8;
+        }
     }
 
     return decision;
@@ -93,9 +111,22 @@ BehaviorDecision ProactiveSurfaceGate::evaluateCompletionFollowUp(const Input &i
         return decision;
     }
 
+    if (input.cooldownState.isActive(input.nowMs) && !hasMeaningfulThreadShift(input)) {
+        decision.allowed = false;
+        decision.action = QStringLiteral("suppress_follow_up");
+        decision.reasonCode = QStringLiteral("surface.follow_up_cooldown_suppressed");
+        decision.score = 0.91;
+        return decision;
+    }
+
     if (hasFreshDesktopContext(input)) {
-        decision.reasonCode = QStringLiteral("surface.follow_up_context_checked_allow");
-        decision.score = 0.82;
+        if (hasMeaningfulThreadShift(input)) {
+            decision.reasonCode = QStringLiteral("surface.follow_up_thread_shift");
+            decision.score = 0.87;
+        } else {
+            decision.reasonCode = QStringLiteral("surface.follow_up_context_checked_allow");
+            decision.score = 0.82;
+        }
     }
 
     return decision;
@@ -104,6 +135,12 @@ BehaviorDecision ProactiveSurfaceGate::evaluateCompletionFollowUp(const Input &i
 bool ProactiveSurfaceGate::hasFreshDesktopContext(const Input &input)
 {
     return input.desktopContextAtMs > 0 && (input.nowMs - input.desktopContextAtMs) <= 90000;
+}
+
+bool ProactiveSurfaceGate::hasMeaningfulThreadShift(const Input &input)
+{
+    const QString threadId = desktopThreadId(input.desktopContext);
+    return !threadId.isEmpty() && threadId != input.cooldownState.threadId;
 }
 
 bool ProactiveSurfaceGate::shouldSuppressForFocusedDesktopWork(const Input &input)

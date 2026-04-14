@@ -69,6 +69,12 @@ ResponseFinalizer::ResponseFinalizer(MemoryStore *memoryStore,
 {
 }
 
+bool ResponseFinalizer::willAppendHint(const ActionSession &session,
+                                       const SpokenReply &reply) const
+{
+    return shouldAppendHint(session, reply.displayText);
+}
+
 bool ResponseFinalizer::finalizeResponse(const QString &source,
                                          const SpokenReply &reply,
                                          const ActionSession &session,

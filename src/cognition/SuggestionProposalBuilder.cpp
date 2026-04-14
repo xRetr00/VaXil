@@ -5,6 +5,16 @@ QString normalizedTaskType(const QString &taskType)
 {
     return taskType.trimmed().toLower();
 }
+
+bool containsAny(const QString &text, std::initializer_list<const char *> needles)
+{
+    for (const char *needle : needles) {
+        if (text.contains(QString::fromUtf8(needle))) {
+            return true;
+        }
+    }
+    return false;
+}
 }
 
 QList<ActionProposal> SuggestionProposalBuilder::build(const Input &input)
@@ -40,6 +50,27 @@ QList<ActionProposal> SuggestionProposalBuilder::build(const Input &input)
                      makeProposal(QStringLiteral("web_follow_up"),
                                   QStringLiteral("Compare findings"),
                                   QStringLiteral("I can compare the sources, extract the key points, or open one."),
+                                  QStringLiteral("medium"),
+                                  input));
+    } else if (containsAny(taskType, {"calendar", "schedule", "meeting", "timer", "reminder"})) {
+        appendUnique(proposals,
+                     makeProposal(QStringLiteral("schedule_follow_up"),
+                                  QStringLiteral("Review schedule"),
+                                  QStringLiteral("I can turn this into a reminder, a short plan, or a quick schedule summary."),
+                                  QStringLiteral("medium"),
+                                  input));
+    } else if (containsAny(taskType, {"email", "mail", "message", "inbox"})) {
+        appendUnique(proposals,
+                     makeProposal(QStringLiteral("inbox_follow_up"),
+                                  QStringLiteral("Triage messages"),
+                                  QStringLiteral("I can summarize the important messages or help you decide what needs a reply."),
+                                  QStringLiteral("medium"),
+                                  input));
+    } else if (containsAny(taskType, {"note", "memo", "draft", "write"})) {
+        appendUnique(proposals,
+                     makeProposal(QStringLiteral("note_follow_up"),
+                                  QStringLiteral("Capture note"),
+                                  QStringLiteral("I can turn this into a short note, checklist, or saved summary."),
                                   QStringLiteral("medium"),
                                   input));
     } else if (taskType.contains(QStringLiteral("file")) || taskType.contains(QStringLiteral("code")) || taskType == QStringLiteral("dir_list")) {
