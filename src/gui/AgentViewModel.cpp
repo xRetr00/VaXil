@@ -23,6 +23,7 @@ AgentViewModel::AgentViewModel(BackendFacade *backend, QObject *parent)
     connect(m_backend, &BackendFacade::overlayVisibleChanged, this, &AgentViewModel::overlayVisibleChanged);
     connect(m_backend, &BackendFacade::presenceOffsetChanged, this, &AgentViewModel::presenceOffsetChanged);
     connect(m_backend, &BackendFacade::settingsChanged, this, &AgentViewModel::modeStateChanged);
+    connect(m_backend, &BackendFacade::latestProactiveSuggestionChanged, this, &AgentViewModel::latestProactiveSuggestionChanged);
     connect(m_backend, &BackendFacade::profileChanged, this, &AgentViewModel::profileChanged);
 }
 
@@ -109,6 +110,21 @@ qlonglong AgentViewModel::focusModeUntilEpochMs() const
 bool AgentViewModel::privateModeEnabled() const
 {
     return m_backend && m_backend->privateModeEnabled();
+}
+
+QString AgentViewModel::latestProactiveSuggestion() const
+{
+    return m_backend ? m_backend->latestProactiveSuggestion() : QString();
+}
+
+QString AgentViewModel::latestProactiveSuggestionTone() const
+{
+    return m_backend ? m_backend->latestProactiveSuggestionTone() : QStringLiteral("response");
+}
+
+QString AgentViewModel::latestProactiveSuggestionType() const
+{
+    return m_backend ? m_backend->latestProactiveSuggestionType() : QStringLiteral("proactive");
 }
 
 QString AgentViewModel::assistantName() const

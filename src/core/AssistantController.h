@@ -8,6 +8,7 @@
 #include <memory>
 
 #include "companion/contracts/ActionProposal.h"
+#include "companion/contracts/CooldownState.h"
 #include "companion/contracts/FocusModeState.h"
 #include "core/AssistantTypes.h"
 
@@ -45,6 +46,7 @@ class InputRouter;
 class MemoryPolicyHandler;
 class ResponseFinalizer;
 class ToolCoordinator;
+struct ProactiveSuggestionPlan;
 struct InputRouterContext;
 struct IntentResult;
 struct SpokenReply;
@@ -95,6 +97,9 @@ public:
     QString latestTaskToastTone() const;
     int latestTaskToastTaskId() const;
     QString latestTaskToastType() const;
+    QString latestProactiveSuggestion() const;
+    QString latestProactiveSuggestionTone() const;
+    QString latestProactiveSuggestionType() const;
     bool installSkill(const QString &url, QString *error = nullptr);
     bool createSkill(const QString &id, const QString &name, const QString &description, QString *error = nullptr);
 
@@ -167,6 +172,7 @@ signals:
     void backgroundTaskResultsChanged();
     void backgroundPanelVisibleChanged();
     void latestTaskToastChanged();
+    void latestProactiveSuggestionChanged();
     void assistantSurfaceChanged();
     void startupStateChanged();
     void listeningRequested();
@@ -309,6 +315,11 @@ private:
     QString resolveWakeEngineModelPath() const;
     QString wakeEngineDisplayName() const;
     FocusModeState currentFocusModeState() const;
+    ProactiveSuggestionPlan planNextStepSuggestion(const QString &sourceKind,
+                                                   const QString &taskType,
+                                                   const QString &resultSummary,
+                                                   const QStringList &sourceUrls,
+                                                   bool success) const;
     ActionProposal buildNextStepProposal(const QString &hint,
                                          const QString &sourceKind,
                                          const QString &taskType,
@@ -317,6 +328,13 @@ private:
                              const QString &sourceKind,
                              const QString &taskType,
                              bool success) const;
+    void logPlannedSuggestion(const ProactiveSuggestionPlan &plan,
+                              const QString &sourceKind,
+                              const QString &taskType) const;
+    void considerDesktopContextSuggestion(const QString &summary, const QVariantMap &context);
+    void setLatestProactiveSuggestion(const QString &message,
+                                      const QString &tone,
+                                      const QString &type);
 
     AppSettings *m_settings = nullptr;
     IdentityProfileService *m_identityProfileService = nullptr;
@@ -383,6 +401,12 @@ private:
     QString m_lastVisionGestureAction;
     qint64 m_lastVisionQueryMs = 0;
     bool m_backgroundPanelVisible = false;
+    QString m_latestProactiveSuggestion;
+    QString m_latestProactiveSuggestionTone = QStringLiteral("response");
+    QString m_latestProactiveSuggestionType = QStringLiteral("proactive");
+    QString m_lastProactiveSuggestionThreadId;
+    qint64 m_lastProactiveSuggestionMs = 0;
+    CooldownState m_proactiveCooldownState;
     QString m_surfaceErrorSource;
     QString m_surfaceErrorPrimary;
     QString m_surfaceErrorSecondary;

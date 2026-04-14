@@ -267,7 +267,10 @@ set(JARVIS_SOURCES
     src/cognition/DesktopContextSelectionBuilder.cpp
     src/cognition/FocusModePolicy.cpp
     src/cognition/ProactiveSuggestionGate.cpp
+    src/cognition/ProactiveSuggestionPlanner.cpp
     src/cognition/ProactiveSurfaceGate.cpp
+    src/cognition/SuggestionProposalBuilder.cpp
+    src/cognition/SuggestionProposalRanker.cpp
     src/core/tasks/TaskDispatcher.cpp
     src/core/tasks/ToolWorker.cpp
     src/core/tools/ToolExecutionService.cpp
@@ -344,6 +347,8 @@ set(JARVIS_HEADERS
     src/cognition/FocusModePolicy.h
     src/cognition/ProactiveSuggestionGate.h
     src/cognition/ProactiveSurfaceGate.h
+    src/cognition/SuggestionProposalBuilder.h
+    src/cognition/SuggestionProposalRanker.h
     src/core/tasks/TaskDispatcher.h
     src/core/tasks/ToolWorker.h
     src/core/tools/ToolExecutionService.h
@@ -1048,6 +1053,21 @@ if(JARVIS_BUILD_TESTS)
     add_test(NAME jarvis_proactive_suggestion_tests COMMAND jarvis_proactive_suggestion_tests)
     set_tests_properties(jarvis_proactive_suggestion_tests PROPERTIES ENVIRONMENT "PATH=${QT_BIN_DIR}${JARVIS_PATH_ENV_SEPARATOR}$ENV{PATH}")
     jarvis_copy_optional_runtime_libraries(jarvis_proactive_suggestion_tests)
+
+    qt_add_executable(jarvis_suggestion_planner_tests
+        tests/SuggestionProposalPlannerTests.cpp
+        src/cognition/ProactiveSuggestionPlanner.cpp
+        src/cognition/ProactiveSuggestionGate.cpp
+        src/cognition/SuggestionProposalBuilder.cpp
+        src/cognition/SuggestionProposalRanker.cpp
+    )
+
+    target_include_directories(jarvis_suggestion_planner_tests PRIVATE src)
+    target_link_libraries(jarvis_suggestion_planner_tests PRIVATE Qt6::Core Qt6::Test nlohmann_json::nlohmann_json)
+
+    add_test(NAME jarvis_suggestion_planner_tests COMMAND jarvis_suggestion_planner_tests)
+    set_tests_properties(jarvis_suggestion_planner_tests PROPERTIES ENVIRONMENT "PATH=${QT_BIN_DIR}${JARVIS_PATH_ENV_SEPARATOR}$ENV{PATH}")
+    jarvis_copy_optional_runtime_libraries(jarvis_suggestion_planner_tests)
 
     qt_add_executable(jarvis_python_runtime_tests
         tests/PythonRuntimeTests.cpp

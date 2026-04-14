@@ -183,6 +183,20 @@ Window {
     Item {
         anchors.fill: parent
 
+        JarvisUi.ToastManager {
+            id: toastManager
+            anchors.right: parent.right
+            anchors.rightMargin: root.pageMargin
+            anchors.bottom: parent.bottom
+            anchors.bottomMargin: root.pageMargin
+            latestUserPrompt: agentVm.transcript
+            onToastClicked: function(taskId) {
+                if (taskId >= 0) {
+                    taskVm.notifyTaskToastShown(taskId)
+                }
+            }
+        }
+
         ColumnLayout {
             id: assistantSurfaceCluster
             anchors.right: parent.right
@@ -419,6 +433,14 @@ Window {
         function onModeStateChanged() {
             root.currentEpochMs = Date.now()
         }
+
+        function onLatestProactiveSuggestionChanged() {
+            toastManager.pushToast(
+                agentVm.latestProactiveSuggestion,
+                agentVm.latestProactiveSuggestionTone,
+                -1,
+                agentVm.latestProactiveSuggestionType)
+        }
     }
 
     Connections {
@@ -428,6 +450,14 @@ Window {
             if (taskVm.backgroundPanelVisible) {
                 taskVm.notifyTaskPanelRendered()
             }
+        }
+
+        function onLatestTaskToastChanged() {
+            toastManager.pushToast(
+                taskVm.latestTaskToast,
+                taskVm.latestTaskToastTone,
+                taskVm.latestTaskToastTaskId,
+                taskVm.latestTaskToastType)
         }
     }
 }

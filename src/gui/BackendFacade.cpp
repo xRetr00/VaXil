@@ -1042,6 +1042,7 @@ BackendFacade::BackendFacade(
     connect(m_assistantController, &AssistantController::backgroundTaskResultsChanged, this, &BackendFacade::backgroundTaskResultsChanged);
     connect(m_assistantController, &AssistantController::backgroundPanelVisibleChanged, this, &BackendFacade::backgroundPanelVisibleChanged);
     connect(m_assistantController, &AssistantController::latestTaskToastChanged, this, &BackendFacade::latestTaskToastChanged);
+    connect(m_assistantController, &AssistantController::latestProactiveSuggestionChanged, this, &BackendFacade::latestProactiveSuggestionChanged);
     connect(m_overlayController, &OverlayController::visibilityChanged, this, &BackendFacade::overlayVisibleChanged);
     connect(m_overlayController, &OverlayController::presenceOffsetChanged, this, &BackendFacade::presenceOffsetChanged);
     connect(m_settings, &AppSettings::settingsChanged, this, &BackendFacade::settingsChanged);
@@ -1447,6 +1448,9 @@ QString BackendFacade::latestTaskToast() const { return m_assistantController->l
 QString BackendFacade::latestTaskToastTone() const { return m_assistantController->latestTaskToastTone(); }
 int BackendFacade::latestTaskToastTaskId() const { return m_assistantController->latestTaskToastTaskId(); }
 QString BackendFacade::latestTaskToastType() const { return m_assistantController->latestTaskToastType(); }
+QString BackendFacade::latestProactiveSuggestion() const { return m_assistantController->latestProactiveSuggestion(); }
+QString BackendFacade::latestProactiveSuggestionTone() const { return m_assistantController->latestProactiveSuggestionTone(); }
+QString BackendFacade::latestProactiveSuggestionType() const { return m_assistantController->latestProactiveSuggestionType(); }
 QString BackendFacade::platformName() const { return PlatformRuntime::platformLabel(); }
 QVariantMap BackendFacade::platformCapabilities() const { return platformCapabilitiesToVariantMap(PlatformRuntime::currentCapabilities()); }
 bool BackendFacade::supportsAutoToolInstall() const { return PlatformRuntime::currentCapabilities().supportsAutoToolInstall; }

@@ -63,8 +63,18 @@ JarvisUi.VisionGlassPanel {
         const desktopTaskId = (entry.desktopTaskId || "").toString()
         const metadataQuality = (entry.metadataQuality || "").toString()
         const metadataRedacted = !!entry.metadataRedacted
+        const gateReasonCode = (entry.gateReasonCode || "").toString()
+        const cooldownReasonCode = (entry.cooldownReasonCode || "").toString()
+        const confidenceScore = entry.confidenceScore
+        const noveltyScore = entry.noveltyScore
         if (reasonCode.length > 0) {
             parts.push(reasonCode)
+        }
+        if (cooldownReasonCode.length > 0 && cooldownReasonCode !== reasonCode) {
+            parts.push("cooldown=" + cooldownReasonCode)
+        }
+        if (gateReasonCode.length > 0) {
+            parts.push("gate=" + gateReasonCode)
         }
         if (purpose.length > 0) {
             parts.push(purpose)
@@ -80,6 +90,12 @@ JarvisUi.VisionGlassPanel {
         }
         if (metadataRedacted) {
             parts.push("redacted")
+        }
+        if (confidenceScore !== undefined && confidenceScore !== null) {
+            parts.push("confidence=" + Number(confidenceScore).toFixed(2))
+        }
+        if (noveltyScore !== undefined && noveltyScore !== null) {
+            parts.push("novelty=" + Number(noveltyScore).toFixed(2))
         }
         if (threadId.length > 0) {
             parts.push(threadId)
@@ -113,10 +129,48 @@ JarvisUi.VisionGlassPanel {
             return "Desktop context affected selection" + (taskId ? " for " + taskId : "") + (topic ? " (" + topic + ")" : "")
         }
         if (family === "action_proposal") {
+            const stage = (entry.stage || "").toString()
             const title = (entry.title || "").toString()
             const action = (entry.action || "").toString()
             const priority = (entry.priority || "").toString()
             const reasonCode = (entry.reasonCode || "").toString()
+            if (stage === "generated") {
+                const proposalCount = entry.proposalCount || 0
+                const proposalTitles = entry.proposalTitles || []
+                return "Generated " + proposalCount + " suggestion proposals: " + proposalTitles.join(", ")
+            }
+            if (stage === "ranked") {
+                const rankedTitles = entry.rankedTitles || []
+                let text = "Ranked suggestion proposals"
+                if (rankedTitles.length > 0) {
+                    text += ": " + rankedTitles.join(" > ")
+                }
+                if (reasonCode.length > 0) {
+                    text += " because " + reasonCode
+                }
+                return text
+            }
+            if (stage === "gated") {
+                const confidenceScore = entry.confidenceScore
+                const noveltyScore = entry.noveltyScore
+                let text = "Proposal " + (action.length > 0 ? action : "decision")
+                if (title.length > 0) {
+                    text += ": " + title
+                }
+                if (priority.length > 0) {
+                    text += " [" + priority + "]"
+                }
+                if (confidenceScore !== undefined && confidenceScore !== null) {
+                    text += " confidence " + Number(confidenceScore).toFixed(2)
+                }
+                if (noveltyScore !== undefined && noveltyScore !== null) {
+                    text += " novelty " + Number(noveltyScore).toFixed(2)
+                }
+                if (reasonCode.length > 0) {
+                    text += " because " + reasonCode
+                }
+                return text
+            }
             let text = "Proposal " + (action.length > 0 ? action : "decision")
             if (title.length > 0) {
                 text += ": " + title

@@ -25,6 +25,9 @@ class AgentViewModel : public QObject
     Q_PROPERTY(bool focusModeAllowCriticalAlerts READ focusModeAllowCriticalAlerts NOTIFY modeStateChanged)
     Q_PROPERTY(qlonglong focusModeUntilEpochMs READ focusModeUntilEpochMs NOTIFY modeStateChanged)
     Q_PROPERTY(bool privateModeEnabled READ privateModeEnabled NOTIFY modeStateChanged)
+    Q_PROPERTY(QString latestProactiveSuggestion READ latestProactiveSuggestion NOTIFY latestProactiveSuggestionChanged)
+    Q_PROPERTY(QString latestProactiveSuggestionTone READ latestProactiveSuggestionTone NOTIFY latestProactiveSuggestionChanged)
+    Q_PROPERTY(QString latestProactiveSuggestionType READ latestProactiveSuggestionType NOTIFY latestProactiveSuggestionChanged)
     Q_PROPERTY(QString assistantName READ assistantName NOTIFY profileChanged)
     Q_PROPERTY(QString userName READ userName NOTIFY profileChanged)
 
@@ -66,6 +69,9 @@ public:
     bool focusModeAllowCriticalAlerts() const;
     qlonglong focusModeUntilEpochMs() const;
     bool privateModeEnabled() const;
+    QString latestProactiveSuggestion() const;
+    QString latestProactiveSuggestionTone() const;
+    QString latestProactiveSuggestionType() const;
     QString assistantName() const;
     QString userName() const;
 
@@ -87,6 +93,7 @@ signals:
     void overlayVisibleChanged();
     void presenceOffsetChanged();
     void modeStateChanged();
+    void latestProactiveSuggestionChanged();
     void profileChanged();
 
 private:

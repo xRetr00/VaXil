@@ -39,6 +39,7 @@
 #include "core/ResponseFinalizer.h"
 #include "core/ToolCoordinator.h"
 #include "cognition/ProactiveSuggestionGate.h"
+#include "cognition/ProactiveSuggestionPlanner.h"
 #include "core/tasks/TaskDispatcher.h"
 #include "core/tasks/ToolWorker.h"
 #include "cognition/DesktopContextSelectionBuilder.h"
@@ -366,56 +367,9 @@ QStringList sourceUrlsForResult(const BackgroundTaskResult &result)
     return urls;
 }
 
-QString suggestedNextStepForResult(const BackgroundTaskResult &result)
-{
-    const QString type = result.type.trimmed().toLower();
-    if (!sourceUrlsForResult(result).isEmpty()) {
-        return QStringLiteral("If you want, I can open one of the sources or summarize them.");
-    }
-    if (type == QStringLiteral("file_read") || type == QStringLiteral("file_search") || type == QStringLiteral("dir_list")) {
-        return QStringLiteral("If you want, I can summarize it or pull out the relevant part.");
-    }
-    if (type == QStringLiteral("file_write")
-        || type == QStringLiteral("file_patch")
-        || type == QStringLiteral("computer_write_file")) {
-        return QStringLiteral("If you want, I can verify the change.");
-    }
-    if (type == QStringLiteral("browser_open")
-        || type == QStringLiteral("computer_open_url")
-        || type == QStringLiteral("computer_open_app")) {
-        return QStringLiteral("If you want, I can keep going with that.");
-    }
-    return {};
-}
-
 QString taskTypeForTasks(const QList<AgentTask> &tasks)
 {
     return tasks.isEmpty() ? QStringLiteral("task") : tasks.first().type.trimmed();
-}
-
-QString suggestedNextStepForTaskType(const QString &taskType)
-{
-    const QString type = taskType.trimmed().toLower();
-    if (type == QStringLiteral("web_search") || type == QStringLiteral("web_fetch")) {
-        return QStringLiteral("If you want, I can summarize it, compare sources, or open one.");
-    }
-    if (type == QStringLiteral("file_read") || type == QStringLiteral("file_search") || type == QStringLiteral("dir_list")) {
-        return QStringLiteral("If you want, I can summarize it or pull out the relevant part.");
-    }
-    if (type == QStringLiteral("file_write")
-        || type == QStringLiteral("file_patch")
-        || type == QStringLiteral("computer_write_file")) {
-        return QStringLiteral("If you want, I can verify the change.");
-    }
-    if (type == QStringLiteral("browser_open")
-        || type == QStringLiteral("computer_open_url")
-        || type == QStringLiteral("computer_open_app")
-        || type == QStringLiteral("browser")
-        || type == QStringLiteral("computer")
-        || type == QStringLiteral("youtube")) {
-        return QStringLiteral("If you want, I can keep going with that.");
-    }
-    return {};
 }
 
 QString userFacingPromptForLogging(const QString &input)
@@ -1893,6 +1847,9 @@ QString AssistantController::latestTaskToast() const { return m_toolCoordinator 
 QString AssistantController::latestTaskToastTone() const { return m_toolCoordinator ? m_toolCoordinator->latestTaskToastTone() : QStringLiteral("status"); }
 int AssistantController::latestTaskToastTaskId() const { return m_toolCoordinator ? m_toolCoordinator->latestTaskToastTaskId() : -1; }
 QString AssistantController::latestTaskToastType() const { return m_toolCoordinator ? m_toolCoordinator->latestTaskToastType() : QStringLiteral("background"); }
+QString AssistantController::latestProactiveSuggestion() const { return m_latestProactiveSuggestion; }
+QString AssistantController::latestProactiveSuggestionTone() const { return m_latestProactiveSuggestionTone; }
+QString AssistantController::latestProactiveSuggestionType() const { return m_latestProactiveSuggestionType; }
 bool AssistantController::installSkill(const QString &url, QString *error)
 {
     const bool ok = m_skillStore->installSkill(url, error);
@@ -3222,6 +3179,118 @@ FocusModeState AssistantController::currentFocusModeState() const
     };
 }
 
+ProactiveSuggestionPlan AssistantController::planNextStepSuggestion(const QString &sourceKind,
+                                                                   const QString &taskType,
+                                                                   const QString &resultSummary,
+                                                                   const QStringList &sourceUrls,
+                                                                   bool success) const
+{
+    const ProactiveSuggestionPlan plan = ProactiveSuggestionPlanner::plan({
+        .sourceKind = sourceKind,
+        .taskType = taskType,
+        .resultSummary = resultSummary,
+        .sourceUrls = sourceUrls,
+        .success = success,
+        .desktopContext = m_latestDesktopContext,
+        .desktopContextAtMs = m_latestDesktopContextAtMs,
+        .cooldownState = m_proactiveCooldownState,
+        .focusMode = currentFocusModeState(),
+        .nowMs = QDateTime::currentMSecsSinceEpoch()
+    });
+    logPlannedSuggestion(plan, sourceKind, taskType);
+    return plan;
+}
+
+void AssistantController::logPlannedSuggestion(const ProactiveSuggestionPlan &plan,
+                                               const QString &sourceKind,
+                                               const QString &taskType) const
+{
+    if (m_loggingService == nullptr) {
+        return;
+    }
+
+    const QString threadId = m_latestDesktopContext.value(QStringLiteral("threadId")).toString();
+    if (m_loggingService != nullptr) {
+        QStringList titles;
+        QStringList priorities;
+        for (const ActionProposal &proposal : plan.generatedProposals) {
+            titles.push_back(proposal.title);
+            priorities.push_back(proposal.priority);
+        }
+        BehaviorTraceEvent event = BehaviorTraceEvent::create(
+            QStringLiteral("action_proposal"),
+            QStringLiteral("generated"),
+            plan.generatedProposals.isEmpty()
+                ? QStringLiteral("proposal.none_generated")
+                : QStringLiteral("proposal.generated"),
+            {
+                {QStringLiteral("sourceKind"), sourceKind},
+                {QStringLiteral("taskType"), taskType},
+                {QStringLiteral("proposalCount"), plan.generatedProposals.size()},
+                {QStringLiteral("proposalTitles"), titles},
+                {QStringLiteral("proposalPriorities"), priorities},
+                {QStringLiteral("desktopSummary"), m_latestDesktopContextSummary}
+            },
+            QStringLiteral("system"));
+        event.capabilityId = QStringLiteral("suggestion_proposal_builder");
+        event.threadId = threadId;
+        m_loggingService->logBehaviorEvent(event);
+    }
+
+    if (!plan.rankedProposals.isEmpty()) {
+        const RankedSuggestionProposal &top = plan.rankedProposals.first();
+        QStringList rankedTitles;
+        QStringList rankedScores;
+        for (const RankedSuggestionProposal &proposal : plan.rankedProposals) {
+            rankedTitles.push_back(proposal.proposal.title);
+            rankedScores.push_back(QString::number(proposal.score, 'f', 2));
+        }
+        QVariantMap payload = top.toVariantMap();
+        payload.insert(QStringLiteral("sourceKind"), sourceKind);
+        payload.insert(QStringLiteral("taskType"), taskType);
+        payload.insert(QStringLiteral("rankedTitles"), rankedTitles);
+        payload.insert(QStringLiteral("rankedScores"), rankedScores);
+        payload.insert(QStringLiteral("desktopSummary"), m_latestDesktopContextSummary);
+        BehaviorTraceEvent event = BehaviorTraceEvent::create(
+            QStringLiteral("action_proposal"),
+            QStringLiteral("ranked"),
+            top.reasonCode,
+            payload,
+            QStringLiteral("system"));
+        event.capabilityId = QStringLiteral("suggestion_proposal_ranker");
+        event.threadId = threadId;
+        m_loggingService->logBehaviorEvent(event);
+    }
+
+    if (plan.hasSelectedProposal()) {
+        QVariantMap payload = plan.selectedProposal.toVariantMap();
+        const QVariantMap decisionMap = plan.decision.toVariantMap();
+        for (auto it = decisionMap.constBegin(); it != decisionMap.constEnd(); ++it) {
+            payload.insert(it.key(), it.value());
+        }
+        payload.insert(QStringLiteral("sourceKind"), sourceKind);
+        payload.insert(QStringLiteral("taskType"), taskType);
+        payload.insert(QStringLiteral("desktopSummary"), m_latestDesktopContextSummary);
+        payload.insert(QStringLiteral("desktopTaskId"), m_latestDesktopContext.value(QStringLiteral("taskId")).toString());
+        payload.insert(QStringLiteral("desktopThreadId"), threadId);
+        payload.insert(QStringLiteral("selectedSummary"), plan.selectedSummary);
+        payload.insert(QStringLiteral("confidenceScore"), plan.confidenceScore);
+        payload.insert(QStringLiteral("noveltyScore"), plan.noveltyScore);
+        payload.insert(QStringLiteral("cooldownState"), m_proactiveCooldownState.toVariantMap());
+        payload.insert(QStringLiteral("nextCooldownState"), plan.nextCooldownState.toVariantMap());
+        payload.insert(QStringLiteral("cooldownDecision"), plan.cooldownDecision.toVariantMap());
+        BehaviorTraceEvent event = BehaviorTraceEvent::create(
+            QStringLiteral("action_proposal"),
+            QStringLiteral("gated"),
+            plan.decision.reasonCode,
+            payload,
+            QStringLiteral("system"));
+        event.capabilityId = QStringLiteral("proactive_suggestion_planner");
+        event.threadId = threadId;
+        m_loggingService->logBehaviorEvent(event);
+    }
+}
+
 ActionProposal AssistantController::buildNextStepProposal(const QString &hint,
                                                           const QString &sourceKind,
                                                           const QString &taskType,
@@ -3284,6 +3353,80 @@ QString AssistantController::gateNextStepHint(const QString &hint,
     }
 
     return decision.allowed ? trimmedHint : QString{};
+}
+
+void AssistantController::considerDesktopContextSuggestion(const QString &summary, const QVariantMap &context)
+{
+    if (m_settings == nullptr || m_settings->privateModeEnabled()) {
+        return;
+    }
+
+    const QString taskId = context.value(QStringLiteral("taskId")).toString().trimmed();
+    if (taskId != QStringLiteral("clipboard") && taskId != QStringLiteral("notification")) {
+        return;
+    }
+
+    const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
+    const QString threadId = context.value(QStringLiteral("threadId")).toString();
+    if (!threadId.isEmpty() && threadId == m_lastProactiveSuggestionThreadId
+        && (nowMs - m_lastProactiveSuggestionMs) <= 120000) {
+        return;
+    }
+
+    const ProactiveSuggestionPlan plan = planNextStepSuggestion(
+        QStringLiteral("desktop_context"),
+        taskId,
+        summary,
+        {},
+        true);
+    if (plan.selectedSummary.isEmpty()) {
+        return;
+    }
+
+    m_lastProactiveSuggestionThreadId = threadId;
+    m_lastProactiveSuggestionMs = nowMs;
+    m_proactiveCooldownState = plan.nextCooldownState;
+    setLatestProactiveSuggestion(
+        plan.selectedSummary,
+        QStringLiteral("response"),
+        QStringLiteral("proactive_%1").arg(taskId));
+
+    if (m_loggingService != nullptr) {
+        BehaviorTraceEvent event = BehaviorTraceEvent::create(
+            QStringLiteral("ui_presentation"),
+            QStringLiteral("suggested"),
+            QStringLiteral("proposal.presented"),
+            {
+                {QStringLiteral("message"), plan.selectedSummary},
+                {QStringLiteral("surfaceKind"), QStringLiteral("desktop_context_toast")},
+                {QStringLiteral("taskType"), taskId},
+                {QStringLiteral("desktopSummary"), summary}
+            },
+            QStringLiteral("system"));
+        event.capabilityId = QStringLiteral("desktop_context_suggestion");
+        event.threadId = threadId;
+        m_loggingService->logBehaviorEvent(event);
+    }
+}
+
+void AssistantController::setLatestProactiveSuggestion(const QString &message,
+                                                       const QString &tone,
+                                                       const QString &type)
+{
+    const QString normalizedMessage = message.simplified();
+    const QString normalizedTone = tone.trimmed().isEmpty() ? QStringLiteral("response") : tone.trimmed();
+    const QString normalizedType = type.trimmed().isEmpty() ? QStringLiteral("proactive") : type.trimmed();
+
+    if (m_latestProactiveSuggestion == normalizedMessage
+        && m_latestProactiveSuggestionTone == normalizedTone
+        && m_latestProactiveSuggestionType == normalizedType) {
+        return;
+    }
+
+    m_latestProactiveSuggestion = normalizedMessage;
+    m_latestProactiveSuggestionTone = normalizedTone;
+    m_latestProactiveSuggestionType = normalizedType;
+    emit latestProactiveSuggestionChanged();
 }
 
 bool AssistantController::startAudioCapture(AudioCaptureMode mode, bool announceListening)
@@ -3865,6 +4008,7 @@ void AssistantController::updateDesktopContext(const QString &summary, const QVa
     m_latestDesktopContextSummary = normalizedSummary;
     m_latestDesktopContext = context;
     m_latestDesktopContextAtMs = QDateTime::currentMSecsSinceEpoch();
+    considerDesktopContextSuggestion(normalizedSummary, context);
 }
 
 QString AssistantController::buildDirectVisionResponse(const QString &input) const
@@ -4625,7 +4769,12 @@ void AssistantController::beginActionThread(const QList<AgentTask> &tasks, qint6
     thread.resultSummary = m_executionNarrator
         ? m_executionNarrator->preActionText(m_activeActionSession, QStringLiteral("Working on it."))
         : QStringLiteral("Working on it.");
-    thread.nextStepHint = suggestedNextStepForTaskType(thread.taskType);
+    thread.nextStepHint = planNextStepSuggestion(
+        QStringLiteral("task_start"),
+        thread.taskType,
+        thread.resultSummary,
+        {},
+        true).selectedSummary;
     thread.state = ActionThreadState::Running;
     thread.success = false;
     thread.valid = true;
@@ -4653,7 +4802,12 @@ void AssistantController::rememberActionThreadResult(const BackgroundTaskResult 
     thread.artifactText = clippedBackgroundPayload(result);
     thread.payload = result.payload;
     thread.sourceUrls = sourceUrlsForResult(result);
-    thread.nextStepHint = suggestedNextStepForResult(result);
+    thread.nextStepHint = planNextStepSuggestion(
+        QStringLiteral("task_result"),
+        thread.taskType,
+        thread.resultSummary,
+        thread.sourceUrls,
+        result.success).selectedSummary;
     thread.state = result.success ? ActionThreadState::Completed : ActionThreadState::Failed;
     if (result.state == TaskState::Canceled) {
         thread.state = ActionThreadState::Canceled;
@@ -4677,7 +4831,12 @@ void AssistantController::rememberCompletedActionReply(const QString &taskType,
         ? m_activeActionSession.goal
         : m_activeActionSession.userRequest.trimmed();
     thread.resultSummary = summary.trimmed();
-    thread.nextStepHint = suggestedNextStepForTaskType(thread.taskType);
+    thread.nextStepHint = planNextStepSuggestion(
+        QStringLiteral("reply_result"),
+        thread.taskType,
+        thread.resultSummary,
+        {},
+        success).selectedSummary;
     thread.state = success ? ActionThreadState::Completed : ActionThreadState::Failed;
     thread.success = success;
     thread.valid = true;
