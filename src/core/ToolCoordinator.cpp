@@ -7,6 +7,7 @@
 #include <QJsonDocument>
 
 #include "agent/AgentToolbox.h"
+#include "cognition/ConnectorEventBuilder.h"
 #include "core/ExecutionNarrator.h"
 #include "core/tasks/TaskDispatcher.h"
 #include "logging/LoggingService.h"
@@ -229,6 +230,10 @@ ToolResultHandling ToolCoordinator::handleTaskResult(const QJsonObject &resultOb
     handling.traceDetail = result.detail.left(600);
     handling.traceSuccess = result.success;
     handling.completedResult = result;
+    const ConnectorEvent connectorEvent = ConnectorEventBuilder::fromBackgroundTaskResult(result);
+    if (connectorEvent.isValid()) {
+        handling.connectorEvent = connectorEvent;
+    }
     return handling;
 }
 

@@ -39,6 +39,7 @@
 #include "core/ResponseFinalizer.h"
 #include "core/ToolCoordinator.h"
 #include "cognition/ProactiveCooldownTracker.h"
+#include "cognition/ConnectorResultSignal.h"
 #include "cognition/ProactiveSuggestionGate.h"
 #include "cognition/ProactiveSuggestionPlanner.h"
 #include "core/tasks/TaskDispatcher.h"
@@ -392,6 +393,10 @@ bool isConnectorLikeTaskType(const QString &taskType)
 
 bool isEligibleTaskResultSuggestion(const BackgroundTaskResult &result)
 {
+    if (ConnectorResultSignalBuilder::fromBackgroundTaskResult(result).isValid()) {
+        return true;
+    }
+
     const QString normalized = result.type.trimmed().toLower();
     if (normalized == QStringLiteral("web_search")
         || normalized == QStringLiteral("web_fetch")
@@ -3484,6 +3489,61 @@ void AssistantController::considerDesktopContextSuggestion(const QString &summar
     }
 }
 
+void AssistantController::considerConnectorEvent(const ConnectorEvent &event)
+{
+    if (m_settings == nullptr || m_settings->privateModeEnabled() || !event.isValid()) {
+        return;
+    }
+
+    const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
+    const QString dedupeKey = event.taskKey.trimmed().isEmpty()
+        ? event.eventId
+        : QStringLiteral("connector:%1").arg(event.taskKey.trimmed());
+    if (!dedupeKey.isEmpty()
+        && dedupeKey == m_lastProactiveSuggestionThreadId
+        && (nowMs - m_lastProactiveSuggestionMs) <= 120000) {
+        return;
+    }
+
+    const ProactiveSuggestionPlan plan = planNextStepSuggestion(
+        event.sourceKind,
+        event.taskType,
+        event.summary,
+        {},
+        event.priority.compare(QStringLiteral("high"), Qt::CaseInsensitive) != 0);
+    if (plan.selectedSummary.isEmpty()) {
+        return;
+    }
+
+    m_lastProactiveSuggestionThreadId = dedupeKey;
+    m_lastProactiveSuggestionMs = nowMs;
+    setLatestProactiveSuggestion(
+        plan.selectedSummary,
+        QStringLiteral("response"),
+        QStringLiteral("proactive_connector"));
+    commitProactivePresentation(
+        QStringLiteral("connector_event_toast"),
+        event.taskType,
+        event.priority,
+        QStringLiteral("connector_event.presented"));
+
+    if (m_loggingService != nullptr) {
+        QVariantMap payload = event.toVariantMap();
+        payload.insert(QStringLiteral("message"), plan.selectedSummary);
+        payload.insert(QStringLiteral("surfaceKind"), QStringLiteral("connector_event_toast"));
+        payload.insert(QStringLiteral("desktopSummary"), m_latestDesktopContextSummary);
+        BehaviorTraceEvent traceEvent = BehaviorTraceEvent::create(
+            QStringLiteral("ui_presentation"),
+            QStringLiteral("suggested"),
+            QStringLiteral("connector_event.presented"),
+            payload,
+            QStringLiteral("system"));
+        traceEvent.capabilityId = QStringLiteral("connector_event_suggestion");
+        traceEvent.threadId = m_latestDesktopContext.value(QStringLiteral("threadId")).toString();
+        m_loggingService->logBehaviorEvent(traceEvent);
+    }
+}
+
 void AssistantController::considerTaskResultSuggestion(const BackgroundTaskResult &result)
 {
     if (m_settings == nullptr || m_settings->privateModeEnabled()) {
@@ -3503,12 +3563,15 @@ void AssistantController::considerTaskResultSuggestion(const BackgroundTaskResul
         return;
     }
 
-    const QString summary = m_executionNarrator
+    const ConnectorResultSignal connectorSignal = ConnectorResultSignalBuilder::fromBackgroundTaskResult(result);
+    const QString summary = connectorSignal.isValid()
+        ? connectorSignal.summary
+        : (m_executionNarrator
         ? m_executionNarrator->summarizeBackgroundResult(result)
-        : (result.summary.trimmed().isEmpty() ? result.detail.trimmed() : result.summary.trimmed());
+        : (result.summary.trimmed().isEmpty() ? result.detail.trimmed() : result.summary.trimmed()));
     const ProactiveSuggestionPlan plan = planNextStepSuggestion(
-        QStringLiteral("task_result_surface"),
-        result.type,
+        connectorSignal.isValid() ? connectorSignal.sourceKind : QStringLiteral("task_result_surface"),
+        connectorSignal.isValid() ? connectorSignal.taskType : result.type,
         summary,
         sourceUrlsForResult(result),
         result.success);
@@ -3539,6 +3602,8 @@ void AssistantController::considerTaskResultSuggestion(const BackgroundTaskResul
                 {QStringLiteral("taskType"), result.type},
                 {QStringLiteral("taskId"), result.taskId},
                 {QStringLiteral("taskKey"), result.taskKey},
+                {QStringLiteral("connectorKind"), connectorSignal.connectorKind},
+                {QStringLiteral("connectorItemCount"), connectorSignal.itemCount},
                 {QStringLiteral("desktopSummary"), m_latestDesktopContextSummary}
             },
             QStringLiteral("system"));
@@ -4680,6 +4745,17 @@ void AssistantController::recordTaskResult(const QJsonObject &resultObject)
     if (handling.appendTrace) {
         appendAgentTrace(handling.traceKind, handling.traceTitle, handling.traceDetail, handling.traceSuccess);
     }
+    if (handling.connectorEvent.has_value() && m_loggingService != nullptr) {
+        BehaviorTraceEvent event = BehaviorTraceEvent::create(
+            QStringLiteral("connector_event"),
+            QStringLiteral("ingested"),
+            QStringLiteral("connector_event.ingested"),
+            handling.connectorEvent->toVariantMap(),
+            QStringLiteral("system"));
+        event.capabilityId = QStringLiteral("connector_event_builder");
+        event.threadId = m_latestDesktopContext.value(QStringLiteral("threadId")).toString();
+        m_loggingService->logBehaviorEvent(event);
+    }
     if (!handling.completedResult.has_value()) {
         return;
     }
@@ -4772,7 +4848,11 @@ void AssistantController::recordTaskResult(const QJsonObject &resultObject)
             m_loggingService->logBehaviorEvent(event);
         }
         if (!followUpDecision.allowed) {
-            considerTaskResultSuggestion(*handling.completedResult);
+            if (handling.connectorEvent.has_value()) {
+                considerConnectorEvent(*handling.connectorEvent);
+            } else {
+                considerTaskResultSuggestion(*handling.completedResult);
+            }
             return;
         }
         if (outcomeSession.nextStepHint.trimmed().isEmpty()) {
@@ -4791,7 +4871,11 @@ void AssistantController::recordTaskResult(const QJsonObject &resultObject)
         return;
     }
 
-    considerTaskResultSuggestion(*handling.completedResult);
+    if (handling.connectorEvent.has_value()) {
+        considerConnectorEvent(*handling.connectorEvent);
+    } else {
+        considerTaskResultSuggestion(*handling.completedResult);
+    }
 }
 
 void AssistantController::setSurfaceError(const QString &source, const QString &primary, const QString &secondary)

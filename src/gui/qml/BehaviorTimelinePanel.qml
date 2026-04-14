@@ -44,6 +44,9 @@ JarvisUi.VisionGlassPanel {
         if (family === "selection_context") {
             return "#8ff0c8"
         }
+        if (family === "connector_event") {
+            return "#8ac7ff"
+        }
         if (family === "action_proposal") {
             return "#f3d78a"
         }
@@ -180,6 +183,22 @@ JarvisUi.VisionGlassPanel {
             }
             if (reasonCode.length > 0) {
                 text += " because " + reasonCode
+            }
+            return text
+        }
+        if (family === "connector_event") {
+            const connectorKind = (entry.connectorKind || "").toString()
+            const taskType = (entry.taskType || "").toString()
+            const itemCount = entry.itemCount
+            let text = "Connector event ingested"
+            if (connectorKind.length > 0) {
+                text += " from " + connectorKind
+            }
+            if (taskType.length > 0) {
+                text += " for " + taskType
+            }
+            if (itemCount !== undefined && itemCount !== null && Number(itemCount) > 0) {
+                text += " (" + Number(itemCount) + " items)"
             }
             return text
         }

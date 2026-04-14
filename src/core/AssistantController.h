@@ -335,6 +335,7 @@ private:
                                      const QString &taskType,
                                      const QString &priority,
                                      const QString &reasonCode);
+    void considerConnectorEvent(const ConnectorEvent &event);
     void considerDesktopContextSuggestion(const QString &summary, const QVariantMap &context);
     void considerTaskResultSuggestion(const BackgroundTaskResult &result);
     void setLatestProactiveSuggestion(const QString &message,

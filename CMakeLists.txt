@@ -264,6 +264,8 @@ set(JARVIS_SOURCES
     src/core/ResponseFinalizer.cpp
     src/core/ToolCoordinator.cpp
     src/cognition/CooldownEngine.cpp
+    src/cognition/ConnectorEventBuilder.cpp
+    src/cognition/ConnectorResultSignal.cpp
     src/cognition/ProactiveCooldownTracker.cpp
     src/cognition/DesktopContextSelectionBuilder.cpp
     src/cognition/FocusModePolicy.cpp
@@ -344,6 +346,7 @@ set(JARVIS_HEADERS
     src/core/ResponseFinalizer.h
     src/core/ToolCoordinator.h
     src/cognition/CooldownEngine.h
+    src/cognition/ConnectorEventBuilder.h
     src/cognition/DesktopContextSelectionBuilder.h
     src/cognition/FocusModePolicy.h
     src/cognition/ProactiveSuggestionGate.h
@@ -358,6 +361,7 @@ set(JARVIS_HEADERS
     src/companion/contracts/BehaviorDecision.h
     src/companion/contracts/BehaviorTraceEvent.h
     src/companion/contracts/CompanionContextSnapshot.h
+    src/companion/contracts/ConnectorEvent.h
     src/companion/contracts/ContextThreadId.h
     src/companion/contracts/CooldownState.h
     src/companion/contracts/CriticalAlertPolicy.h
@@ -1030,6 +1034,31 @@ if(JARVIS_BUILD_TESTS)
     add_test(NAME jarvis_desktop_selection_tests COMMAND jarvis_desktop_selection_tests)
     set_tests_properties(jarvis_desktop_selection_tests PROPERTIES ENVIRONMENT "PATH=${QT_BIN_DIR}${JARVIS_PATH_ENV_SEPARATOR}$ENV{PATH}")
     jarvis_copy_optional_runtime_libraries(jarvis_desktop_selection_tests)
+
+    qt_add_executable(jarvis_connector_signal_tests
+        tests/ConnectorResultSignalTests.cpp
+        src/cognition/ConnectorResultSignal.cpp
+    )
+
+    target_include_directories(jarvis_connector_signal_tests PRIVATE src)
+    target_link_libraries(jarvis_connector_signal_tests PRIVATE Qt6::Core Qt6::Test nlohmann_json::nlohmann_json)
+
+    add_test(NAME jarvis_connector_signal_tests COMMAND jarvis_connector_signal_tests)
+    set_tests_properties(jarvis_connector_signal_tests PROPERTIES ENVIRONMENT "PATH=${QT_BIN_DIR}${JARVIS_PATH_ENV_SEPARATOR}$ENV{PATH}")
+    jarvis_copy_optional_runtime_libraries(jarvis_connector_signal_tests)
+
+    qt_add_executable(jarvis_connector_event_tests
+        tests/ConnectorEventBuilderTests.cpp
+        src/cognition/ConnectorEventBuilder.cpp
+        src/cognition/ConnectorResultSignal.cpp
+    )
+
+    target_include_directories(jarvis_connector_event_tests PRIVATE src)
+    target_link_libraries(jarvis_connector_event_tests PRIVATE Qt6::Core Qt6::Test nlohmann_json::nlohmann_json)
+
+    add_test(NAME jarvis_connector_event_tests COMMAND jarvis_connector_event_tests)
+    set_tests_properties(jarvis_connector_event_tests PROPERTIES ENVIRONMENT "PATH=${QT_BIN_DIR}${JARVIS_PATH_ENV_SEPARATOR}$ENV{PATH}")
+    jarvis_copy_optional_runtime_libraries(jarvis_connector_event_tests)
 
     qt_add_executable(jarvis_proactive_surface_tests
         tests/ProactiveSurfaceGateTests.cpp

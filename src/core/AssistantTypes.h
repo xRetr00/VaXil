@@ -14,6 +14,8 @@
 
 #include <nlohmann/json.hpp>
 
+#include "companion/contracts/ConnectorEvent.h"
+
 enum class AssistantState {
     Idle,
     Listening,

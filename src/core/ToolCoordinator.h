@@ -26,6 +26,7 @@ struct ToolResultHandling {
     QString traceDetail;
     bool traceSuccess = false;
     std::optional<BackgroundTaskResult> completedResult;
+    std::optional<ConnectorEvent> connectorEvent;
 };
 
 struct WebSearchFollowUp {
