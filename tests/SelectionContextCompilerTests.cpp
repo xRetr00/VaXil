@@ -46,14 +46,20 @@ void SelectionContextCompilerTests::compilesDesktopAndConnectorContextTogether()
 
     const SelectionContextCompilation compilation = SelectionContextCompiler::compile(
         QStringLiteral("what should I check next"),
+        IntentType::GENERAL_CHAT,
         desktopContext,
         QStringLiteral("Desktop context: browser tab \"Vaxil Release Notes\" on github.com in edge."),
+        QDateTime::currentMSecsSinceEpoch(),
+        false,
         {},
         &memoryPolicy,
         &behaviorPolicy);
 
     QVERIFY(!compilation.compiledContextRecords.isEmpty());
     QVERIFY(!compilation.selectedMemoryRecords.isEmpty());
+    QVERIFY(compilation.compiledDesktopSummary.contains(QStringLiteral("Document: Vaxil Release Notes.")));
+    QVERIFY(compilation.selectionInput.contains(QStringLiteral("Current desktop context:")));
+    QVERIFY(compilation.promptContext.contains(QStringLiteral("Task type: browser_tab.")));
 
     bool foundDesktopSummary = false;
     for (const MemoryRecord &record : compilation.compiledContextRecords) {

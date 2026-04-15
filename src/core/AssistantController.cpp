@@ -3896,10 +3896,17 @@ void AssistantController::startConversationRequest(const QString &input)
     }
 
     m_activeRequestKind = RequestKind::Conversation;
-    const QString selectionInput = buildDesktopSelectionInput(
+    const SelectionContextCompilation selectionContext = SelectionContextCompiler::compile(
         input,
         IntentType::GENERAL_CHAT,
-        QStringLiteral("conversation.selection"));
+        m_latestDesktopContext,
+        m_latestDesktopContextSummary,
+        m_latestDesktopContextAtMs,
+        m_settings != nullptr && m_settings->privateModeEnabled(),
+        runtimeToolStatusMemory(m_settings),
+        m_memoryPolicyHandler.get(),
+        m_assistantBehaviorPolicy.get());
+    const QString &selectionInput = selectionContext.selectionInput;
     if (m_loggingService) {
         m_loggingService->info(QStringLiteral("Starting conversation request. model=\"%1\" input=\"%2\"")
             .arg(modelId, userFacingPromptForLogging(input).left(240)));
@@ -3917,20 +3924,13 @@ void AssistantController::startConversationRequest(const QString &input)
                 QStringLiteral("conversation"),
                 input,
                 m_latestDesktopContext,
-                m_latestDesktopContextSummary,
+                selectionContext.compiledDesktopSummary,
                 plan));
         }
         const TrustDecision trust = m_assistantBehaviorPolicy->assessTrust(input, decision, plan);
         m_activeActionSession = m_assistantBehaviorPolicy->createActionSession(input, decision, plan, trust);
     }
 
-    const SelectionContextCompilation selectionContext = SelectionContextCompiler::compile(
-        selectionInput,
-        m_latestDesktopContext,
-        m_latestDesktopContextSummary,
-        runtimeToolStatusMemory(m_settings),
-        m_memoryPolicyHandler,
-        m_assistantBehaviorPolicy);
     const QList<MemoryRecord> &memoryRecords = selectionContext.selectedMemoryRecords;
     const MemoryContext &memoryContext = selectionContext.memoryContext;
     if (m_loggingService) {
@@ -3938,7 +3938,7 @@ void AssistantController::startConversationRequest(const QString &input)
             QStringLiteral("conversation"),
             input,
             m_latestDesktopContext,
-            m_latestDesktopContextSummary,
+            selectionContext.compiledDesktopSummary,
             memoryContext,
             selectionContext.compiledContextRecords));
     }
@@ -3984,10 +3984,17 @@ void AssistantController::startAgentConversationRequest(const QString &input, In
     m_agentTrace.clear();
     emit agentTraceChanged();
     const QList<AgentToolSpec> availableTools = m_agentToolbox ? m_agentToolbox->builtInTools() : QList<AgentToolSpec>{};
-    const QString selectionInput = buildDesktopSelectionInput(
+    const SelectionContextCompilation selectionContext = SelectionContextCompiler::compile(
         input,
         expectedIntent,
-        QStringLiteral("agent.selection"));
+        m_latestDesktopContext,
+        m_latestDesktopContextSummary,
+        m_latestDesktopContextAtMs,
+        m_settings != nullptr && m_settings->privateModeEnabled(),
+        runtimeToolStatusMemory(m_settings),
+        m_memoryPolicyHandler.get(),
+        m_assistantBehaviorPolicy.get());
+    const QString &selectionInput = selectionContext.selectionInput;
     const ToolPlan toolPlan = m_assistantBehaviorPolicy
         ? m_assistantBehaviorPolicy->buildToolPlan(selectionInput, expectedIntent, availableTools)
         : ToolPlan{};
@@ -3996,7 +4003,7 @@ void AssistantController::startAgentConversationRequest(const QString &input, In
             QStringLiteral("agent"),
             input,
             m_latestDesktopContext,
-            m_latestDesktopContextSummary,
+            selectionContext.compiledDesktopSummary,
             toolPlan));
     }
     InputRouteDecision routeDecision;
@@ -4016,7 +4023,7 @@ void AssistantController::startAgentConversationRequest(const QString &input, In
             QStringLiteral("agent"),
             input,
             m_latestDesktopContext,
-            m_latestDesktopContextSummary,
+            selectionContext.compiledDesktopSummary,
             relevantTools));
     }
     const AgentTransportMode transportMode = m_aiRequestCoordinator->resolveAgentTransport(m_agentCapabilities, modelId);
@@ -4045,13 +4052,6 @@ void AssistantController::startAgentConversationRequest(const QString &input, In
         return;
     }
 
-    const SelectionContextCompilation selectionContext = SelectionContextCompiler::compile(
-        selectionInput,
-        m_latestDesktopContext,
-        m_latestDesktopContextSummary,
-        runtimeToolStatusMemory(m_settings),
-        m_memoryPolicyHandler,
-        m_assistantBehaviorPolicy);
     const QList<MemoryRecord> &memoryRecords = selectionContext.selectedMemoryRecords;
     const MemoryContext &memoryContext = selectionContext.memoryContext;
     if (m_loggingService) {
@@ -4059,7 +4059,7 @@ void AssistantController::startAgentConversationRequest(const QString &input, In
             QStringLiteral("agent"),
             input,
             m_latestDesktopContext,
-            m_latestDesktopContextSummary,
+            selectionContext.compiledDesktopSummary,
             memoryContext,
             selectionContext.compiledContextRecords));
     }
@@ -4101,10 +4101,17 @@ void AssistantController::continueAgentConversation(const QList<AgentToolResult>
 
     ++m_activeAgentIteration;
     const QList<AgentToolSpec> availableTools = m_agentToolbox ? m_agentToolbox->builtInTools() : QList<AgentToolSpec>{};
-    const QString selectionInput = buildDesktopSelectionInput(
+    const SelectionContextCompilation selectionContext = SelectionContextCompiler::compile(
         m_lastAgentInput,
         m_lastAgentIntent,
-        QStringLiteral("agent.continuation_selection"));
+        m_latestDesktopContext,
+        m_latestDesktopContextSummary,
+        m_latestDesktopContextAtMs,
+        m_settings != nullptr && m_settings->privateModeEnabled(),
+        runtimeToolStatusMemory(m_settings),
+        m_memoryPolicyHandler.get(),
+        m_assistantBehaviorPolicy.get());
+    const QString &selectionInput = selectionContext.selectionInput;
     QList<AgentToolSpec> relevantTools = m_assistantBehaviorPolicy
         ? m_assistantBehaviorPolicy->selectRelevantTools(selectionInput, m_lastAgentIntent, availableTools)
         : m_promptAdapter->getRelevantTools(m_lastAgentInput, m_lastAgentIntent, availableTools);
@@ -4113,7 +4120,7 @@ void AssistantController::continueAgentConversation(const QList<AgentToolResult>
             QStringLiteral("agent_continuation"),
             m_lastAgentInput,
             m_latestDesktopContext,
-            m_latestDesktopContextSummary,
+            selectionContext.compiledDesktopSummary,
             relevantTools));
     }
     if (relevantTools.isEmpty()) {
@@ -4133,13 +4140,6 @@ void AssistantController::continueAgentConversation(const QList<AgentToolResult>
         return;
     }
 
-    const SelectionContextCompilation selectionContext = SelectionContextCompiler::compile(
-        selectionInput,
-        m_latestDesktopContext,
-        m_latestDesktopContextSummary,
-        runtimeToolStatusMemory(m_settings),
-        m_memoryPolicyHandler,
-        m_assistantBehaviorPolicy);
     const QList<MemoryRecord> &memoryRecords = selectionContext.selectedMemoryRecords;
     const MemoryContext &memoryContext = selectionContext.memoryContext;
     if (m_loggingService) {
@@ -4147,7 +4147,7 @@ void AssistantController::continueAgentConversation(const QList<AgentToolResult>
             QStringLiteral("agent_continuation"),
             m_lastAgentInput,
             m_latestDesktopContext,
-            m_latestDesktopContextSummary,
+            selectionContext.compiledDesktopSummary,
             memoryContext,
             selectionContext.compiledContextRecords));
     }
@@ -4284,16 +4284,7 @@ QString AssistantController::buildDesktopPromptContext(const QString &input, Int
         return {};
     }
 
-    QString context = m_latestDesktopContextSummary.trimmed();
-    const QString taskId = m_latestDesktopContext.value(QStringLiteral("taskId")).toString().trimmed();
-    const QString threadId = m_latestDesktopContext.value(QStringLiteral("threadId")).toString().trimmed();
-    if (!taskId.isEmpty()) {
-        context += QStringLiteral(" Task type: %1.").arg(taskId);
-    }
-    if (!threadId.isEmpty()) {
-        context += QStringLiteral(" Thread: %1.").arg(threadId);
-    }
-    return context;
+    return SelectionContextCompiler::buildPromptContext(m_latestDesktopContextSummary, m_latestDesktopContext);
 }
 
 QString AssistantController::buildAssistantPromptContext(const QString &input, IntentType intent) const
@@ -4313,13 +4304,15 @@ QString AssistantController::buildDesktopSelectionInput(const QString &input,
                                                        IntentType intent,
                                                        const QString &purpose) const
 {
-    const QString selectionInput = DesktopContextSelectionBuilder::buildSelectionInput(
+    const QString compiledDesktopSummary = SelectionContextCompiler::buildCompiledDesktopSummary(
+        m_latestDesktopContext,
+        m_latestDesktopContextSummary);
+    const QString selectionInput = SelectionContextCompiler::buildSelectionInput(
         input,
         intent,
-        m_latestDesktopContextSummary,
         m_latestDesktopContext,
+        m_latestDesktopContextSummary,
         m_latestDesktopContextAtMs,
-        QDateTime::currentMSecsSinceEpoch(),
         m_settings != nullptr && m_settings->privateModeEnabled());
     if (m_loggingService != nullptr && selectionInput != input) {
         BehaviorTraceEvent event = BehaviorTraceEvent::create(
@@ -4329,7 +4322,7 @@ QString AssistantController::buildDesktopSelectionInput(const QString &input,
             {
                 {QStringLiteral("purpose"), purpose},
                 {QStringLiteral("intent"), QString::number(static_cast<int>(intent))},
-                {QStringLiteral("desktopSummary"), m_latestDesktopContextSummary},
+                {QStringLiteral("desktopSummary"), compiledDesktopSummary},
                 {QStringLiteral("desktopTaskId"), m_latestDesktopContext.value(QStringLiteral("taskId")).toString()},
                 {QStringLiteral("desktopThreadId"), m_latestDesktopContext.value(QStringLiteral("threadId")).toString()},
                 {QStringLiteral("desktopTopic"), m_latestDesktopContext.value(QStringLiteral("topic")).toString()},

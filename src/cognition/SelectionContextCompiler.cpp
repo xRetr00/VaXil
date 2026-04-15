@@ -2,6 +2,7 @@
 
 #include <QDateTime>
 
+#include "cognition/DesktopContextSelectionBuilder.h"
 #include "core/AssistantBehaviorPolicy.h"
 #include "core/MemoryPolicyHandler.h"
 
@@ -106,23 +107,104 @@ QList<MemoryRecord> mergedRecords(const QList<MemoryRecord> &compiledContextReco
 }
 }
 
+QString SelectionContextCompiler::buildCompiledDesktopSummary(const QVariantMap &desktopContext,
+                                                             const QString &desktopSummary)
+{
+    QStringList parts;
+    const QString summary = desktopSummary.simplified();
+    if (!summary.isEmpty()) {
+        parts << summary;
+    }
+
+    const QString taskId = desktopContext.value(QStringLiteral("taskId")).toString().trimmed();
+    const QString topic = desktopContext.value(QStringLiteral("topic")).toString().trimmed();
+    const QString document = desktopContext.value(QStringLiteral("documentContext")).toString().trimmed();
+    const QString site = desktopContext.value(QStringLiteral("siteContext")).toString().trimmed();
+    const QString workspace = desktopContext.value(QStringLiteral("workspaceContext")).toString().trimmed();
+    const QString app = desktopContext.value(QStringLiteral("appId")).toString().trimmed();
+
+    if (!document.isEmpty()) {
+        parts << QStringLiteral("Document: %1.").arg(document);
+    }
+    if (!site.isEmpty()) {
+        parts << QStringLiteral("Site: %1.").arg(site);
+    }
+    if (!workspace.isEmpty()) {
+        parts << QStringLiteral("Workspace: %1.").arg(workspace);
+    }
+    if (!taskId.isEmpty()) {
+        parts << QStringLiteral("Task: %1.").arg(taskId);
+    }
+    if (!topic.isEmpty()) {
+        parts << QStringLiteral("Topic: %1.").arg(topic);
+    }
+    if (!app.isEmpty()) {
+        parts << QStringLiteral("App: %1.").arg(app);
+    }
+
+    return parts.join(QLatin1Char(' ')).simplified();
+}
+
+QString SelectionContextCompiler::buildSelectionInput(const QString &input,
+                                                      IntentType intent,
+                                                      const QVariantMap &desktopContext,
+                                                      const QString &desktopSummary,
+                                                      qint64 desktopContextAtMs,
+                                                      bool privateModeEnabled)
+{
+    return DesktopContextSelectionBuilder::buildSelectionInput(
+        input,
+        intent,
+        buildCompiledDesktopSummary(desktopContext, desktopSummary),
+        desktopContext,
+        desktopContextAtMs,
+        QDateTime::currentMSecsSinceEpoch(),
+        privateModeEnabled);
+}
+
+QString SelectionContextCompiler::buildPromptContext(const QString &desktopSummary,
+                                                     const QVariantMap &desktopContext)
+{
+    QString context = buildCompiledDesktopSummary(desktopContext, desktopSummary);
+    const QString taskId = desktopContext.value(QStringLiteral("taskId")).toString().trimmed();
+    const QString threadId = desktopContext.value(QStringLiteral("threadId")).toString().trimmed();
+    if (!taskId.isEmpty()) {
+        context += QStringLiteral(" Task type: %1.").arg(taskId);
+    }
+    if (!threadId.isEmpty()) {
+        context += QStringLiteral(" Thread: %1.").arg(threadId);
+    }
+    return context.simplified();
+}
+
 SelectionContextCompilation SelectionContextCompiler::compile(const QString &query,
+                                                             IntentType intent,
                                                              const QVariantMap &desktopContext,
                                                              const QString &desktopSummary,
+                                                             qint64 desktopContextAtMs,
+                                                             bool privateModeEnabled,
                                                              const MemoryRecord &runtimeRecord,
                                                              const MemoryPolicyHandler *memoryPolicyHandler,
                                                              const AssistantBehaviorPolicy *behaviorPolicy)
 {
     SelectionContextCompilation compilation;
+    compilation.compiledDesktopSummary = buildCompiledDesktopSummary(desktopContext, desktopSummary);
+    compilation.selectionInput = buildSelectionInput(query,
+                                                     intent,
+                                                     desktopContext,
+                                                     desktopSummary,
+                                                     desktopContextAtMs,
+                                                     privateModeEnabled);
+    compilation.promptContext = buildPromptContext(desktopSummary, desktopContext);
     compilation.selectedMemoryRecords = memoryPolicyHandler
-        ? memoryPolicyHandler->requestMemory(query, runtimeRecord)
+        ? memoryPolicyHandler->requestMemory(compilation.selectionInput, runtimeRecord)
         : QList<MemoryRecord>{};
     compilation.compiledContextRecords = desktopContextRecords(desktopContext, desktopSummary);
 
     const QList<MemoryRecord> merged = mergedRecords(compilation.compiledContextRecords,
                                                      compilation.selectedMemoryRecords);
     compilation.memoryContext = behaviorPolicy
-        ? behaviorPolicy->buildMemoryContext(query, merged)
+        ? behaviorPolicy->buildMemoryContext(compilation.selectionInput, merged)
         : fallbackMemoryContext(compilation.selectedMemoryRecords, compilation.compiledContextRecords);
     return compilation;
 }
