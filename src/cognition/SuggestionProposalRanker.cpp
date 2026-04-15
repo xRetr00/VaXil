@@ -150,6 +150,35 @@ double historyBurstPenalty(const SuggestionProposalRanker::Input &input, QString
 
     return 0.0;
 }
+
+double compiledHistoryAffinityBonus(const SuggestionProposalRanker::Input &input,
+                                    const ActionProposal &proposal,
+                                    QString *reasonCode)
+{
+    if (input.sourceMetadata.value(QStringLiteral("compiledContextHistoryHasSchedule")).toBool()
+        && proposal.capabilityId == QStringLiteral("schedule_follow_up")) {
+        *reasonCode = QStringLiteral("proposal_rank.compiled_history_schedule_affinity");
+        return 0.07;
+    }
+    if (input.sourceMetadata.value(QStringLiteral("compiledContextHistoryHasInbox")).toBool()
+        && proposal.capabilityId == QStringLiteral("inbox_follow_up")) {
+        *reasonCode = QStringLiteral("proposal_rank.compiled_history_inbox_affinity");
+        return 0.07;
+    }
+    if (input.sourceMetadata.value(QStringLiteral("compiledContextHistoryHasResearch")).toBool()
+        && (proposal.capabilityId == QStringLiteral("source_review")
+            || proposal.capabilityId == QStringLiteral("web_follow_up"))) {
+        *reasonCode = QStringLiteral("proposal_rank.compiled_history_research_affinity");
+        return 0.06;
+    }
+    if (input.sourceMetadata.value(QStringLiteral("compiledContextHistoryHasDocument")).toBool()
+        && (proposal.capabilityId == QStringLiteral("document_follow_up")
+            || proposal.capabilityId == QStringLiteral("source_review"))) {
+        *reasonCode = QStringLiteral("proposal_rank.compiled_history_document_affinity");
+        return 0.06;
+    }
+    return 0.0;
+}
 }
 
 QList<RankedSuggestionProposal> SuggestionProposalRanker::rank(const Input &input)
@@ -212,6 +241,13 @@ QList<RankedSuggestionProposal> SuggestionProposalRanker::rank(const Input &inpu
         if (historyPenalty != 0.0) {
             rankedProposal.score += historyPenalty;
             rankedProposal.reasonCode = historyReasonCode;
+        }
+
+        QString compiledHistoryReasonCode;
+        const double compiledHistoryBonus = compiledHistoryAffinityBonus(input, proposal, &compiledHistoryReasonCode);
+        if (compiledHistoryBonus != 0.0) {
+            rankedProposal.score += compiledHistoryBonus;
+            rankedProposal.reasonCode = compiledHistoryReasonCode;
         }
 
         if (input.cooldownState.isActive(input.nowMs) && !meaningfulThreadShift) {

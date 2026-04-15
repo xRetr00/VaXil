@@ -276,6 +276,8 @@ set(JARVIS_SOURCES
     src/connectors/NotesDirectoryMonitor.cpp
     src/cognition/CooldownEngine.cpp
     src/cognition/CompiledContextDeltaTracker.cpp
+    src/cognition/CompiledContextHistorySummaryBuilder.cpp
+    src/cognition/CompiledContextStabilityMemoryBuilder.cpp
     src/cognition/CompiledContextStabilityTracker.cpp
     src/cognition/PromptContextTemporalPolicy.cpp
     src/cognition/ConnectorContextCompiler.cpp
@@ -375,6 +377,8 @@ set(JARVIS_HEADERS
     src/connectors/NotesDirectoryMonitor.h
     src/cognition/CooldownEngine.h
     src/cognition/CompiledContextDeltaTracker.h
+    src/cognition/CompiledContextHistorySummaryBuilder.h
+    src/cognition/CompiledContextStabilityMemoryBuilder.h
     src/cognition/CompiledContextStabilityTracker.h
     src/cognition/PromptContextTemporalPolicy.h
     src/cognition/ConnectorContextCompiler.h
@@ -1197,6 +1201,30 @@ if(JARVIS_BUILD_TESTS)
     add_test(NAME jarvis_compiled_context_stability_tests COMMAND jarvis_compiled_context_stability_tests)
     set_tests_properties(jarvis_compiled_context_stability_tests PROPERTIES ENVIRONMENT "PATH=${QT_BIN_DIR}${JARVIS_PATH_ENV_SEPARATOR}$ENV{PATH}")
     jarvis_copy_optional_runtime_libraries(jarvis_compiled_context_stability_tests)
+
+    qt_add_executable(jarvis_compiled_context_memory_tests
+        tests/CompiledContextStabilityMemoryBuilderTests.cpp
+        src/cognition/CompiledContextStabilityMemoryBuilder.cpp
+    )
+
+    target_include_directories(jarvis_compiled_context_memory_tests PRIVATE src)
+    target_link_libraries(jarvis_compiled_context_memory_tests PRIVATE Qt6::Core Qt6::Test nlohmann_json::nlohmann_json)
+
+    add_test(NAME jarvis_compiled_context_memory_tests COMMAND jarvis_compiled_context_memory_tests)
+    set_tests_properties(jarvis_compiled_context_memory_tests PROPERTIES ENVIRONMENT "PATH=${QT_BIN_DIR}${JARVIS_PATH_ENV_SEPARATOR}$ENV{PATH}")
+    jarvis_copy_optional_runtime_libraries(jarvis_compiled_context_memory_tests)
+
+    qt_add_executable(jarvis_compiled_context_history_tests
+        tests/CompiledContextHistorySummaryBuilderTests.cpp
+        src/cognition/CompiledContextHistorySummaryBuilder.cpp
+    )
+
+    target_include_directories(jarvis_compiled_context_history_tests PRIVATE src)
+    target_link_libraries(jarvis_compiled_context_history_tests PRIVATE Qt6::Core Qt6::Test nlohmann_json::nlohmann_json)
+
+    add_test(NAME jarvis_compiled_context_history_tests COMMAND jarvis_compiled_context_history_tests)
+    set_tests_properties(jarvis_compiled_context_history_tests PROPERTIES ENVIRONMENT "PATH=${QT_BIN_DIR}${JARVIS_PATH_ENV_SEPARATOR}$ENV{PATH}")
+    jarvis_copy_optional_runtime_libraries(jarvis_compiled_context_history_tests)
 
     qt_add_executable(jarvis_connector_snapshot_tests
         tests/ConnectorSnapshotEventBuilderTests.cpp

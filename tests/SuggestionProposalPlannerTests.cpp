@@ -17,6 +17,7 @@ private slots:
     void boostsUpcomingScheduleConnectorProposal();
     void penalizesRecentlyPresentedDuplicateProposal();
     void penalizesConnectorBurstHistory();
+    void boostsProposalFromCompiledContextHistoryAffinity();
     void buildsClipboardProposal();
     void buildsNotificationProposal();
     void buildsScheduleProposal();
@@ -260,6 +261,36 @@ void SuggestionProposalPlannerTests::penalizesConnectorBurstHistory()
     QVERIFY(!ranked.isEmpty());
     QCOMPARE(ranked.first().reasonCode, QStringLiteral("proposal_rank.connector_burst_penalty"));
     QVERIFY(ranked.first().score < 0.84);
+}
+
+void SuggestionProposalPlannerTests::boostsProposalFromCompiledContextHistoryAffinity()
+{
+    const QList<RankedSuggestionProposal> ranked = SuggestionProposalRanker::rank({
+        .proposals = SuggestionProposalBuilder::build({
+            .sourceKind = QStringLiteral("task_result"),
+            .taskType = QStringLiteral("file_search"),
+            .resultSummary = QStringLiteral("Found matching files."),
+            .sourceUrls = {},
+            .success = true
+        }),
+        .sourceKind = QStringLiteral("task_result"),
+        .taskType = QStringLiteral("file_search"),
+        .sourceMetadata = {
+            {QStringLiteral("compiledContextHistoryHasDocument"), true}
+        },
+        .presentationKey = QString(),
+        .lastPresentedKey = QString(),
+        .lastPresentedAtMs = 0,
+        .desktopContext = {},
+        .desktopContextAtMs = 0,
+        .cooldownState = CooldownState{},
+        .focusMode = FocusModeState{},
+        .nowMs = QDateTime::currentMSecsSinceEpoch()
+    });
+
+    QVERIFY(!ranked.isEmpty());
+    QCOMPARE(ranked.first().proposal.capabilityId, QStringLiteral("document_follow_up"));
+    QCOMPARE(ranked.first().reasonCode, QStringLiteral("proposal_rank.compiled_history_document_affinity"));
 }
 
 void SuggestionProposalPlannerTests::buildsClipboardProposal()

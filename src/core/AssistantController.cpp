@@ -44,6 +44,8 @@
 #include "connectors/InboxMaildropMonitor.h"
 #include "connectors/NotesDirectoryMonitor.h"
 #include "cognition/CompiledContextDeltaTracker.h"
+#include "cognition/CompiledContextHistorySummaryBuilder.h"
+#include "cognition/CompiledContextStabilityMemoryBuilder.h"
 #include "cognition/CompiledContextStabilityTracker.h"
 #include "cognition/PromptContextTemporalPolicy.h"
 #include "cognition/ProactiveCooldownTracker.h"
@@ -3302,12 +3304,19 @@ ProactiveSuggestionPlan AssistantController::planNextStepSuggestion(const QStrin
                                                                    const QString &presentationKey,
                                                                    bool success) const
 {
+    QVariantMap plannerMetadata = sourceMetadata;
+    const QVariantMap historyMetadata = CompiledContextHistorySummaryBuilder::buildPlannerMetadata(
+        buildCompiledContextHistoryMemory());
+    for (auto it = historyMetadata.constBegin(); it != historyMetadata.constEnd(); ++it) {
+        plannerMetadata.insert(it.key(), it.value());
+    }
+
     const ProactiveSuggestionPlan plan = ProactiveSuggestionPlanner::plan({
         .sourceKind = sourceKind,
         .taskType = taskType,
         .resultSummary = resultSummary,
         .sourceUrls = sourceUrls,
-        .sourceMetadata = sourceMetadata,
+        .sourceMetadata = plannerMetadata,
         .presentationKey = presentationKey,
         .lastPresentedKey = m_lastProactiveSuggestionThreadId,
         .lastPresentedAtMs = m_lastProactiveSuggestionMs,
@@ -3519,6 +3528,28 @@ void AssistantController::logCompiledContextDelta(const QString &purpose,
     m_lastCompiledContextKeysByPurpose.insert(purpose, currentKeys);
     m_lastCompiledContextChangedAtMsByPurpose.insert(purpose, changedAtMs);
     m_compiledContextStableCyclesByPurpose.insert(purpose, stableCycles);
+    m_lastCompiledContextStabilitySummaryByPurpose.insert(purpose, stability.summaryText);
+    m_lastCompiledContextStableKeysByPurpose.insert(purpose, stability.stableKeys);
+    m_lastCompiledContextStableDurationMsByPurpose.insert(purpose, stability.stableDurationMs);
+}
+
+MemoryRecord AssistantController::buildCompiledContextStabilityMemory(const QString &purpose) const
+{
+    return CompiledContextStabilityMemoryBuilder::build(
+        purpose,
+        m_lastCompiledContextStabilitySummaryByPurpose.value(purpose),
+        m_lastCompiledContextStableKeysByPurpose.value(purpose),
+        m_compiledContextStableCyclesByPurpose.value(purpose),
+        m_lastCompiledContextStableDurationMsByPurpose.value(purpose));
+}
+
+QList<MemoryRecord> AssistantController::buildCompiledContextHistoryMemory() const
+{
+    return CompiledContextHistorySummaryBuilder::build(
+        m_lastCompiledContextStabilitySummaryByPurpose,
+        m_lastCompiledContextStableKeysByPurpose,
+        m_compiledContextStableCyclesByPurpose,
+        m_lastCompiledContextStableDurationMsByPurpose);
 }
 
 QString AssistantController::selectTemporalPromptContext(const QString &purpose,
@@ -4041,7 +4072,12 @@ void AssistantController::startConversationRequest(const QString &input)
         runtimeToolStatusMemory(m_settings),
         m_memoryPolicyHandler.get(),
         m_assistantBehaviorPolicy.get());
-    const QString &selectionInput = selectionContext.selectionInput;
+    const QList<MemoryRecord> compiledContextHistoryRecords = buildCompiledContextHistoryMemory();
+    const QString compiledContextHistoryHint = CompiledContextHistorySummaryBuilder::buildSelectionHint(
+        compiledContextHistoryRecords);
+    const QString selectionInput = compiledContextHistoryHint.isEmpty()
+        ? selectionContext.selectionInput
+        : (selectionContext.selectionInput + QLatin1Char(' ') + compiledContextHistoryHint).simplified();
     if (m_loggingService) {
         m_loggingService->info(QStringLiteral("Starting conversation request. model=\"%1\" input=\"%2\"")
             .arg(modelId, userFacingPromptForLogging(input).left(240)));
@@ -4067,8 +4103,17 @@ void AssistantController::startConversationRequest(const QString &input)
     }
 
     const QList<MemoryRecord> &memoryRecords = selectionContext.selectedMemoryRecords;
-    const MemoryContext &memoryContext = selectionContext.memoryContext;
     logCompiledContextDelta(QStringLiteral("conversation"), input, selectionContext);
+    QList<MemoryRecord> compiledContextRecords = selectionContext.compiledContextRecords;
+    MemoryContext memoryContext = selectionContext.memoryContext;
+    const QList<MemoryRecord> compiledContextHistoryMemory = buildCompiledContextHistoryMemory();
+    for (const MemoryRecord &record : compiledContextHistoryMemory) {
+        if (record.key.trimmed().isEmpty()) {
+            continue;
+        }
+        compiledContextRecords.push_back(record);
+        memoryContext.activeCommitments.push_front(record);
+    }
     QList<MemoryRecord> promptContextRecords = selectionContext.promptContextRecords;
     QStringList suppressedPromptContextKeys;
     int stablePromptCycles = 0;
@@ -4106,7 +4151,7 @@ void AssistantController::startConversationRequest(const QString &input)
             m_latestDesktopContext,
             selectionContext.compiledDesktopSummary,
             memoryContext,
-            selectionContext.compiledContextRecords));
+            compiledContextRecords));
     }
 
     const ConversationRequestContext requestContext{
@@ -4160,7 +4205,12 @@ void AssistantController::startAgentConversationRequest(const QString &input, In
         runtimeToolStatusMemory(m_settings),
         m_memoryPolicyHandler.get(),
         m_assistantBehaviorPolicy.get());
-    const QString &selectionInput = selectionContext.selectionInput;
+    const QList<MemoryRecord> compiledContextHistoryRecords = buildCompiledContextHistoryMemory();
+    const QString compiledContextHistoryHint = CompiledContextHistorySummaryBuilder::buildSelectionHint(
+        compiledContextHistoryRecords);
+    const QString selectionInput = compiledContextHistoryHint.isEmpty()
+        ? selectionContext.selectionInput
+        : (selectionContext.selectionInput + QLatin1Char(' ') + compiledContextHistoryHint).simplified();
     const ToolPlan toolPlan = m_assistantBehaviorPolicy
         ? m_assistantBehaviorPolicy->buildToolPlan(selectionInput, expectedIntent, availableTools)
         : ToolPlan{};
@@ -4219,8 +4269,17 @@ void AssistantController::startAgentConversationRequest(const QString &input, In
     }
 
     const QList<MemoryRecord> &memoryRecords = selectionContext.selectedMemoryRecords;
-    const MemoryContext &memoryContext = selectionContext.memoryContext;
     logCompiledContextDelta(QStringLiteral("agent"), input, selectionContext);
+    QList<MemoryRecord> compiledContextRecords = selectionContext.compiledContextRecords;
+    MemoryContext memoryContext = selectionContext.memoryContext;
+    const QList<MemoryRecord> compiledContextHistoryMemory = buildCompiledContextHistoryMemory();
+    for (const MemoryRecord &record : compiledContextHistoryMemory) {
+        if (record.key.trimmed().isEmpty()) {
+            continue;
+        }
+        compiledContextRecords.push_back(record);
+        memoryContext.activeCommitments.push_front(record);
+    }
     QList<MemoryRecord> promptContextRecords = selectionContext.promptContextRecords;
     QStringList suppressedPromptContextKeys;
     int stablePromptCycles = 0;
@@ -4258,7 +4317,7 @@ void AssistantController::startAgentConversationRequest(const QString &input, In
             m_latestDesktopContext,
             selectionContext.compiledDesktopSummary,
             memoryContext,
-            selectionContext.compiledContextRecords));
+            compiledContextRecords));
     }
 
     const AgentRequestContext requestContext{
@@ -4308,7 +4367,12 @@ void AssistantController::continueAgentConversation(const QList<AgentToolResult>
         runtimeToolStatusMemory(m_settings),
         m_memoryPolicyHandler.get(),
         m_assistantBehaviorPolicy.get());
-    const QString &selectionInput = selectionContext.selectionInput;
+    const QList<MemoryRecord> compiledContextHistoryRecords = buildCompiledContextHistoryMemory();
+    const QString compiledContextHistoryHint = CompiledContextHistorySummaryBuilder::buildSelectionHint(
+        compiledContextHistoryRecords);
+    const QString selectionInput = compiledContextHistoryHint.isEmpty()
+        ? selectionContext.selectionInput
+        : (selectionContext.selectionInput + QLatin1Char(' ') + compiledContextHistoryHint).simplified();
     QList<AgentToolSpec> relevantTools = m_assistantBehaviorPolicy
         ? m_assistantBehaviorPolicy->selectRelevantTools(selectionInput, m_lastAgentIntent, availableTools)
         : m_promptAdapter->getRelevantTools(m_lastAgentInput, m_lastAgentIntent, availableTools);
@@ -4337,8 +4401,17 @@ void AssistantController::continueAgentConversation(const QList<AgentToolResult>
     }
 
     const QList<MemoryRecord> &memoryRecords = selectionContext.selectedMemoryRecords;
-    const MemoryContext &memoryContext = selectionContext.memoryContext;
     logCompiledContextDelta(QStringLiteral("agent_continuation"), m_lastAgentInput, selectionContext);
+    QList<MemoryRecord> compiledContextRecords = selectionContext.compiledContextRecords;
+    MemoryContext memoryContext = selectionContext.memoryContext;
+    const QList<MemoryRecord> compiledContextHistoryMemory = buildCompiledContextHistoryMemory();
+    for (const MemoryRecord &record : compiledContextHistoryMemory) {
+        if (record.key.trimmed().isEmpty()) {
+            continue;
+        }
+        compiledContextRecords.push_back(record);
+        memoryContext.activeCommitments.push_front(record);
+    }
     QList<MemoryRecord> promptContextRecords = selectionContext.promptContextRecords;
     QStringList suppressedPromptContextKeys;
     int stablePromptCycles = 0;
@@ -4376,7 +4449,7 @@ void AssistantController::continueAgentConversation(const QList<AgentToolResult>
             m_latestDesktopContext,
             selectionContext.compiledDesktopSummary,
             memoryContext,
-            selectionContext.compiledContextRecords));
+            compiledContextRecords));
     }
 
     const AgentRequestContext requestContext{
@@ -4563,7 +4636,11 @@ QString AssistantController::buildDesktopSelectionInput(const QString &input,
         event.threadId = m_latestDesktopContext.value(QStringLiteral("threadId")).toString();
         m_loggingService->logBehaviorEvent(event);
     }
-    return selectionInput;
+    const QString historyHint = CompiledContextHistorySummaryBuilder::buildSelectionHint(
+        buildCompiledContextHistoryMemory());
+    return historyHint.isEmpty()
+        ? selectionInput
+        : (selectionInput + QLatin1Char(' ') + historyHint).simplified();
 }
 
 void AssistantController::updateDesktopContext(const QString &summary, const QVariantMap &context)

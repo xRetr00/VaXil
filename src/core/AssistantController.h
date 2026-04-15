@@ -353,6 +353,8 @@ private:
     void logCompiledContextDelta(const QString &purpose,
                                  const QString &input,
                                  const SelectionContextCompilation &selectionContext);
+    MemoryRecord buildCompiledContextStabilityMemory(const QString &purpose) const;
+    QList<MemoryRecord> buildCompiledContextHistoryMemory() const;
     QString selectTemporalPromptContext(const QString &purpose,
                                         const SelectionContextCompilation &selectionContext,
                                         QList<MemoryRecord> *selectedPromptRecords,
@@ -470,6 +472,9 @@ private:
     QHash<QString, QStringList> m_lastCompiledContextKeysByPurpose;
     QHash<QString, qint64> m_lastCompiledContextChangedAtMsByPurpose;
     QHash<QString, int> m_compiledContextStableCyclesByPurpose;
+    QHash<QString, QString> m_lastCompiledContextStabilitySummaryByPurpose;
+    QHash<QString, QStringList> m_lastCompiledContextStableKeysByPurpose;
+    QHash<QString, qint64> m_lastCompiledContextStableDurationMsByPurpose;
     QHash<QString, QString> m_lastPromptContextByPurpose;
     QHash<QString, QStringList> m_lastPromptContextKeysByPurpose;
     QHash<QString, qint64> m_lastPromptContextChangedAtMsByPurpose;
