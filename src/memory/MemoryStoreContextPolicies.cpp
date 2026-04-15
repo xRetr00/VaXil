@@ -27,6 +27,25 @@ int compiledContextPolicyScore(const QString &query, const QVariantMap &state)
     score += static_cast<int>(state.value(QStringLiteral("strength")).toDouble() * 10.0);
     return score;
 }
+
+bool upsertPolicyHistoryEntry(MemoryStore *store, const QVariantList &history)
+{
+    const QJsonDocument document = QJsonDocument::fromVariant(history);
+    MemoryEntry entry;
+    entry.type = MemoryType::Context;
+    entry.kind = QStringLiteral("context");
+    entry.key = QStringLiteral("compiled_context_policy_history_state");
+    entry.title = QStringLiteral("compiled_context_policy_history");
+    entry.value = QString::fromUtf8(document.toJson(QJsonDocument::Compact));
+    entry.content = entry.value;
+    entry.id = QStringLiteral("compiled-context-policy-history");
+    entry.confidence = 0.9f;
+    entry.source = QStringLiteral("compiled_history_policy_history");
+    entry.tags = {QStringLiteral("compiled_context_policy_history")};
+    entry.createdAt = QDateTime::currentDateTimeUtc();
+    entry.updatedAt = entry.createdAt.toUTC().toString(Qt::ISODate);
+    return store->upsertEntry(entry);
+}
 }
 
 QList<MemoryRecord> MemoryStore::compiledContextPolicyMemory(const QString &query) const
@@ -59,7 +78,12 @@ bool MemoryStore::upsertCompiledContextPolicyState(const QVariantMap &state)
         return false;
     }
 
-    const QJsonDocument document(QJsonObject::fromVariantMap(state));
+    QVariantMap normalizedState = state;
+    const qint64 updatedAtMs = normalizedState.value(QStringLiteral("updatedAtMs"),
+                                                     QDateTime::currentMSecsSinceEpoch()).toLongLong();
+    normalizedState.insert(QStringLiteral("updatedAtMs"), updatedAtMs);
+
+    const QJsonDocument document(QJsonObject::fromVariantMap(normalizedState));
     MemoryEntry entry;
     entry.type = MemoryType::Context;
     entry.kind = QStringLiteral("context");
@@ -72,16 +96,50 @@ bool MemoryStore::upsertCompiledContextPolicyState(const QVariantMap &state)
     entry.source = QStringLiteral("compiled_history_policy");
     entry.tags = {
         QStringLiteral("compiled_context_policy"),
-        state.value(QStringLiteral("dominantMode")).toString().trimmed()
+        normalizedState.value(QStringLiteral("dominantMode")).toString().trimmed()
     };
     entry.createdAt = QDateTime::currentDateTimeUtc();
     entry.updatedAt = entry.createdAt.toUTC().toString(Qt::ISODate);
-    return upsertEntry(entry);
+    if (!upsertEntry(entry)) {
+        return false;
+    }
+
+    QVariantList history = compiledContextPolicyHistory();
+    if (history.isEmpty()) {
+        QVariantMap snapshot = normalizedState;
+        snapshot.insert(QStringLiteral("enteredAtMs"), updatedAtMs);
+        snapshot.insert(QStringLiteral("observations"), 1);
+        history.push_back(snapshot);
+    } else {
+        QVariantMap last = history.last().toMap();
+        if (last.value(QStringLiteral("dominantMode")).toString().trimmed()
+            == normalizedState.value(QStringLiteral("dominantMode")).toString().trimmed()) {
+            last.insert(QStringLiteral("updatedAtMs"), updatedAtMs);
+            last.insert(QStringLiteral("strength"), normalizedState.value(QStringLiteral("strength")));
+            last.insert(QStringLiteral("selectionDirective"), normalizedState.value(QStringLiteral("selectionDirective")));
+            last.insert(QStringLiteral("promptDirective"), normalizedState.value(QStringLiteral("promptDirective")));
+            last.insert(QStringLiteral("reasonCode"), normalizedState.value(QStringLiteral("reasonCode")));
+            last.insert(QStringLiteral("observations"), qMax(1, last.value(QStringLiteral("observations")).toInt()) + 1);
+            history.last() = last;
+        } else {
+            QVariantMap snapshot = normalizedState;
+            snapshot.insert(QStringLiteral("enteredAtMs"), updatedAtMs);
+            snapshot.insert(QStringLiteral("observations"), 1);
+            history.push_back(snapshot);
+        }
+    }
+
+    while (history.size() > 12) {
+        history.removeFirst();
+    }
+    return upsertPolicyHistoryEntry(this, history);
 }
 
 bool MemoryStore::deleteCompiledContextPolicyState()
 {
-    return deleteEntry(compiledContextPolicyStorageKey());
+    const bool deletedCurrent = deleteEntry(compiledContextPolicyStorageKey());
+    const bool deletedHistory = deleteEntry(compiledContextPolicyHistoryStorageKey());
+    return deletedCurrent || deletedHistory;
 }
 
 QVariantMap MemoryStore::compiledContextPolicyState() const
@@ -103,7 +161,31 @@ QVariantMap MemoryStore::compiledContextPolicyState() const
     return {};
 }
 
+QVariantList MemoryStore::compiledContextPolicyHistory() const
+{
+    for (const MemoryEntry &entry : allEntries()) {
+        if (entry.source != QStringLiteral("compiled_history_policy_history")) {
+            continue;
+        }
+        if (entry.key != compiledContextPolicyHistoryStorageKey()) {
+            continue;
+        }
+
+        const QJsonDocument document = QJsonDocument::fromJson(entry.value.toUtf8());
+        if (!document.isArray()) {
+            return {};
+        }
+        return document.array().toVariantList();
+    }
+    return {};
+}
+
 QString MemoryStore::compiledContextPolicyStorageKey() const
 {
     return QStringLiteral("compiled_context_policy_state");
+}
+
+QString MemoryStore::compiledContextPolicyHistoryStorageKey() const
+{
+    return QStringLiteral("compiled_context_policy_history_state");
 }

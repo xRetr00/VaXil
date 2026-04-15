@@ -34,6 +34,7 @@ public:
     bool upsertCompiledContextPolicyState(const QVariantMap &state);
     bool deleteCompiledContextPolicyState();
     QVariantMap compiledContextPolicyState() const;
+    QVariantList compiledContextPolicyHistory() const;
 
 private:
     QString transcriptPath() const;
@@ -41,5 +42,6 @@ private:
     MemoryEntry normalizeEntry(const MemoryEntry &entry) const;
     QString connectorStateStorageKey(const QString &historyKey) const;
     QString compiledContextPolicyStorageKey() const;
+    QString compiledContextPolicyHistoryStorageKey() const;
     std::unique_ptr<MemoryManager> m_memoryManager;
 };

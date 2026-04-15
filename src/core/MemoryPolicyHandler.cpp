@@ -5,6 +5,7 @@
 
 #include "cognition/CompiledContextHistoryPolicy.h"
 #include "cognition/CompiledContextLayeredMemoryBuilder.h"
+#include "cognition/CompiledContextPolicyEvolutionBuilder.h"
 #include "cognition/CompiledContextPolicySummaryBuilder.h"
 #include "cognition/ConnectorContextCompiler.h"
 #include "memory/MemoryStore.h"
@@ -135,6 +136,7 @@ QList<MemoryRecord> MemoryPolicyHandler::requestMemory(const QString &query, con
     if (m_memoryStore) {
         appendUnique(compiledContextPolicySummaryRecords());
         appendUnique(compiledContextLayeredMemoryRecords());
+        appendUnique(compiledContextPolicyEvolutionRecords());
         appendUnique(m_memoryStore->compiledContextPolicyMemory(query));
         appendUnique(ConnectorContextCompiler::compileSummaries(query, m_memoryStore->connectorStateMap()));
         appendUnique(m_memoryStore->connectorMemory(query));
@@ -183,6 +185,15 @@ QList<MemoryRecord> MemoryPolicyHandler::compiledContextLayeredMemoryRecords() c
     return CompiledContextLayeredMemoryBuilder::build(
         m_memoryStore->compiledContextPolicyState(),
         m_memoryStore->connectorStateMap());
+}
+
+QList<MemoryRecord> MemoryPolicyHandler::compiledContextPolicyEvolutionRecords() const
+{
+    if (m_memoryStore == nullptr) {
+        return {};
+    }
+    return CompiledContextPolicyEvolutionBuilder::build(
+        m_memoryStore->compiledContextPolicyHistory());
 }
 
 void MemoryPolicyHandler::captureExplicitMemoryFromInput(const QString &input) const

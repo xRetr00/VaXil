@@ -418,6 +418,9 @@ SelectionContextCompilation SelectionContextCompiler::compile(const QString &que
     const QList<MemoryRecord> layeredMemoryRecords = memoryPolicyHandler != nullptr
         ? memoryPolicyHandler->compiledContextLayeredMemoryRecords()
         : QList<MemoryRecord>{};
+    const QList<MemoryRecord> evolutionRecords = memoryPolicyHandler != nullptr
+        ? memoryPolicyHandler->compiledContextPolicyEvolutionRecords()
+        : QList<MemoryRecord>{};
     const CompiledContextHistoryPolicyDecision effectiveHistoryDecision = historyDecision.isValid()
         ? historyDecision
         : CompiledContextHistoryPolicy::evaluate(historyRecords);
@@ -435,7 +438,8 @@ SelectionContextCompilation SelectionContextCompiler::compile(const QString &que
             .simplified();
     }
     const QString layeredSelectionDirective =
-        CompiledContextLayeredSignalBuilder::buildSelectionDirective(layeredMemoryRecords);
+        CompiledContextLayeredSignalBuilder::buildSelectionDirective(
+            mergedRecords(layeredMemoryRecords, evolutionRecords));
     if (!layeredSelectionDirective.isEmpty()) {
         compilation.selectionInput = QStringLiteral("%1\n\n%2")
             .arg(compilation.selectionInput.trimmed(), layeredSelectionDirective)
@@ -449,7 +453,8 @@ SelectionContextCompilation SelectionContextCompiler::compile(const QString &que
         compilation.compiledDesktopSummary,
         effectiveHistoryDecision);
     compilation.promptContextRecords.append(
-        CompiledContextLayeredSignalBuilder::buildPromptContextRecords(layeredMemoryRecords));
+        CompiledContextLayeredSignalBuilder::buildPromptContextRecords(
+            mergedRecords(layeredMemoryRecords, evolutionRecords)));
     compilation.promptContext = promptContextFromRecords(compilation.promptContextRecords);
     compilation.selectedMemoryRecords = memoryPolicyHandler
         ? memoryPolicyHandler->requestMemory(compilation.selectionInput, runtimeRecord)
@@ -461,6 +466,9 @@ SelectionContextCompilation SelectionContextCompiler::compile(const QString &que
             compilation.compiledContextRecords.push_back(record);
         }
         for (const MemoryRecord &record : layeredMemoryRecords) {
+            compilation.compiledContextRecords.push_back(record);
+        }
+        for (const MemoryRecord &record : evolutionRecords) {
             compilation.compiledContextRecords.push_back(record);
         }
     }

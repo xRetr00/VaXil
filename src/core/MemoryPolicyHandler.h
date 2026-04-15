@@ -21,6 +21,7 @@ public:
     [[nodiscard]] CompiledContextHistoryPolicyDecision compiledContextPolicyDecision() const;
     [[nodiscard]] QList<MemoryRecord> compiledContextPolicySummaryRecords() const;
     [[nodiscard]] QList<MemoryRecord> compiledContextLayeredMemoryRecords() const;
+    [[nodiscard]] QList<MemoryRecord> compiledContextPolicyEvolutionRecords() const;
     void captureExplicitMemoryFromInput(const QString &input) const;
 
 private:

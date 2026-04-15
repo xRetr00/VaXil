@@ -279,6 +279,7 @@ set(JARVIS_SOURCES
     src/cognition/CompiledContextHistoryPolicy.cpp
     src/cognition/CompiledContextLayeredMemoryBuilder.cpp
     src/cognition/CompiledContextLayeredSignalBuilder.cpp
+    src/cognition/CompiledContextPolicyEvolutionBuilder.cpp
     src/cognition/CompiledContextPolicySummaryBuilder.cpp
     src/cognition/CompiledContextHistorySummaryBuilder.cpp
     src/cognition/CompiledContextStabilityMemoryBuilder.cpp

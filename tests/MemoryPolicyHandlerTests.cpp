@@ -16,6 +16,7 @@ private slots:
     void readsCompiledContextPolicyDecision();
     void buildsCompiledContextPolicySummaryRecords();
     void buildsCompiledContextLayeredMemoryRecords();
+    void buildsCompiledContextPolicyEvolutionRecords();
 };
 
 void MemoryPolicyHandlerTests::requestMemoryIncludesConnectorSummaries()
@@ -180,6 +181,36 @@ void MemoryPolicyHandlerTests::buildsCompiledContextLayeredMemoryRecords()
     }
     QVERIFY(foundSummary);
     QVERIFY(foundContinuity);
+}
+
+void MemoryPolicyHandlerTests::buildsCompiledContextPolicyEvolutionRecords()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+
+    MemoryStore store(dir.path() + QStringLiteral("/memory.json"));
+    MemoryPolicyHandler handler(nullptr, &store);
+
+    QVERIFY(store.upsertCompiledContextPolicyState({
+        {QStringLiteral("dominantMode"), QStringLiteral("document_work")},
+        {QStringLiteral("selectionDirective"), QStringLiteral("History policy: stable document-focused work is ongoing.")},
+        {QStringLiteral("promptDirective"), QStringLiteral("Stable mode: document-focused work remains active.")},
+        {QStringLiteral("reasonCode"), QStringLiteral("compiled_history_policy.document_work")},
+        {QStringLiteral("strength"), 2.3},
+        {QStringLiteral("updatedAtMs"), 7100}
+    }));
+    QVERIFY(store.upsertCompiledContextPolicyState({
+        {QStringLiteral("dominantMode"), QStringLiteral("research_analysis")},
+        {QStringLiteral("selectionDirective"), QStringLiteral("History policy: stable research analysis is ongoing.")},
+        {QStringLiteral("promptDirective"), QStringLiteral("Stable mode: research analysis remains active.")},
+        {QStringLiteral("reasonCode"), QStringLiteral("compiled_history_policy.research_analysis")},
+        {QStringLiteral("strength"), 2.9},
+        {QStringLiteral("updatedAtMs"), 9100}
+    }));
+
+    const QList<MemoryRecord> records = handler.compiledContextPolicyEvolutionRecords();
+    QVERIFY(records.size() >= 1);
+    QVERIFY(records.first().value.contains(QStringLiteral("document_work -> research_analysis")));
 }
 
 QTEST_APPLESS_MAIN(MemoryPolicyHandlerTests)

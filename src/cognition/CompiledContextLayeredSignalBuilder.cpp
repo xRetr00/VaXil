@@ -18,11 +18,12 @@ QString CompiledContextLayeredSignalBuilder::buildSelectionDirective(const QList
 {
     const QString focus = recordValue(records, QStringLiteral("compiled_context_layered_focus"));
     const QString continuity = recordValue(records, QStringLiteral("compiled_context_layered_continuity"));
-    if (focus.isEmpty() && continuity.isEmpty()) {
+    const QString evolution = recordValue(records, QStringLiteral("compiled_context_policy_evolution"));
+    if (focus.isEmpty() && continuity.isEmpty() && evolution.isEmpty()) {
         return {};
     }
 
-    return QStringLiteral("%1 %2").arg(focus, continuity).simplified();
+    return QStringLiteral("%1 %2 %3").arg(focus, continuity, evolution).simplified();
 }
 
 QString CompiledContextLayeredSignalBuilder::buildPlannerSummary(const QList<MemoryRecord> &records)
@@ -73,6 +74,18 @@ QList<MemoryRecord> CompiledContextLayeredSignalBuilder::buildPromptContextRecor
             .value = continuity,
             .confidence = 0.8f,
             .source = QStringLiteral("prompt.layered_continuity"),
+            .updatedAt = updatedAt
+        });
+    }
+
+    const QString evolution = recordValue(records, QStringLiteral("compiled_context_policy_evolution"));
+    if (!evolution.isEmpty()) {
+        promptRecords.push_back({
+            .type = QStringLiteral("prompt_context"),
+            .key = QStringLiteral("history_prompt_policy_evolution"),
+            .value = evolution,
+            .confidence = 0.78f,
+            .source = QStringLiteral("prompt.policy_evolution"),
             .updatedAt = updatedAt
         });
     }

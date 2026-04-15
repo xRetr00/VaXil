@@ -20,6 +20,7 @@ private slots:
     void includesPersistedPolicySummaryRecordsInCompiledContext();
     void includesLayeredMemoryRecordsInCompiledContext();
     void usesLayeredMemorySignalsInSelectionAndPromptContext();
+    void usesPolicyEvolutionSignalsInSelectionAndPromptContext();
 };
 
 void SelectionContextCompilerTests::compilesDesktopAndConnectorContextTogether()
@@ -395,6 +396,51 @@ void SelectionContextCompilerTests::usesLayeredMemorySignalsInSelectionAndPrompt
 
     QVERIFY(compilation.selectionInput.contains(QStringLiteral("research analysis remains active")));
     QVERIFY(compilation.promptContext.contains(QStringLiteral("connector_research_browser")));
+}
+
+void SelectionContextCompilerTests::usesPolicyEvolutionSignalsInSelectionAndPromptContext()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+
+    MemoryStore store(dir.path() + QStringLiteral("/memory.json"));
+    MemoryPolicyHandler memoryPolicy(nullptr, &store);
+
+    QVERIFY(store.upsertCompiledContextPolicyState({
+        {QStringLiteral("dominantMode"), QStringLiteral("document_work")},
+        {QStringLiteral("selectionDirective"), QStringLiteral("History policy: stable document-focused work is ongoing.")},
+        {QStringLiteral("promptDirective"), QStringLiteral("Stable mode: document-focused work remains active.")},
+        {QStringLiteral("reasonCode"), QStringLiteral("compiled_history_policy.document_work")},
+        {QStringLiteral("strength"), 2.2},
+        {QStringLiteral("updatedAtMs"), 8100}
+    }));
+    QVERIFY(store.upsertCompiledContextPolicyState({
+        {QStringLiteral("dominantMode"), QStringLiteral("research_analysis")},
+        {QStringLiteral("selectionDirective"), QStringLiteral("History policy: stable research analysis is ongoing.")},
+        {QStringLiteral("promptDirective"), QStringLiteral("Stable mode: research analysis remains active.")},
+        {QStringLiteral("reasonCode"), QStringLiteral("compiled_history_policy.research_analysis")},
+        {QStringLiteral("strength"), 2.9},
+        {QStringLiteral("updatedAtMs"), 10100}
+    }));
+
+    const SelectionContextCompilation compilation = SelectionContextCompiler::compile(
+        QStringLiteral("what changed in my work"),
+        IntentType::GENERAL_CHAT,
+        {
+            {QStringLiteral("taskId"), QStringLiteral("browser_tab")},
+            {QStringLiteral("topic"), QStringLiteral("papers")},
+            {QStringLiteral("appId"), QStringLiteral("edge")}
+        },
+        QStringLiteral("Desktop context: browser tab in edge."),
+        QDateTime::currentMSecsSinceEpoch(),
+        false,
+        {},
+        {},
+        &memoryPolicy,
+        nullptr);
+
+    QVERIFY(compilation.selectionInput.contains(QStringLiteral("Policy evolution")));
+    QVERIFY(compilation.promptContext.contains(QStringLiteral("document_work -> research_analysis")));
 }
 
 QTEST_APPLESS_MAIN(SelectionContextCompilerTests)

@@ -3330,6 +3330,13 @@ ProactiveSuggestionPlan AssistantController::planNextStepSuggestion(const QStrin
             plannerMetadata.insert(QStringLiteral("compiledContextLayeredKeys"), layeredKeys);
             plannerMetadata.insert(QStringLiteral("compiledContextLayeredSummary"), layeredSummary);
         }
+        const QList<MemoryRecord> evolutionRecords = m_memoryPolicyHandler->compiledContextPolicyEvolutionRecords();
+        const QStringList evolutionKeys = CompiledContextLayeredSignalBuilder::buildPlannerKeys(evolutionRecords);
+        const QString evolutionSummary = CompiledContextLayeredSignalBuilder::buildPlannerSummary(evolutionRecords);
+        if (!evolutionKeys.isEmpty()) {
+            plannerMetadata.insert(QStringLiteral("compiledContextEvolutionKeys"), evolutionKeys);
+            plannerMetadata.insert(QStringLiteral("compiledContextEvolutionSummary"), evolutionSummary);
+        }
     }
     QVariantMap historyMetadata = m_memoryPolicyHandler
         ? m_memoryPolicyHandler->compiledContextPolicyState()
