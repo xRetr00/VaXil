@@ -5,6 +5,7 @@
 #include <QFileInfo>
 #include <QJsonDocument>
 
+#include "cognition/ConnectorEventBuilder.h"
 #include "core/tools/ToolExecutionService.h"
 #include "logging/LoggingService.h"
 #include "settings/AppSettings.h"
@@ -110,6 +111,13 @@ void ToolWorker::processTask(const AgentTask &task)
                 .detail = QStringLiteral("Task completed after cancellation and was ignored.")
             },
             TaskState::Canceled);
+    } else {
+        const ConnectorEvent connectorEvent = ConnectorEventBuilder::fromTaskExecution(task, execution);
+        if (connectorEvent.isValid()) {
+            result.insert(QStringLiteral("connectorEventId"), connectorEvent.eventId);
+            result.insert(QStringLiteral("connectorEventLive"), true);
+            emit connectorEventReady(connectorEvent);
+        }
     }
 
     emit taskFinished(task.id, result);

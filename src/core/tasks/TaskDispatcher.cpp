@@ -15,6 +15,11 @@ TaskDispatcher::TaskDispatcher(LoggingService *loggingService, QObject *parent)
 {
 }
 
+void TaskDispatcher::handleConnectorEvent(const ConnectorEvent &event)
+{
+    emit connectorEventReady(event);
+}
+
 void TaskDispatcher::enqueue(const AgentTask &incomingTask)
 {
     cleanupFinishedTasks();

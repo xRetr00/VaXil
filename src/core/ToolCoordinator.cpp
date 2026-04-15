@@ -166,6 +166,8 @@ ToolResultHandling ToolCoordinator::handleTaskResult(const QJsonObject &resultOb
     result.payload = resultObject.value(QStringLiteral("payload")).toObject();
     result.finishedAt = resultObject.value(QStringLiteral("finishedAt")).toString();
     result.taskKey = resultObject.value(QStringLiteral("taskKey")).toString();
+    result.connectorEventId = resultObject.value(QStringLiteral("connectorEventId")).toString();
+    result.connectorEventLive = resultObject.value(QStringLiteral("connectorEventLive")).toBool(false);
 
     const QString activeKey = result.taskKey.isEmpty() ? result.type : result.taskKey;
     const int activeTaskId = m_activeBackgroundTaskIds.value(activeKey, -1);
@@ -230,9 +232,11 @@ ToolResultHandling ToolCoordinator::handleTaskResult(const QJsonObject &resultOb
     handling.traceDetail = result.detail.left(600);
     handling.traceSuccess = result.success;
     handling.completedResult = result;
-    const ConnectorEvent connectorEvent = ConnectorEventBuilder::fromBackgroundTaskResult(result);
-    if (connectorEvent.isValid()) {
-        handling.connectorEvent = connectorEvent;
+    if (!result.connectorEventLive) {
+        const ConnectorEvent connectorEvent = ConnectorEventBuilder::fromBackgroundTaskResult(result);
+        if (connectorEvent.isValid()) {
+            handling.connectorEvent = connectorEvent;
+        }
     }
     return handling;
 }

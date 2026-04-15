@@ -20,10 +20,12 @@ public:
     int activeTaskId(const QString &taskKey) const;
 
 public slots:
+    void handleConnectorEvent(const ConnectorEvent &event);
     void handleTaskStarted(int taskId, const QString &type);
     void handleTaskFinished(int taskId, const QJsonObject &result);
 
 signals:
+    void connectorEventReady(const ConnectorEvent &event);
     void taskReady(const AgentTask &task);
     void taskCanceled(int taskId);
     void taskResultReady(const QJsonObject &result);

@@ -30,6 +30,7 @@ public slots:
     void cancelTask(int taskId);
 
 signals:
+    void connectorEventReady(const ConnectorEvent &event);
     void taskStarted(int taskId, const QString &type);
     void taskFinished(int taskId, QJsonObject result);
 
