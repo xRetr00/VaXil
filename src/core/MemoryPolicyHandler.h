@@ -19,9 +19,11 @@ public:
     QList<MemoryRecord> requestMemory(const QString &query, const MemoryRecord &runtimeRecord) const;
     [[nodiscard]] QVariantMap compiledContextPolicyState() const;
     [[nodiscard]] CompiledContextHistoryPolicyDecision compiledContextPolicyDecision() const;
+    [[nodiscard]] QVariantMap compiledContextPolicyTuningMetadata() const;
     [[nodiscard]] QList<MemoryRecord> compiledContextPolicySummaryRecords() const;
     [[nodiscard]] QList<MemoryRecord> compiledContextLayeredMemoryRecords() const;
     [[nodiscard]] QList<MemoryRecord> compiledContextPolicyEvolutionRecords() const;
+    [[nodiscard]] QList<MemoryRecord> compiledContextPolicyTuningSignalRecords() const;
     void captureExplicitMemoryFromInput(const QString &input) const;
 
 private:

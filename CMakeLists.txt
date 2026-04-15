@@ -281,6 +281,7 @@ set(JARVIS_SOURCES
     src/cognition/CompiledContextLayeredSignalBuilder.cpp
     src/cognition/CompiledContextPolicyEvolutionBuilder.cpp
     src/cognition/CompiledContextPolicySummaryBuilder.cpp
+    src/cognition/CompiledContextPolicyTuningSignalBuilder.cpp
     src/cognition/CompiledContextHistorySummaryBuilder.cpp
     src/cognition/CompiledContextStabilityMemoryBuilder.cpp
     src/cognition/CompiledContextStabilityTracker.cpp
@@ -385,6 +386,7 @@ set(JARVIS_HEADERS
     src/cognition/CooldownEngine.h
     src/cognition/CompiledContextDeltaTracker.h
     src/cognition/CompiledContextHistoryPolicy.h
+    src/cognition/CompiledContextPolicyTuningSignalBuilder.h
     src/cognition/CompiledContextPolicySummaryBuilder.h
     src/cognition/CompiledContextHistorySummaryBuilder.h
     src/cognition/CompiledContextStabilityMemoryBuilder.h
@@ -996,6 +998,20 @@ if(JARVIS_BUILD_TESTS)
     add_test(NAME jarvis_selection_context_tests COMMAND jarvis_selection_context_tests)
     set_tests_properties(jarvis_selection_context_tests PROPERTIES ENVIRONMENT "PATH=${QT_BIN_DIR}${JARVIS_PATH_ENV_SEPARATOR}$ENV{PATH}")
     jarvis_copy_optional_runtime_libraries(jarvis_selection_context_tests)
+
+    qt_add_executable(jarvis_selection_context_tuning_tests
+        tests/SelectionContextCompilerTuningTests.cpp
+    )
+
+    target_link_libraries(jarvis_selection_context_tuning_tests
+        PRIVATE
+            jarvis_lib
+            Qt6::Test
+    )
+
+    add_test(NAME jarvis_selection_context_tuning_tests COMMAND jarvis_selection_context_tuning_tests)
+    set_tests_properties(jarvis_selection_context_tuning_tests PROPERTIES ENVIRONMENT "PATH=${QT_BIN_DIR}${JARVIS_PATH_ENV_SEPARATOR}$ENV{PATH}")
+    jarvis_copy_optional_runtime_libraries(jarvis_selection_context_tuning_tests)
 
     qt_add_executable(jarvis_response_finalizer_tests
         tests/ResponseFinalizerTests.cpp

@@ -164,6 +164,7 @@ ProactiveSuggestionPlan ProactiveSuggestionPlanner::plan(const Input &input)
 
     const BehaviorDecision gateDecision = ProactiveSuggestionGate::evaluate({
         .proposal = plan.selectedProposal,
+        .proposalScore = plan.rankedProposals.first().score,
         .sourceMetadata = input.sourceMetadata,
         .desktopContext = input.desktopContext,
         .desktopContextAtMs = input.desktopContextAtMs,

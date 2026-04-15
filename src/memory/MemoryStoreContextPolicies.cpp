@@ -1,6 +1,7 @@
 #include "memory/MemoryStore.h"
 
 #include <QDateTime>
+#include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QRegularExpression>

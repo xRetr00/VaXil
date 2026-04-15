@@ -1,9 +1,32 @@
 #include "cognition/ProactiveSuggestionGate.h"
 
+#include <QRegularExpression>
+
 namespace {
 QString metadataString(const QVariantMap &metadata, const QString &key)
 {
     return metadata.value(key).toString().trimmed().toLower();
+}
+
+double metadataDouble(const QVariantMap &metadata, const QString &key, double fallback)
+{
+    bool ok = false;
+    const double value = metadata.value(key).toDouble(&ok);
+    return ok ? value : fallback;
+}
+
+int observedCount(const QString &summary)
+{
+    const QRegularExpression regex(QStringLiteral("observed\\s+(\\d+)\\s+times"));
+    const QRegularExpressionMatch match = regex.match(summary);
+    return match.hasMatch() ? match.captured(1).toInt() : 0;
+}
+
+int modeShiftCount(const QString &summary)
+{
+    const QRegularExpression regex(QStringLiteral("across\\s+(\\d+)\\s+mode\\s+shifts"));
+    const QRegularExpressionMatch match = regex.match(summary);
+    return match.hasMatch() ? match.captured(1).toInt() : 0;
 }
 
 bool isResearchProposal(const QString &capabilityId)
@@ -61,6 +84,10 @@ BehaviorDecision ProactiveSuggestionGate::evaluate(const Input &input)
     const QString capabilityId = input.proposal.capabilityId.trimmed();
     const QString layeredSummary = metadataString(input.sourceMetadata,
                                                   QStringLiteral("compiledContextLayeredSummary"));
+    const QString evolutionSummary = metadataString(input.sourceMetadata,
+                                                    QStringLiteral("compiledContextEvolutionSummary"));
+    const QString tuningSummary = metadataString(input.sourceMetadata,
+                                                 QStringLiteral("compiledContextTuningSummary"));
     if (!layeredSummary.isEmpty()) {
         if (layeredSummary.contains(QStringLiteral("research analysis remains active"))
             && (isInboxProposal(capabilityId) || isScheduleProposal(capabilityId))) {
@@ -92,6 +119,66 @@ BehaviorDecision ProactiveSuggestionGate::evaluate(const Input &input)
             decision.action = QStringLiteral("suppress_proposal");
             decision.reasonCode = QStringLiteral("proposal.layered_policy_document_defocus");
             decision.score = 0.87;
+            return decision;
+        }
+    }
+
+    if (!evolutionSummary.isEmpty()) {
+        const int observations = observedCount(evolutionSummary);
+        const int shifts = modeShiftCount(evolutionSummary);
+        if (evolutionSummary.contains(QStringLiteral("current mode research_analysis"))
+            && observations >= 3
+            && (isInboxProposal(capabilityId) || isScheduleProposal(capabilityId))) {
+            decision.allowed = false;
+            decision.action = QStringLiteral("suppress_proposal");
+            decision.reasonCode = QStringLiteral("proposal.evolution_research_defocus");
+            decision.score = 0.9;
+            return decision;
+        }
+        if (evolutionSummary.contains(QStringLiteral("current mode inbox_triage"))
+            && observations >= 3
+            && (isDocumentProposal(capabilityId) || isScheduleProposal(capabilityId))) {
+            decision.allowed = false;
+            decision.action = QStringLiteral("suppress_proposal");
+            decision.reasonCode = QStringLiteral("proposal.evolution_inbox_defocus");
+            decision.score = 0.9;
+            return decision;
+        }
+        if (shifts >= 2
+            && input.proposal.priority.trimmed().compare(QStringLiteral("medium"), Qt::CaseInsensitive) == 0
+            && evolutionSummary.contains(QStringLiteral("current mode research_analysis"))
+            && (isInboxProposal(capabilityId) || isScheduleProposal(capabilityId))) {
+            decision.allowed = false;
+            decision.action = QStringLiteral("suppress_proposal");
+            decision.reasonCode = QStringLiteral("proposal.evolution_transition_defocus");
+            decision.score = 0.91;
+            return decision;
+        }
+    }
+
+    if (!tuningSummary.isEmpty()
+        && input.proposal.priority.trimmed().compare(QStringLiteral("medium"), Qt::CaseInsensitive) == 0) {
+        const double suppressionThreshold = metadataDouble(input.sourceMetadata,
+                                                           QStringLiteral("tuningSuppressionScoreThreshold"),
+                                                           0.72);
+        if (tuningSummary.contains(QStringLiteral("policy volatility: elevated"))
+            && tuningSummary.contains(QStringLiteral("policy stability bias: research_analysis"))
+            && input.proposalScore <= suppressionThreshold
+            && (isInboxProposal(capabilityId) || isScheduleProposal(capabilityId))) {
+            decision.allowed = false;
+            decision.action = QStringLiteral("suppress_proposal");
+            decision.reasonCode = QStringLiteral("proposal.tuning_volatility_research_defocus");
+            decision.score = 0.92;
+            return decision;
+        }
+        if (tuningSummary.contains(QStringLiteral("policy volatility: elevated"))
+            && tuningSummary.contains(QStringLiteral("policy stability bias: inbox_triage"))
+            && input.proposalScore <= suppressionThreshold
+            && (isDocumentProposal(capabilityId) || isScheduleProposal(capabilityId))) {
+            decision.allowed = false;
+            decision.action = QStringLiteral("suppress_proposal");
+            decision.reasonCode = QStringLiteral("proposal.tuning_volatility_inbox_defocus");
+            decision.score = 0.92;
             return decision;
         }
     }

@@ -12,6 +12,7 @@ public:
     struct Input
     {
         ActionProposal proposal;
+        double proposalScore = 0.0;
         QVariantMap sourceMetadata;
         QVariantMap desktopContext;
         qint64 desktopContextAtMs = 0;

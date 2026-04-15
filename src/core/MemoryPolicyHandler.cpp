@@ -7,6 +7,7 @@
 #include "cognition/CompiledContextLayeredMemoryBuilder.h"
 #include "cognition/CompiledContextPolicyEvolutionBuilder.h"
 #include "cognition/CompiledContextPolicySummaryBuilder.h"
+#include "cognition/CompiledContextPolicyTuningSignalBuilder.h"
 #include "cognition/ConnectorContextCompiler.h"
 #include "memory/MemoryStore.h"
 #include "settings/IdentityProfileService.h"
@@ -137,6 +138,7 @@ QList<MemoryRecord> MemoryPolicyHandler::requestMemory(const QString &query, con
         appendUnique(compiledContextPolicySummaryRecords());
         appendUnique(compiledContextLayeredMemoryRecords());
         appendUnique(compiledContextPolicyEvolutionRecords());
+        appendUnique(compiledContextPolicyTuningSignalRecords());
         appendUnique(m_memoryStore->compiledContextPolicyMemory(query));
         appendUnique(ConnectorContextCompiler::compileSummaries(query, m_memoryStore->connectorStateMap()));
         appendUnique(m_memoryStore->connectorMemory(query));
@@ -167,6 +169,15 @@ CompiledContextHistoryPolicyDecision MemoryPolicyHandler::compiledContextPolicyD
     return CompiledContextHistoryPolicy::fromState(compiledContextPolicyState());
 }
 
+QVariantMap MemoryPolicyHandler::compiledContextPolicyTuningMetadata() const
+{
+    if (m_memoryStore == nullptr) {
+        return {};
+    }
+    return CompiledContextPolicyTuningSignalBuilder::buildPlannerMetadata(
+        m_memoryStore->compiledContextPolicyHistory());
+}
+
 QList<MemoryRecord> MemoryPolicyHandler::compiledContextPolicySummaryRecords() const
 {
     if (m_memoryStore == nullptr) {
@@ -193,6 +204,15 @@ QList<MemoryRecord> MemoryPolicyHandler::compiledContextPolicyEvolutionRecords()
         return {};
     }
     return CompiledContextPolicyEvolutionBuilder::build(
+        m_memoryStore->compiledContextPolicyHistory());
+}
+
+QList<MemoryRecord> MemoryPolicyHandler::compiledContextPolicyTuningSignalRecords() const
+{
+    if (m_memoryStore == nullptr) {
+        return {};
+    }
+    return CompiledContextPolicyTuningSignalBuilder::build(
         m_memoryStore->compiledContextPolicyHistory());
 }
 

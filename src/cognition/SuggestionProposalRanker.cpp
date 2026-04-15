@@ -355,6 +355,26 @@ QList<RankedSuggestionProposal> SuggestionProposalRanker::rank(const Input &inpu
             rankedProposal.reasonCode = compiledLayeredReasonCode;
         }
 
+        QString compiledEvolutionReasonCode;
+        const double compiledEvolutionScore =
+            SuggestionProposalPolicyScoring::compiledEvolutionAdjustment(input,
+                                                                         proposal,
+                                                                         &compiledEvolutionReasonCode);
+        if (compiledEvolutionScore != 0.0) {
+            rankedProposal.score += compiledEvolutionScore;
+            rankedProposal.reasonCode = compiledEvolutionReasonCode;
+        }
+
+        QString compiledTuningReasonCode;
+        const double compiledTuningScore =
+            SuggestionProposalPolicyScoring::compiledTuningAdjustment(input,
+                                                                      proposal,
+                                                                      &compiledTuningReasonCode);
+        if (compiledTuningScore != 0.0) {
+            rankedProposal.score += compiledTuningScore;
+            rankedProposal.reasonCode = compiledTuningReasonCode;
+        }
+
         if (input.cooldownState.isActive(input.nowMs) && !meaningfulThreadShift) {
             if (proposal.priority.compare(QStringLiteral("high"), Qt::CaseInsensitive) == 0
                 || proposal.priority.compare(QStringLiteral("critical"), Qt::CaseInsensitive) == 0) {

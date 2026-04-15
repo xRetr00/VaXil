@@ -3337,6 +3337,17 @@ ProactiveSuggestionPlan AssistantController::planNextStepSuggestion(const QStrin
             plannerMetadata.insert(QStringLiteral("compiledContextEvolutionKeys"), evolutionKeys);
             plannerMetadata.insert(QStringLiteral("compiledContextEvolutionSummary"), evolutionSummary);
         }
+        const QList<MemoryRecord> tuningRecords = m_memoryPolicyHandler->compiledContextPolicyTuningSignalRecords();
+        const QStringList tuningKeys = CompiledContextLayeredSignalBuilder::buildPlannerKeys(tuningRecords);
+        const QString tuningSummary = CompiledContextLayeredSignalBuilder::buildPlannerSummary(tuningRecords);
+        if (!tuningKeys.isEmpty()) {
+            plannerMetadata.insert(QStringLiteral("compiledContextTuningKeys"), tuningKeys);
+            plannerMetadata.insert(QStringLiteral("compiledContextTuningSummary"), tuningSummary);
+        }
+        const QVariantMap tuningMetadata = m_memoryPolicyHandler->compiledContextPolicyTuningMetadata();
+        for (auto it = tuningMetadata.constBegin(); it != tuningMetadata.constEnd(); ++it) {
+            plannerMetadata.insert(it.key(), it.value());
+        }
     }
     QVariantMap historyMetadata = m_memoryPolicyHandler
         ? m_memoryPolicyHandler->compiledContextPolicyState()
