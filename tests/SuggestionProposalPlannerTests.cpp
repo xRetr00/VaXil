@@ -13,6 +13,10 @@ private slots:
     void ranksDocumentFollowUpHigherInFocusedEditorContext();
     void appliesFocusPenaltyToMediumProposal();
     void appliesCooldownPenaltyToMediumProposal();
+    void boostsInboxConnectorProposalForDirectInboxSource();
+    void boostsUpcomingScheduleConnectorProposal();
+    void penalizesRecentlyPresentedDuplicateProposal();
+    void penalizesConnectorBurstHistory();
     void buildsClipboardProposal();
     void buildsNotificationProposal();
     void buildsScheduleProposal();
@@ -119,6 +123,143 @@ void SuggestionProposalPlannerTests::appliesCooldownPenaltyToMediumProposal()
     QVERIFY(!ranked.isEmpty());
     QCOMPARE(ranked.first().reasonCode, QStringLiteral("proposal_rank.cooldown_penalty"));
     QVERIFY(ranked.first().score < 0.68);
+}
+
+void SuggestionProposalPlannerTests::boostsInboxConnectorProposalForDirectInboxSource()
+{
+    const QList<RankedSuggestionProposal> ranked = SuggestionProposalRanker::rank({
+        .proposals = SuggestionProposalBuilder::build({
+            .sourceKind = QStringLiteral("connector_inbox_maildrop"),
+            .taskType = QStringLiteral("email_fetch"),
+            .resultSummary = QStringLiteral("Inbox updated: PR review requested from GitHub"),
+            .sourceUrls = {},
+            .success = true
+        }),
+        .sourceKind = QStringLiteral("connector_inbox_maildrop"),
+        .taskType = QStringLiteral("email_fetch"),
+        .sourceMetadata = {
+            {QStringLiteral("connectorKind"), QStringLiteral("inbox")},
+            {QStringLiteral("occurredAtUtc"), QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs)},
+            {QStringLiteral("sender"), QStringLiteral("GitHub")}
+        },
+        .presentationKey = QStringLiteral("connector:inbox:message.eml"),
+        .lastPresentedKey = QString(),
+        .lastPresentedAtMs = 0,
+        .desktopContext = {},
+        .desktopContextAtMs = 0,
+        .cooldownState = CooldownState{},
+        .focusMode = FocusModeState{},
+        .nowMs = QDateTime::currentMSecsSinceEpoch()
+    });
+
+    QVERIFY(!ranked.isEmpty());
+    QCOMPARE(ranked.first().proposal.capabilityId, QStringLiteral("inbox_follow_up"));
+    QVERIFY(ranked.first().score > 0.80);
+}
+
+void SuggestionProposalPlannerTests::boostsUpcomingScheduleConnectorProposal()
+{
+    const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
+    const QDateTime startUtc = QDateTime::fromMSecsSinceEpoch(nowMs + (60 * 60 * 1000), Qt::UTC);
+
+    const QList<RankedSuggestionProposal> ranked = SuggestionProposalRanker::rank({
+        .proposals = SuggestionProposalBuilder::build({
+            .sourceKind = QStringLiteral("connector_schedule_calendar"),
+            .taskType = QStringLiteral("calendar_review"),
+            .resultSummary = QStringLiteral("Schedule updated: Sprint planning"),
+            .sourceUrls = {},
+            .success = true
+        }),
+        .sourceKind = QStringLiteral("connector_schedule_calendar"),
+        .taskType = QStringLiteral("calendar_review"),
+        .sourceMetadata = {
+            {QStringLiteral("connectorKind"), QStringLiteral("schedule")},
+            {QStringLiteral("eventUpcoming"), true},
+            {QStringLiteral("eventStartUtc"), startUtc.toString(Qt::ISODateWithMs)},
+            {QStringLiteral("occurredAtUtc"), QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs)}
+        },
+        .presentationKey = QStringLiteral("connector:schedule:today.ics"),
+        .lastPresentedKey = QString(),
+        .lastPresentedAtMs = 0,
+        .desktopContext = {},
+        .desktopContextAtMs = 0,
+        .cooldownState = CooldownState{},
+        .focusMode = FocusModeState{},
+        .nowMs = nowMs
+    });
+
+    QVERIFY(!ranked.isEmpty());
+    QCOMPARE(ranked.first().proposal.capabilityId, QStringLiteral("schedule_follow_up"));
+    QVERIFY(ranked.first().score > 0.84);
+}
+
+void SuggestionProposalPlannerTests::penalizesRecentlyPresentedDuplicateProposal()
+{
+    const QList<RankedSuggestionProposal> ranked = SuggestionProposalRanker::rank({
+        .proposals = {
+            ActionProposal{
+                .proposalId = QStringLiteral("p1"),
+                .capabilityId = QStringLiteral("inbox_follow_up"),
+                .title = QStringLiteral("Triage messages"),
+                .summary = QStringLiteral("I can summarize the important messages."),
+                .priority = QStringLiteral("medium")
+            }
+        },
+        .sourceKind = QStringLiteral("connector_inbox_maildrop"),
+        .taskType = QStringLiteral("email_fetch"),
+        .sourceMetadata = {
+            {QStringLiteral("connectorKind"), QStringLiteral("inbox")},
+            {QStringLiteral("occurredAtUtc"), QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs)}
+        },
+        .presentationKey = QStringLiteral("connector:inbox:message.eml"),
+        .lastPresentedKey = QStringLiteral("connector:inbox:message.eml"),
+        .lastPresentedAtMs = QDateTime::currentMSecsSinceEpoch() - 30000,
+        .desktopContext = {},
+        .desktopContextAtMs = 0,
+        .cooldownState = CooldownState{},
+        .focusMode = FocusModeState{},
+        .nowMs = QDateTime::currentMSecsSinceEpoch()
+    });
+
+    QVERIFY(!ranked.isEmpty());
+    QCOMPARE(ranked.first().reasonCode, QStringLiteral("proposal_rank.recent_duplicate_penalty"));
+    QVERIFY(ranked.first().score < 0.68);
+}
+
+void SuggestionProposalPlannerTests::penalizesConnectorBurstHistory()
+{
+    const QList<RankedSuggestionProposal> ranked = SuggestionProposalRanker::rank({
+        .proposals = {
+            ActionProposal{
+                .proposalId = QStringLiteral("p1"),
+                .capabilityId = QStringLiteral("inbox_follow_up"),
+                .title = QStringLiteral("Triage messages"),
+                .summary = QStringLiteral("I can summarize the important messages."),
+                .priority = QStringLiteral("medium")
+            }
+        },
+        .sourceKind = QStringLiteral("connector_inbox_maildrop"),
+        .taskType = QStringLiteral("email_fetch"),
+        .sourceMetadata = {
+            {QStringLiteral("connectorKind"), QStringLiteral("inbox")},
+            {QStringLiteral("historySeenCount"), 4},
+            {QStringLiteral("connectorKindRecentSeenCount"), 5},
+            {QStringLiteral("connectorKindRecentPresentedCount"), 2},
+            {QStringLiteral("occurredAtUtc"), QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs)}
+        },
+        .presentationKey = QStringLiteral("connector:inbox:message-4.eml"),
+        .lastPresentedKey = QString(),
+        .lastPresentedAtMs = 0,
+        .desktopContext = {},
+        .desktopContextAtMs = 0,
+        .cooldownState = CooldownState{},
+        .focusMode = FocusModeState{},
+        .nowMs = QDateTime::currentMSecsSinceEpoch()
+    });
+
+    QVERIFY(!ranked.isEmpty());
+    QCOMPARE(ranked.first().reasonCode, QStringLiteral("proposal_rank.connector_burst_penalty"));
+    QVERIFY(ranked.first().score < 0.84);
 }
 
 void SuggestionProposalPlannerTests::buildsClipboardProposal()

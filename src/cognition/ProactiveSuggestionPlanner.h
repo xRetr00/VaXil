@@ -38,6 +38,10 @@ public:
         QString taskType;
         QString resultSummary;
         QStringList sourceUrls;
+        QVariantMap sourceMetadata;
+        QString presentationKey;
+        QString lastPresentedKey;
+        qint64 lastPresentedAtMs = 0;
         bool success = true;
         QVariantMap desktopContext;
         qint64 desktopContextAtMs = 0;

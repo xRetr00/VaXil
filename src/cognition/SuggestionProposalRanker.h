@@ -28,6 +28,12 @@ public:
     struct Input
     {
         QList<ActionProposal> proposals;
+        QString sourceKind;
+        QString taskType;
+        QVariantMap sourceMetadata;
+        QString presentationKey;
+        QString lastPresentedKey;
+        qint64 lastPresentedAtMs = 0;
         QVariantMap desktopContext;
         qint64 desktopContextAtMs = 0;
         CooldownState cooldownState;
