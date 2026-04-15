@@ -101,6 +101,19 @@ BehaviorTraceEvent SelectionTelemetryBuilder::memoryContextEvent(const QString &
     payload.insert(QStringLiteral("activeCommitmentKeys"), recordKeys(memoryContext.activeCommitments));
     payload.insert(QStringLiteral("episodicKeys"), recordKeys(memoryContext.episodic));
 
+    int connectorMemoryCount = 0;
+    int connectorSummaryCount = 0;
+    for (const MemoryRecord &record : memoryContext.activeCommitments) {
+        if (record.source.compare(QStringLiteral("connector_memory"), Qt::CaseInsensitive) == 0) {
+            connectorMemoryCount += 1;
+        }
+        if (record.source.compare(QStringLiteral("connector_summary"), Qt::CaseInsensitive) == 0) {
+            connectorSummaryCount += 1;
+        }
+    }
+    payload.insert(QStringLiteral("connectorMemoryCount"), connectorMemoryCount);
+    payload.insert(QStringLiteral("connectorSummaryCount"), connectorSummaryCount);
+
     BehaviorTraceEvent event = BehaviorTraceEvent::create(
         QStringLiteral("selection_context"),
         QStringLiteral("memory_context"),

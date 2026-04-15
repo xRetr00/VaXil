@@ -2,6 +2,8 @@
 
 #include <QDir>
 #include <QFile>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QRegularExpression>
 #include <QStandardPaths>
 
@@ -75,11 +77,66 @@ QString inferMemoryKey(const QString &content, MemoryType type)
     }
     return QStringLiteral("general_fact");
 }
+
+QString normalizedQuery(QString value)
+{
+    value = value.trimmed().toLower();
+    value.replace(QRegularExpression(QStringLiteral("[^a-z0-9]+")), QStringLiteral(" "));
+    return value.simplified();
 }
 
-MemoryStore::MemoryStore(QObject *parent)
+QString connectorSummary(const QString &connectorKind, const QVariantMap &state)
+{
+    const int seenCount = state.value(QStringLiteral("seenCount")).toInt();
+    const int presentedCount = state.value(QStringLiteral("presentedCount")).toInt();
+    const QString sourceKind = state.value(QStringLiteral("sourceKind")).toString().trimmed();
+
+    if (connectorKind == QStringLiteral("schedule")) {
+        return QStringLiteral("Schedule signals seen %1 times and presented %2 times recently.").arg(seenCount).arg(presentedCount);
+    }
+    if (connectorKind == QStringLiteral("inbox")) {
+        return QStringLiteral("Inbox signals seen %1 times and presented %2 times recently.").arg(seenCount).arg(presentedCount);
+    }
+    if (connectorKind == QStringLiteral("notes")) {
+        return QStringLiteral("Notes activity seen %1 times and presented %2 times recently.").arg(seenCount).arg(presentedCount);
+    }
+    if (connectorKind == QStringLiteral("research")) {
+        return QStringLiteral("Research signals seen %1 times and presented %2 times recently.").arg(seenCount).arg(presentedCount);
+    }
+    return QStringLiteral("%1 signals seen %2 times and presented %3 times recently.")
+        .arg(sourceKind.isEmpty() ? QStringLiteral("Connector") : sourceKind, QString::number(seenCount), QString::number(presentedCount));
+}
+
+int connectorMemoryScore(const QString &query, const QString &connectorKind, const QVariantMap &state)
+{
+    int score = 0;
+    const QString haystack = QStringList{
+        connectorKind,
+        state.value(QStringLiteral("sourceKind")).toString(),
+        state.value(QStringLiteral("historyKey")).toString()
+    }.join(QLatin1Char(' ')).toLower();
+
+    if (query.isEmpty()) {
+        score += 10;
+    } else if (haystack.contains(query)) {
+        score += 80;
+    }
+
+    score += std::min(state.value(QStringLiteral("seenCount")).toInt(), 20);
+    score += std::min(state.value(QStringLiteral("presentedCount")).toInt() * 2, 20);
+    if (state.value(QStringLiteral("historyRecentlySeen")).toBool()) {
+        score += 24;
+    }
+    if (state.value(QStringLiteral("historyRecentlyPresented")).toBool()) {
+        score += 18;
+    }
+    return score;
+}
+}
+
+MemoryStore::MemoryStore(const QString &storagePath, QObject *parent)
     : QObject(parent)
-    , m_memoryManager(std::make_unique<MemoryManager>())
+    , m_memoryManager(std::make_unique<MemoryManager>(storagePath))
 {
 }
 
@@ -201,6 +258,119 @@ QString MemoryStore::userName() const
     return m_memoryManager->userName();
 }
 
+QList<MemoryRecord> MemoryStore::connectorMemory(const QString &query, int maxCount) const
+{
+    struct RankedConnectorMemory {
+        MemoryRecord record;
+        int score = 0;
+    };
+
+    const QString normalized = normalizedQuery(query);
+    QList<RankedConnectorMemory> ranked;
+    const QHash<QString, QVariantMap> stateByKey = connectorStateMap();
+    for (auto it = stateByKey.cbegin(); it != stateByKey.cend(); ++it) {
+        const QVariantMap &state = it.value();
+        const QString connectorKind = state.value(QStringLiteral("connectorKind")).toString().trimmed().toLower();
+        if (connectorKind.isEmpty()) {
+            continue;
+        }
+
+        RankedConnectorMemory entry;
+        entry.record.type = QStringLiteral("context");
+        entry.record.key = QStringLiteral("connector_history_%1").arg(connectorKind);
+        entry.record.value = connectorSummary(connectorKind, state);
+        entry.record.confidence = 0.86f;
+        entry.record.source = QStringLiteral("connector_memory");
+        entry.record.updatedAt = QString::number(state.value(QStringLiteral("lastSeenAtMs")).toLongLong());
+        entry.score = connectorMemoryScore(normalized, connectorKind, state);
+        if (entry.score <= 0) {
+            continue;
+        }
+        ranked.push_back(entry);
+    }
+
+    std::sort(ranked.begin(), ranked.end(), [](const RankedConnectorMemory &left, const RankedConnectorMemory &right) {
+        if (left.score != right.score) {
+            return left.score > right.score;
+        }
+        return left.record.updatedAt > right.record.updatedAt;
+    });
+
+    QList<MemoryRecord> records;
+    for (const RankedConnectorMemory &entry : ranked) {
+        records.push_back(entry.record);
+        if (records.size() >= maxCount) {
+            break;
+        }
+    }
+    return records;
+}
+
+bool MemoryStore::upsertConnectorState(const QString &historyKey, const QVariantMap &state)
+{
+    const QString trimmedKey = historyKey.trimmed();
+    if (trimmedKey.isEmpty()) {
+        return false;
+    }
+
+    const QJsonObject object = QJsonObject::fromVariantMap(state);
+    const QJsonDocument document(object);
+
+    MemoryEntry entry;
+    entry.type = MemoryType::Context;
+    entry.kind = QStringLiteral("context");
+    entry.key = connectorStateStorageKey(trimmedKey);
+    entry.title = trimmedKey;
+    entry.value = QString::fromUtf8(document.toJson(QJsonDocument::Compact));
+    entry.content = entry.value;
+    entry.id = slugify(QStringLiteral("connector-state-") + trimmedKey);
+    entry.confidence = 0.95f;
+    entry.source = QStringLiteral("connector_memory");
+    entry.tags = {
+        QStringLiteral("connector_state"),
+        state.value(QStringLiteral("connectorKind")).toString().trimmed().toLower(),
+        state.value(QStringLiteral("sourceKind")).toString().trimmed()
+    };
+    entry.createdAt = QDateTime::currentDateTimeUtc();
+    entry.updatedAt = entry.createdAt.toUTC().toString(Qt::ISODate);
+    return upsertEntry(entry);
+}
+
+bool MemoryStore::deleteConnectorState(const QString &historyKey)
+{
+    const QString trimmedKey = historyKey.trimmed();
+    if (trimmedKey.isEmpty()) {
+        return false;
+    }
+    return deleteEntry(connectorStateStorageKey(trimmedKey));
+}
+
+QHash<QString, QVariantMap> MemoryStore::connectorStateMap() const
+{
+    QHash<QString, QVariantMap> stateByKey;
+    for (const MemoryEntry &entry : allEntries()) {
+        if (entry.source != QStringLiteral("connector_memory")) {
+            continue;
+        }
+        if (!entry.key.startsWith(QStringLiteral("connector_state:"))) {
+            continue;
+        }
+
+        const QJsonDocument document = QJsonDocument::fromJson(entry.value.toUtf8());
+        if (!document.isObject()) {
+            continue;
+        }
+
+        const QString historyKey = entry.key.mid(QStringLiteral("connector_state:").size()).trimmed();
+        if (historyKey.isEmpty()) {
+            continue;
+        }
+
+        stateByKey.insert(historyKey, document.object().toVariantMap());
+    }
+    return stateByKey;
+}
+
 QString MemoryStore::transcriptPath() const
 {
     return appDataRoot() + QStringLiteral("/transcript.jsonl");
@@ -258,4 +428,9 @@ MemoryEntry MemoryStore::normalizeEntry(const MemoryEntry &entry) const
     }
 
     return normalized;
+}
+
+QString MemoryStore::connectorStateStorageKey(const QString &historyKey) const
+{
+    return QStringLiteral("connector_state:%1").arg(historyKey.trimmed());
 }

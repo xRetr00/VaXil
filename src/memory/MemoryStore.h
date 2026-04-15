@@ -3,18 +3,19 @@
 #include <QObject>
 #include <QString>
 #include <QStringList>
+#include <QHash>
+#include <QVariantMap>
 #include <memory>
 
 #include "core/AssistantTypes.h"
-
-class MemoryManager;
+#include "memory/MemoryManager.h"
 
 class MemoryStore : public QObject
 {
     Q_OBJECT
 
 public:
-    explicit MemoryStore(QObject *parent = nullptr);
+    explicit MemoryStore(const QString &storagePath = QString(), QObject *parent = nullptr);
 
     void appendConversation(const QString &role, const QString &content);
     void extractUserFacts(const QString &content);
@@ -25,10 +26,15 @@ public:
     bool deleteEntry(const QString &idOrTitle);
     QList<MemoryEntry> allEntries() const;
     QString userName() const;
+    QList<MemoryRecord> connectorMemory(const QString &query, int maxCount = 4) const;
+    bool upsertConnectorState(const QString &historyKey, const QVariantMap &state);
+    bool deleteConnectorState(const QString &historyKey);
+    QHash<QString, QVariantMap> connectorStateMap() const;
 
 private:
     QString transcriptPath() const;
     QList<MemoryRecord> loadMemory() const;
     MemoryEntry normalizeEntry(const MemoryEntry &entry) const;
+    QString connectorStateStorageKey(const QString &historyKey) const;
     std::unique_ptr<MemoryManager> m_memoryManager;
 };

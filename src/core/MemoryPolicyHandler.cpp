@@ -3,6 +3,7 @@
 #include <QDateTime>
 #include <QRegularExpression>
 
+#include "cognition/ConnectorContextCompiler.h"
 #include "memory/MemoryStore.h"
 #include "settings/IdentityProfileService.h"
 
@@ -113,8 +114,37 @@ void MemoryPolicyHandler::applyUserInput(const QString &input) const
 QList<MemoryRecord> MemoryPolicyHandler::requestMemory(const QString &query, const MemoryRecord &runtimeRecord) const
 {
     QList<MemoryRecord> memory = m_memoryStore ? m_memoryStore->relevantMemory(query) : QList<MemoryRecord>{};
+    auto appendUnique = [&memory](const QList<MemoryRecord> &records) {
+        for (const MemoryRecord &record : records) {
+            bool duplicate = false;
+            for (const MemoryRecord &existing : memory) {
+                if (existing.key == record.key && existing.source == record.source) {
+                    duplicate = true;
+                    break;
+                }
+            }
+            if (!duplicate) {
+                memory.push_back(record);
+            }
+        }
+    };
+
+    if (m_memoryStore) {
+        appendUnique(ConnectorContextCompiler::compileSummaries(query, m_memoryStore->connectorStateMap()));
+        appendUnique(m_memoryStore->connectorMemory(query));
+    }
+
     if (!runtimeRecord.key.trimmed().isEmpty()) {
-        memory.push_front(runtimeRecord);
+        bool duplicate = false;
+        for (const MemoryRecord &existing : memory) {
+            if (existing.key == runtimeRecord.key && existing.source == runtimeRecord.source) {
+                duplicate = true;
+                break;
+            }
+        }
+        if (!duplicate) {
+            memory.push_front(runtimeRecord);
+        }
     }
     return memory;
 }
