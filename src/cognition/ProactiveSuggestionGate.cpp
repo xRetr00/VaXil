@@ -1,5 +1,34 @@
 #include "cognition/ProactiveSuggestionGate.h"
 
+namespace {
+QString metadataString(const QVariantMap &metadata, const QString &key)
+{
+    return metadata.value(key).toString().trimmed().toLower();
+}
+
+bool isResearchProposal(const QString &capabilityId)
+{
+    return capabilityId == QStringLiteral("source_review")
+        || capabilityId == QStringLiteral("web_follow_up");
+}
+
+bool isDocumentProposal(const QString &capabilityId)
+{
+    return capabilityId == QStringLiteral("document_follow_up")
+        || capabilityId == QStringLiteral("browser_follow_up");
+}
+
+bool isInboxProposal(const QString &capabilityId)
+{
+    return capabilityId == QStringLiteral("inbox_follow_up");
+}
+
+bool isScheduleProposal(const QString &capabilityId)
+{
+    return capabilityId == QStringLiteral("schedule_follow_up");
+}
+}
+
 BehaviorDecision ProactiveSuggestionGate::evaluate(const Input &input)
 {
     BehaviorDecision decision;
@@ -27,6 +56,44 @@ BehaviorDecision ProactiveSuggestionGate::evaluate(const Input &input)
         decision.reasonCode = QStringLiteral("proposal.focus_mode_suppressed");
         decision.score = 0.97;
         return decision;
+    }
+
+    const QString capabilityId = input.proposal.capabilityId.trimmed();
+    const QString layeredSummary = metadataString(input.sourceMetadata,
+                                                  QStringLiteral("compiledContextLayeredSummary"));
+    if (!layeredSummary.isEmpty()) {
+        if (layeredSummary.contains(QStringLiteral("research analysis remains active"))
+            && (isInboxProposal(capabilityId) || isScheduleProposal(capabilityId))) {
+            decision.allowed = false;
+            decision.action = QStringLiteral("suppress_proposal");
+            decision.reasonCode = QStringLiteral("proposal.layered_policy_research_defocus");
+            decision.score = 0.89;
+            return decision;
+        }
+        if (layeredSummary.contains(QStringLiteral("inbox triage remains active"))
+            && (isDocumentProposal(capabilityId) || isScheduleProposal(capabilityId))) {
+            decision.allowed = false;
+            decision.action = QStringLiteral("suppress_proposal");
+            decision.reasonCode = QStringLiteral("proposal.layered_policy_inbox_defocus");
+            decision.score = 0.89;
+            return decision;
+        }
+        if (layeredSummary.contains(QStringLiteral("schedule coordination remains active"))
+            && (isDocumentProposal(capabilityId) || isResearchProposal(capabilityId))) {
+            decision.allowed = false;
+            decision.action = QStringLiteral("suppress_proposal");
+            decision.reasonCode = QStringLiteral("proposal.layered_policy_schedule_defocus");
+            decision.score = 0.89;
+            return decision;
+        }
+        if (layeredSummary.contains(QStringLiteral("document-focused work"))
+            && (isInboxProposal(capabilityId) || isScheduleProposal(capabilityId))) {
+            decision.allowed = false;
+            decision.action = QStringLiteral("suppress_proposal");
+            decision.reasonCode = QStringLiteral("proposal.layered_policy_document_defocus");
+            decision.score = 0.87;
+            return decision;
+        }
     }
 
     if (hasFreshDesktopContext(input)) {

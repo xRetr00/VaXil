@@ -208,6 +208,51 @@ double compiledLayeredAdjustment(const SuggestionProposalRanker::Input &input,
             *reasonCode = QStringLiteral("proposal_rank.layered_focus_research");
             return 0.08;
         }
+        if (capabilityId == QStringLiteral("inbox_follow_up")
+            || capabilityId == QStringLiteral("schedule_follow_up")) {
+            *reasonCode = QStringLiteral("proposal_rank.layered_focus_research_defocus");
+            return -0.07;
+        }
+    }
+
+    if (keys.contains(QStringLiteral("compiled_context_layered_focus"))
+        && summaryContainsAny(summary, {"inbox triage remains active", "message review", "reply preparation"})) {
+        if (capabilityId == QStringLiteral("inbox_follow_up")) {
+            *reasonCode = QStringLiteral("proposal_rank.layered_focus_inbox");
+            return 0.08;
+        }
+        if (capabilityId == QStringLiteral("document_follow_up")
+            || capabilityId == QStringLiteral("schedule_follow_up")) {
+            *reasonCode = QStringLiteral("proposal_rank.layered_focus_inbox_defocus");
+            return -0.07;
+        }
+    }
+
+    if (keys.contains(QStringLiteral("compiled_context_layered_focus"))
+        && summaryContainsAny(summary, {"schedule coordination remains active", "meeting-aware", "deadline"})) {
+        if (capabilityId == QStringLiteral("schedule_follow_up")) {
+            *reasonCode = QStringLiteral("proposal_rank.layered_focus_schedule");
+            return 0.08;
+        }
+        if (capabilityId == QStringLiteral("document_follow_up")
+            || capabilityId == QStringLiteral("source_review")) {
+            *reasonCode = QStringLiteral("proposal_rank.layered_focus_schedule_defocus");
+            return -0.07;
+        }
+    }
+
+    if (keys.contains(QStringLiteral("compiled_context_layered_focus"))
+        && summaryContainsAny(summary, {"document-focused work", "workspace", "file-grounded"})) {
+        if (capabilityId == QStringLiteral("document_follow_up")
+            || capabilityId == QStringLiteral("browser_follow_up")) {
+            *reasonCode = QStringLiteral("proposal_rank.layered_focus_document");
+            return 0.07;
+        }
+        if (capabilityId == QStringLiteral("inbox_follow_up")
+            || capabilityId == QStringLiteral("schedule_follow_up")) {
+            *reasonCode = QStringLiteral("proposal_rank.layered_focus_document_defocus");
+            return -0.06;
+        }
     }
 
     if (keys.contains(QStringLiteral("compiled_context_layered_continuity"))

@@ -9,6 +9,7 @@ class ProactiveSuggestionGateTests : public QObject
 private slots:
     void suppressesMediumProposalDuringFocusMode();
     void suppressesProposalDuringFocusedDesktopWork();
+    void suppressesProposalDuringLayeredPolicyDefocus();
     void allowsHighPriorityProposal();
 };
 
@@ -34,6 +35,20 @@ void ProactiveSuggestionGateTests::suppressesProposalDuringFocusedDesktopWork()
     const BehaviorDecision decision = ProactiveSuggestionGate::evaluate(input);
     QVERIFY(!decision.allowed);
     QCOMPARE(decision.reasonCode, QStringLiteral("proposal.focused_context_suppressed"));
+}
+
+void ProactiveSuggestionGateTests::suppressesProposalDuringLayeredPolicyDefocus()
+{
+    ProactiveSuggestionGate::Input input;
+    input.proposal.priority = QStringLiteral("medium");
+    input.proposal.capabilityId = QStringLiteral("inbox_follow_up");
+    input.sourceMetadata.insert(
+        QStringLiteral("compiledContextLayeredSummary"),
+        QStringLiteral("Prompt steering: Stable mode: research analysis remains active. Dominant continuity source research: seen 5 times, surfaced 2 times, sources connector_research_browser."));
+
+    const BehaviorDecision decision = ProactiveSuggestionGate::evaluate(input);
+    QVERIFY(!decision.allowed);
+    QCOMPARE(decision.reasonCode, QStringLiteral("proposal.layered_policy_research_defocus"));
 }
 
 void ProactiveSuggestionGateTests::allowsHighPriorityProposal()

@@ -11,6 +11,7 @@ private slots:
     void boostsProposalFromCompiledPolicyFocusSummary();
     void boostsProposalFromCompiledPolicySourceSummary();
     void boostsProposalFromCompiledLayeredSignals();
+    void penalizesProposalFromCompiledLayeredDefocus();
 };
 
 void SuggestionProposalHistoryPolicyTests::structuresProposalRankingFromCompiledHistoryMode()
@@ -165,6 +166,45 @@ void SuggestionProposalHistoryPolicyTests::boostsProposalFromCompiledLayeredSign
     QVERIFY(ranked.size() >= 2);
     QCOMPARE(ranked.first().proposal.capabilityId, QStringLiteral("source_review"));
     QCOMPARE(ranked.first().reasonCode, QStringLiteral("proposal_rank.layered_focus_research"));
+    QVERIFY(ranked.first().score > ranked.last().score);
+}
+
+void SuggestionProposalHistoryPolicyTests::penalizesProposalFromCompiledLayeredDefocus()
+{
+    const QList<RankedSuggestionProposal> ranked = SuggestionProposalRanker::rank({
+        .proposals = {
+            ActionProposal{
+                .proposalId = QStringLiteral("p1"),
+                .capabilityId = QStringLiteral("inbox_follow_up"),
+                .title = QStringLiteral("Review inbox"),
+                .summary = QStringLiteral("I can triage the inbox."),
+                .priority = QStringLiteral("medium")
+            },
+            ActionProposal{
+                .proposalId = QStringLiteral("p2"),
+                .capabilityId = QStringLiteral("source_review"),
+                .title = QStringLiteral("Review sources"),
+                .summary = QStringLiteral("I can synthesize the recent sources."),
+                .priority = QStringLiteral("medium")
+            }
+        },
+        .sourceMetadata = {
+            {QStringLiteral("compiledContextLayeredKeys"),
+             QStringList{
+                 QStringLiteral("compiled_context_layered_focus"),
+                 QStringLiteral("compiled_context_layered_continuity")
+             }},
+            {QStringLiteral("compiledContextLayeredSummary"),
+             QStringLiteral("Prompt steering: Stable mode: research analysis remains active. Dominant continuity source research: seen 5 times, surfaced 2 times, sources connector_research_browser.")}
+        },
+        .cooldownState = CooldownState{},
+        .focusMode = FocusModeState{},
+        .nowMs = 1500
+    });
+
+    QVERIFY(ranked.size() >= 2);
+    QCOMPARE(ranked.last().proposal.capabilityId, QStringLiteral("inbox_follow_up"));
+    QCOMPARE(ranked.last().reasonCode, QStringLiteral("proposal_rank.layered_focus_research_defocus"));
     QVERIFY(ranked.first().score > ranked.last().score);
 }
 

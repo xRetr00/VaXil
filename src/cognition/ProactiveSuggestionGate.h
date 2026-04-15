@@ -12,6 +12,7 @@ public:
     struct Input
     {
         ActionProposal proposal;
+        QVariantMap sourceMetadata;
         QVariantMap desktopContext;
         qint64 desktopContextAtMs = 0;
         FocusModeState focusMode;
