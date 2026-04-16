@@ -4,6 +4,7 @@
 
 class AppSettings;
 class AiBackendClient;
+class LoggingService;
 class PromptAdapter;
 class ReasoningRouter;
 
@@ -73,7 +74,9 @@ struct AgentStartRequestResult {
 class AiRequestCoordinator
 {
 public:
-    AiRequestCoordinator(AppSettings *settings, ReasoningRouter *reasoningRouter);
+    AiRequestCoordinator(AppSettings *settings,
+                         ReasoningRouter *reasoningRouter,
+                         LoggingService *loggingService);
 
     QString resolveModelId(const QStringList &availableModelIds) const;
     ReasoningMode chooseReasoningMode(const QString &input) const;
@@ -99,4 +102,5 @@ public:
 private:
     AppSettings *m_settings = nullptr;
     ReasoningRouter *m_reasoningRouter = nullptr;
+    LoggingService *m_loggingService = nullptr;
 };

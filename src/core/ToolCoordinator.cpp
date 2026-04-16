@@ -253,10 +253,27 @@ QList<AgentToolResult> ToolCoordinator::executeAgentToolCalls(
     }
 
     for (const AgentToolCall &toolCall : toolCalls) {
+        if (m_loggingService) {
+            m_loggingService->infoFor(
+                QStringLiteral("tool_audit"),
+                QStringLiteral("[tool_call] id=%1 name=%2 args=%3")
+                    .arg(toolCall.id, toolCall.name, toolCall.argumentsJson.left(8000)));
+        }
         if (traceCallback) {
             traceCallback(QStringLiteral("tool_call"), toolCall.name, toolCall.argumentsJson.left(500), true);
         }
         const AgentToolResult result = agentToolbox->execute(toolCall);
+        if (m_loggingService) {
+            m_loggingService->infoFor(
+                QStringLiteral("tool_audit"),
+                QStringLiteral("[tool_result] id=%1 name=%2 success=%3 errorKind=%4 summary=%5 output=%6")
+                    .arg(result.callId,
+                         result.toolName,
+                         result.success ? QStringLiteral("true") : QStringLiteral("false"),
+                         QString::number(static_cast<int>(result.errorKind)),
+                         result.summary.simplified(),
+                         result.output.left(8000)));
+        }
         if (traceCallback) {
             const QString detail = m_executionNarrator
                 ? m_executionNarrator->summarizeToolResult(result)
@@ -276,6 +293,12 @@ QList<AgentToolCall> ToolCoordinator::filterAllowedToolCalls(
     QList<AgentToolCall> accepted;
     for (const AgentToolCall &call : toolCalls) {
         if (!allowedToolNames.isEmpty() && !allowedToolNames.contains(call.name)) {
+            if (m_loggingService) {
+                m_loggingService->warnFor(
+                    QStringLiteral("tool_audit"),
+                    QStringLiteral("[tool_call_rejected] name=%1 reason=not_allowed")
+                        .arg(call.name));
+            }
             if (traceCallback) {
                 traceCallback(QStringLiteral("validation"),
                               QStringLiteral("Rejected tool call"),
@@ -306,11 +329,23 @@ std::optional<WebSearchFollowUp> ToolCoordinator::buildWebSearchFollowUp(const B
         query = QStringLiteral("the latest search result");
     }
     if (content.trimmed().isEmpty()) {
+        if (m_loggingService) {
+            m_loggingService->warnFor(
+                QStringLiteral("tool_audit"),
+                QStringLiteral("[web_search_follow_up] skipped because payload content is empty query=%1")
+                    .arg(query.left(240)));
+        }
         return std::nullopt;
     }
 
     WebSearchFollowUp followUp;
     if (!reliable) {
+        if (m_loggingService) {
+            m_loggingService->warnFor(
+                QStringLiteral("follow_up_audit"),
+                QStringLiteral("[web_search_follow_up] downgraded_to_local_response query=%1 reason=%2")
+                    .arg(query.left(240), reliabilityReason.left(240)));
+        }
         followUp.deliverLocalResponse = true;
         followUp.localResponseText = m_executionNarrator
             ? m_executionNarrator->webSearchLowConfidence(result)
@@ -350,6 +385,19 @@ std::optional<WebSearchFollowUp> ToolCoordinator::buildWebSearchFollowUp(const B
               "Search provider: %2\n"
               "Fetched payload (JSON/text):\n%3")
               .arg(query, provider.isEmpty() ? QStringLiteral("unknown") : provider, clippedContent);
+    if (m_loggingService) {
+        m_loggingService->infoFor(
+            QStringLiteral("follow_up_audit"),
+            QStringLiteral("[web_search_follow_up] query=%1 provider=%2 wantsDetails=%3 synthesisInputChars=%4")
+                .arg(query.left(240),
+                     provider.isEmpty() ? QStringLiteral("unknown") : provider,
+                     wantsDetails ? QStringLiteral("true") : QStringLiteral("false"),
+                     QString::number(followUp.synthesisInput.size())));
+        m_loggingService->infoFor(
+            QStringLiteral("ai_prompt"),
+            QStringLiteral("[web_search_follow_up_prompt]\n%1")
+                .arg(followUp.synthesisInput.left(200000)));
+    }
     return followUp;
 }
 

@@ -99,6 +99,46 @@ QString stateToString(AssistantState state)
     return QStringLiteral("IDLE");
 }
 
+QString routeKindToString(InputRouteKind kind)
+{
+    switch (kind) {
+    case InputRouteKind::None:
+        return QStringLiteral("none");
+    case InputRouteKind::LocalResponse:
+        return QStringLiteral("local_response");
+    case InputRouteKind::DeterministicTasks:
+        return QStringLiteral("deterministic_tasks");
+    case InputRouteKind::BackgroundTasks:
+        return QStringLiteral("background_tasks");
+    case InputRouteKind::Conversation:
+        return QStringLiteral("conversation");
+    case InputRouteKind::AgentConversation:
+        return QStringLiteral("agent_conversation");
+    case InputRouteKind::CommandExtraction:
+        return QStringLiteral("command_extraction");
+    case InputRouteKind::AgentCapabilityError:
+        return QStringLiteral("agent_capability_error");
+    }
+    return QStringLiteral("none");
+}
+
+QString intentTypeToString(IntentType intent)
+{
+    switch (intent) {
+    case IntentType::LIST_FILES:
+        return QStringLiteral("list_files");
+    case IntentType::READ_FILE:
+        return QStringLiteral("read_file");
+    case IntentType::WRITE_FILE:
+        return QStringLiteral("write_file");
+    case IntentType::MEMORY_WRITE:
+        return QStringLiteral("memory_write");
+    case IntentType::GENERAL_CHAT:
+    default:
+        return QStringLiteral("general_chat");
+    }
+}
+
 QString compactSurfaceText(QString text, int maxLength = 72)
 {
     text = text.simplified();
@@ -1395,7 +1435,7 @@ AssistantController::AssistantController(
     m_memoryStore = new MemoryStore(QString(), this);
     m_assistantBehaviorPolicy = std::make_unique<AssistantBehaviorPolicy>();
     m_inputRouter = std::make_unique<InputRouter>(m_assistantBehaviorPolicy.get());
-    m_aiRequestCoordinator = std::make_unique<AiRequestCoordinator>(m_settings, m_reasoningRouter);
+    m_aiRequestCoordinator = std::make_unique<AiRequestCoordinator>(m_settings, m_reasoningRouter, m_loggingService);
     m_executionNarrator = std::make_unique<ExecutionNarrator>();
     m_memoryPolicyHandler = std::make_unique<MemoryPolicyHandler>(m_identityProfileService, m_memoryStore);
     m_toolCoordinator = std::make_unique<ToolCoordinator>(m_loggingService, m_executionNarrator.get());
@@ -2050,6 +2090,19 @@ bool AssistantController::executeRouteDecision(const InputRouteDecision &decisio
                                                bool confirmationGranted,
                                                qint64 nowMs)
 {
+    if (m_loggingService) {
+        m_loggingService->infoFor(
+            QStringLiteral("route_audit"),
+            QStringLiteral("[route_execute] kind=%1 intent=%2 speak=%3 useVisionContext=%4 tasks=%5 status=%6 input=%7")
+                .arg(routeKindToString(decision.kind),
+                     intentTypeToString(decision.intent),
+                     decision.speak ? QStringLiteral("true") : QStringLiteral("false"),
+                     decision.useVisionContext ? QStringLiteral("true") : QStringLiteral("false"),
+                     QString::number(decision.tasks.size()),
+                     decision.status.simplified(),
+                     userFacingPromptForLogging(routedInput).left(360)));
+    }
+
     const QList<AgentToolSpec> availableTools = m_agentToolbox ? m_agentToolbox->builtInTools() : QList<AgentToolSpec>{};
     const QString selectionInput = buildDesktopSelectionInput(
         routedInput,
@@ -2065,6 +2118,20 @@ bool AssistantController::executeRouteDecision(const InputRouteDecision &decisio
         trustDecision.requiresConfirmation = false;
         trustDecision.userMessage.clear();
     }
+
+    if (m_loggingService) {
+        m_loggingService->infoFor(
+            QStringLiteral("safety_audit"),
+            QStringLiteral("[trust_decision] kind=%1 highRisk=%2 requiresConfirmation=%3 reason=%4 userMessage=%5 sideEffecting=%6 requiresGrounding=%7")
+                .arg(routeKindToString(decision.kind),
+                     trustDecision.highRisk ? QStringLiteral("true") : QStringLiteral("false"),
+                     trustDecision.requiresConfirmation ? QStringLiteral("true") : QStringLiteral("false"),
+                     trustDecision.reason.simplified(),
+                     trustDecision.userMessage.simplified(),
+                     toolPlan.sideEffecting ? QStringLiteral("true") : QStringLiteral("false"),
+                     toolPlan.requiresGrounding ? QStringLiteral("true") : QStringLiteral("false")));
+    }
+
     m_activeActionSession = m_assistantBehaviorPolicy
         ? m_assistantBehaviorPolicy->createActionSession(routedInput, decision, toolPlan, trustDecision)
         : ActionSession{};
@@ -2073,6 +2140,14 @@ bool AssistantController::executeRouteDecision(const InputRouteDecision &decisio
         && m_assistantBehaviorPolicy
         && m_activeActionSession.trust.requiresConfirmation
         && requiresConfirmationFor(decision)) {
+        if (m_loggingService) {
+            m_loggingService->warnFor(
+                QStringLiteral("safety_audit"),
+                QStringLiteral("[confirmation_required] kind=%1 reason=%2 userMessage=%3")
+                    .arg(routeKindToString(decision.kind),
+                         m_activeActionSession.trust.reason.simplified(),
+                         m_activeActionSession.trust.userMessage.simplified()));
+        }
         storePendingConfirmation(decision, routedInput, localIntent);
         deliverLocalResponse(
             m_executionNarrator
@@ -2087,6 +2162,9 @@ bool AssistantController::executeRouteDecision(const InputRouteDecision &decisio
 
     switch (decision.kind) {
     case InputRouteKind::LocalResponse: {
+        if (m_loggingService) {
+            m_loggingService->infoFor(QStringLiteral("route_audit"), QStringLiteral("[route_outcome] resolved=local_response"));
+        }
         QString response = decision.message;
         const LocalResponseContext context = buildLocalResponseContext();
         if (decision.status == QStringLiteral("Conversation ended")) {
@@ -2116,6 +2194,9 @@ bool AssistantController::executeRouteDecision(const InputRouteDecision &decisio
         return true;
     }
     case InputRouteKind::AgentCapabilityError:
+        if (m_loggingService) {
+            m_loggingService->warnFor(QStringLiteral("route_audit"), QStringLiteral("[route_outcome] resolved=agent_capability_error"));
+        }
         deliverLocalResponse(
             m_localResponseEngine->respondToError(
                 QStringLiteral("ai_offline"),
@@ -2126,6 +2207,12 @@ bool AssistantController::executeRouteDecision(const InputRouteDecision &decisio
         return true;
     case InputRouteKind::BackgroundTasks:
     case InputRouteKind::DeterministicTasks: {
+        if (m_loggingService) {
+            m_loggingService->infoFor(
+                QStringLiteral("route_audit"),
+                QStringLiteral("[route_outcome] resolved=background_or_deterministic_tasks taskCount=%1")
+                    .arg(QString::number(decision.tasks.size())));
+        }
         if (decision.tasks.isEmpty()) {
             return false;
         }
@@ -2147,6 +2234,9 @@ bool AssistantController::executeRouteDecision(const InputRouteDecision &decisio
         return true;
     }
     case InputRouteKind::AgentConversation:
+        if (m_loggingService) {
+            m_loggingService->infoFor(QStringLiteral("route_audit"), QStringLiteral("[route_outcome] resolved=agent_conversation"));
+        }
         if (m_activeActionSession.shouldAnnounceProgress) {
             setStatus(m_executionNarrator
                 ? m_executionNarrator->statusForSession(m_activeActionSession, QStringLiteral("Working on request"))
@@ -2155,6 +2245,9 @@ bool AssistantController::executeRouteDecision(const InputRouteDecision &decisio
         startAgentConversationRequest(routedInput, decision.intent);
         return true;
     case InputRouteKind::CommandExtraction:
+        if (m_loggingService) {
+            m_loggingService->infoFor(QStringLiteral("route_audit"), QStringLiteral("[route_outcome] resolved=command_extraction"));
+        }
         if (m_activeActionSession.shouldAnnounceProgress) {
             setStatus(m_executionNarrator
                 ? m_executionNarrator->statusForSession(m_activeActionSession, QStringLiteral("Working on request"))
@@ -2163,6 +2256,9 @@ bool AssistantController::executeRouteDecision(const InputRouteDecision &decisio
         startCommandRequest(routedInput);
         return true;
     case InputRouteKind::Conversation:
+        if (m_loggingService) {
+            m_loggingService->infoFor(QStringLiteral("route_audit"), QStringLiteral("[route_outcome] resolved=conversation"));
+        }
         if (decision.useVisionContext && !isExplicitComputerControlQuery(routedInput) && m_loggingService) {
             m_loggingService->info(QStringLiteral("Routing vision-relevant query through conversation. input=\"%1\"")
                                        .arg(routedInput.left(240)));
@@ -2267,9 +2363,32 @@ void AssistantController::submitText(const QString &text)
         deterministicSpoken,
         nowMs);
     const InputRouteDecision decision = m_inputRouter->decide(routeContext);
+    if (m_loggingService) {
+        m_loggingService->infoFor(
+            QStringLiteral("route_audit"),
+            QStringLiteral("[route_decide] input=%1 wakeDetected=%2 wakeOnly=%3 aiAvailable=%4 localIntent=%5 decision=%6 intent=%7 status=%8 taskCount=%9")
+                .arg(userFacingPromptForLogging(effectiveInput).left(360),
+                     wakeDetected ? QStringLiteral("true") : QStringLiteral("false"),
+                     wakeOnly ? QStringLiteral("true") : QStringLiteral("false"),
+                     (availability.online && availability.modelAvailable) ? QStringLiteral("true") : QStringLiteral("false"),
+                     QString::number(static_cast<int>(intent)),
+                     routeKindToString(decision.kind),
+                     intentTypeToString(decision.intent),
+                     decision.status.simplified(),
+                     QString::number(decision.tasks.size())));
+    }
     if (shouldContinueActionThread(effectiveInput, decision, nowMs)) {
         m_lastPromptForAiLog = effectiveInput;
         const QString continuationInput = buildActionThreadContinuationInput(effectiveInput);
+        if (m_loggingService) {
+            m_loggingService->infoFor(
+                QStringLiteral("follow_up_audit"),
+                QStringLiteral("[action_thread_continue] input=%1 routedTo=%2")
+                    .arg(userFacingPromptForLogging(effectiveInput).left(320),
+                         (m_settings->agentEnabled() && availability.online && availability.modelAvailable)
+                             ? QStringLiteral("agent_conversation")
+                             : QStringLiteral("conversation")));
+        }
         if (m_settings->agentEnabled() && availability.online && availability.modelAvailable) {
             startAgentConversationRequest(continuationInput, IntentType::GENERAL_CHAT);
         } else {
@@ -2292,6 +2411,12 @@ void AssistantController::submitText(const QString &text)
         }
     }
     if (!executeRouteDecision(decision, routedInput, intent, false, nowMs)) {
+        if (m_loggingService) {
+            m_loggingService->warnFor(
+                QStringLiteral("route_audit"),
+                QStringLiteral("[route_fallback] decision unresolved, defaulting to conversation input=%1")
+                    .arg(userFacingPromptForLogging(routedInput).left(320)));
+        }
         startConversationRequest(routedInput);
     }
 }
@@ -5343,6 +5468,15 @@ void AssistantController::recordTaskResult(const QJsonObject &resultObject)
             followUpInput,
             true);
         if (m_loggingService) {
+            m_loggingService->infoFor(
+                QStringLiteral("follow_up_audit"),
+                QStringLiteral("[completion_follow_up_gate] allowed=%1 reason=%2 taskId=%3 taskType=%4")
+                    .arg(completionDecision.allowed ? QStringLiteral("true") : QStringLiteral("false"),
+                         completionDecision.reasonCode,
+                         QString::number(handling.completedResult->taskId),
+                         handling.completedResult->type));
+        }
+        if (m_loggingService) {
             QVariantMap payload = completionDecision.toVariantMap();
             payload.insert(QStringLiteral("taskId"), handling.completedResult->taskId);
             payload.insert(QStringLiteral("taskType"), handling.completedResult->type);
@@ -5359,6 +5493,12 @@ void AssistantController::recordTaskResult(const QJsonObject &resultObject)
             m_loggingService->logBehaviorEvent(event);
         }
         if (completionDecision.allowed) {
+            if (m_loggingService) {
+                m_loggingService->infoFor(
+                    QStringLiteral("follow_up_audit"),
+                    QStringLiteral("[completion_follow_up_action] starting completion request for thread=%1")
+                        .arg(m_recentActionThread->id));
+            }
             startActionThreadCompletionRequest(*m_recentActionThread);
             return;
         }
@@ -5386,6 +5526,16 @@ void AssistantController::recordTaskResult(const QJsonObject &resultObject)
             followUpInput,
             false);
         if (m_loggingService) {
+            m_loggingService->infoFor(
+                QStringLiteral("follow_up_audit"),
+                QStringLiteral("[spoken_follow_up_gate] allowed=%1 reason=%2 taskId=%3 taskType=%4 connectorEventLive=%5")
+                    .arg(followUpDecision.allowed ? QStringLiteral("true") : QStringLiteral("false"),
+                         followUpDecision.reasonCode,
+                         QString::number(handling.completedResult->taskId),
+                         handling.completedResult->type,
+                         handling.completedResult->connectorEventLive ? QStringLiteral("true") : QStringLiteral("false")));
+        }
+        if (m_loggingService) {
             QVariantMap payload = followUpDecision.toVariantMap();
             payload.insert(QStringLiteral("taskId"), handling.completedResult->taskId);
             payload.insert(QStringLiteral("taskType"), handling.completedResult->type);
@@ -5402,6 +5552,13 @@ void AssistantController::recordTaskResult(const QJsonObject &resultObject)
             m_loggingService->logBehaviorEvent(event);
         }
         if (!followUpDecision.allowed) {
+            if (m_loggingService) {
+                m_loggingService->warnFor(
+                    QStringLiteral("follow_up_audit"),
+                    QStringLiteral("[spoken_follow_up_suppressed] reason=%1 taskId=%2")
+                        .arg(followUpDecision.reasonCode,
+                             QString::number(handling.completedResult->taskId)));
+            }
             if (handling.completedResult->connectorEventLive) {
                 return;
             }
@@ -5424,6 +5581,12 @@ void AssistantController::recordTaskResult(const QJsonObject &resultObject)
             : (handling.completedResult->success
                 ? QStringLiteral("Task finished")
                 : QStringLiteral("Task failed"));
+        if (m_loggingService) {
+            m_loggingService->infoFor(
+                QStringLiteral("follow_up_audit"),
+                QStringLiteral("[spoken_follow_up_delivered] status=%1 taskId=%2")
+                    .arg(status, QString::number(handling.completedResult->taskId)));
+        }
         deliverLocalResponse(message, status, true);
         return;
     }
@@ -5679,6 +5842,12 @@ bool AssistantController::handlePendingConfirmationInput(const QString &input)
     }
 
     if (m_assistantBehaviorPolicy->isConfirmationReply(input, m_pendingActionSession)) {
+        if (m_loggingService) {
+            m_loggingService->infoFor(
+                QStringLiteral("safety_audit"),
+                QStringLiteral("[confirmation_reply] accepted input=%1")
+                    .arg(userFacingPromptForLogging(input).left(240)));
+        }
         const InputRouteDecision pendingDecision = m_pendingRouteDecision;
         const QString pendingInput = m_pendingRouteInput;
         const LocalIntent pendingLocalIntent = m_pendingLocalIntent;
@@ -5688,6 +5857,12 @@ bool AssistantController::handlePendingConfirmationInput(const QString &input)
     }
 
     if (m_assistantBehaviorPolicy->isRejectionReply(input)) {
+        if (m_loggingService) {
+            m_loggingService->infoFor(
+                QStringLiteral("safety_audit"),
+                QStringLiteral("[confirmation_reply] rejected input=%1")
+                    .arg(userFacingPromptForLogging(input).left(240)));
+        }
         const ActionSession pendingSession = m_pendingActionSession;
         clearPendingConfirmation();
         deliverLocalResponse(
@@ -5699,6 +5874,12 @@ bool AssistantController::handlePendingConfirmationInput(const QString &input)
         return true;
     }
 
+    if (m_loggingService) {
+        m_loggingService->warnFor(
+            QStringLiteral("safety_audit"),
+            QStringLiteral("[confirmation_reply] unrecognized input=%1; pending state cleared")
+                .arg(userFacingPromptForLogging(input).left(240)));
+    }
     clearPendingConfirmation();
     return false;
 }
@@ -5712,10 +5893,23 @@ void AssistantController::storePendingConfirmation(const InputRouteDecision &dec
     m_pendingRouteDecision = decision;
     m_pendingRouteInput = input;
     m_pendingLocalIntent = localIntent;
+    if (m_loggingService) {
+        m_loggingService->warnFor(
+            QStringLiteral("safety_audit"),
+            QStringLiteral("[pending_confirmation_stored] kind=%1 intent=%2 input=%3")
+                .arg(routeKindToString(decision.kind),
+                     intentTypeToString(decision.intent),
+                     userFacingPromptForLogging(input).left(300)));
+    }
 }
 
 void AssistantController::clearPendingConfirmation()
 {
+    if (m_loggingService && m_hasPendingConfirmation) {
+        m_loggingService->infoFor(
+            QStringLiteral("safety_audit"),
+            QStringLiteral("[pending_confirmation_cleared]"));
+    }
     m_hasPendingConfirmation = false;
     m_pendingActionSession = ActionSession{};
     m_pendingRouteDecision = InputRouteDecision{};
@@ -5765,6 +5959,14 @@ void AssistantController::logPromptResponsePair(const QString &response, const Q
     if (!ok) {
         m_loggingService->warn(QStringLiteral("Failed to write AI exchange log file."));
     }
+
+    m_loggingService->infoFor(
+        QStringLiteral("ai_prompt"),
+        QStringLiteral("[assistant_exchange] source=%1 status=%2\n--- user ---\n%3\n--- assistant ---\n%4")
+            .arg(source,
+                 status,
+                 userFacingPromptForLogging(prompt),
+                 response.left(12000)));
 
     m_lastPromptForAiLog.clear();
 }

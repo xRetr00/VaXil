@@ -69,6 +69,12 @@ private:
     std::shared_ptr<spdlog::logger> m_ttsLogger;
     std::shared_ptr<spdlog::logger> m_sttLogger;
     std::shared_ptr<spdlog::logger> m_orbLogger;
+    std::shared_ptr<spdlog::logger> m_promptAuditLogger;
+    std::shared_ptr<spdlog::logger> m_routeAuditLogger;
+    std::shared_ptr<spdlog::logger> m_safetyAuditLogger;
+    std::shared_ptr<spdlog::logger> m_memoryAuditLogger;
+    std::shared_ptr<spdlog::logger> m_toolAuditLogger;
+    std::shared_ptr<spdlog::logger> m_followUpAuditLogger;
     std::unique_ptr<BehavioralEventLedger> m_behavioralLedger;
     QString m_logFilePath;
     mutable QHash<QString, qint64> m_rateLimitedLogTimes;

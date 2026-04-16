@@ -23,6 +23,24 @@ QString normalizeChannel(QString channel)
     if (channel == QStringLiteral("tools") || channel == QStringLiteral("mcp")) {
         return QStringLiteral("tools_mcp");
     }
+    if (channel == QStringLiteral("prompt") || channel == QStringLiteral("prompt_audit")) {
+        return QStringLiteral("ai_prompt");
+    }
+    if (channel == QStringLiteral("route") || channel == QStringLiteral("routing")) {
+        return QStringLiteral("route_audit");
+    }
+    if (channel == QStringLiteral("safety") || channel == QStringLiteral("confirm")) {
+        return QStringLiteral("safety_audit");
+    }
+    if (channel == QStringLiteral("memory")) {
+        return QStringLiteral("memory_audit");
+    }
+    if (channel == QStringLiteral("tool_audit") || channel == QStringLiteral("tools_audit")) {
+        return QStringLiteral("tool_audit");
+    }
+    if (channel == QStringLiteral("followup") || channel == QStringLiteral("follow_up")) {
+        return QStringLiteral("follow_up_audit");
+    }
     return channel;
 }
 
@@ -123,6 +141,12 @@ bool LoggingService::initialize()
         m_ttsLogger = makeFileLogger(QStringLiteral("vaxil_tts"), QStringLiteral("tts.log"));
         m_sttLogger = makeFileLogger(QStringLiteral("vaxil_stt"), QStringLiteral("stt.log"));
         m_orbLogger = makeFileLogger(QStringLiteral("vaxil_orb"), QStringLiteral("orb_render.log"));
+        m_promptAuditLogger = makeFileLogger(QStringLiteral("vaxil_ai_prompt"), QStringLiteral("ai_prompt.log"));
+        m_routeAuditLogger = makeFileLogger(QStringLiteral("vaxil_route_audit"), QStringLiteral("route_audit.log"));
+        m_safetyAuditLogger = makeFileLogger(QStringLiteral("vaxil_safety_audit"), QStringLiteral("safety_audit.log"));
+        m_memoryAuditLogger = makeFileLogger(QStringLiteral("vaxil_memory_audit"), QStringLiteral("memory_audit.log"));
+        m_toolAuditLogger = makeFileLogger(QStringLiteral("vaxil_tool_audit"), QStringLiteral("tool_audit.log"));
+        m_followUpAuditLogger = makeFileLogger(QStringLiteral("vaxil_follow_up_audit"), QStringLiteral("follow_up_audit.log"));
         m_behavioralLedger = std::make_unique<BehavioralEventLedger>(root + QStringLiteral("/behavior"));
         if (m_behavioralLedger) {
             m_behavioralLedger->initialize();
@@ -204,6 +228,24 @@ std::shared_ptr<spdlog::logger> LoggingService::loggerForChannel(const QString &
     }
     if (normalized == QStringLiteral("orb_render")) {
         return m_orbLogger;
+    }
+    if (normalized == QStringLiteral("ai_prompt")) {
+        return m_promptAuditLogger;
+    }
+    if (normalized == QStringLiteral("route_audit")) {
+        return m_routeAuditLogger;
+    }
+    if (normalized == QStringLiteral("safety_audit")) {
+        return m_safetyAuditLogger;
+    }
+    if (normalized == QStringLiteral("memory_audit")) {
+        return m_memoryAuditLogger;
+    }
+    if (normalized == QStringLiteral("tool_audit")) {
+        return m_toolAuditLogger;
+    }
+    if (normalized == QStringLiteral("follow_up_audit")) {
+        return m_followUpAuditLogger;
     }
 
     return nullptr;

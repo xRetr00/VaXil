@@ -3,11 +3,121 @@
 #include "ai/AiBackendClient.h"
 #include "ai/PromptAdapter.h"
 #include "ai/ReasoningRouter.h"
+#include "logging/LoggingService.h"
 #include "settings/AppSettings.h"
 
-AiRequestCoordinator::AiRequestCoordinator(AppSettings *settings, ReasoningRouter *reasoningRouter)
+#include <QStringList>
+
+namespace {
+QString clipAuditText(QString text, int maxChars = 200000)
+{
+    if (text.size() > maxChars) {
+        text = text.left(maxChars) + QStringLiteral("\n...[truncated]");
+    }
+    return text;
+}
+
+QString reasoningModeName(ReasoningMode mode)
+{
+    switch (mode) {
+    case ReasoningMode::Fast:
+        return QStringLiteral("fast");
+    case ReasoningMode::Deep:
+        return QStringLiteral("deep");
+    case ReasoningMode::Balanced:
+    default:
+        return QStringLiteral("balanced");
+    }
+}
+
+QString transportModeName(AgentTransportMode mode)
+{
+    switch (mode) {
+    case AgentTransportMode::Responses:
+        return QStringLiteral("responses");
+    case AgentTransportMode::ChatAdapter:
+        return QStringLiteral("chat_adapter");
+    case AgentTransportMode::CapabilityError:
+    default:
+        return QStringLiteral("capability_error");
+    }
+}
+
+QString formatMemoryLane(const QString &name, const QList<MemoryRecord> &records)
+{
+    QStringList lines;
+    lines << QStringLiteral("[%1] count=%2").arg(name).arg(records.size());
+    for (const MemoryRecord &record : records) {
+        lines << QStringLiteral("- type=%1 key=%2 source=%3 updatedAt=%4 value=%5")
+                     .arg(record.type,
+                          record.key,
+                          record.source,
+                          record.updatedAt,
+                          record.value.simplified());
+    }
+    return lines.join(QStringLiteral("\n"));
+}
+
+QString formatMemoryContext(const MemoryContext &memory)
+{
+    QStringList sections;
+    sections << QStringLiteral("memory_context_summary profile=%1 active=%2 episodic=%3")
+                    .arg(memory.profile.size())
+                    .arg(memory.activeCommitments.size())
+                    .arg(memory.episodic.size());
+    sections << formatMemoryLane(QStringLiteral("profile"), memory.profile);
+    sections << formatMemoryLane(QStringLiteral("active_commitments"), memory.activeCommitments);
+    sections << formatMemoryLane(QStringLiteral("episodic"), memory.episodic);
+    return sections.join(QStringLiteral("\n\n"));
+}
+
+QString formatMessages(const QList<AiMessage> &messages)
+{
+    QStringList lines;
+    lines << QStringLiteral("messages=%1").arg(messages.size());
+    for (int i = 0; i < messages.size(); ++i) {
+        const AiMessage &message = messages.at(i);
+        lines << QStringLiteral("--- message[%1] role=%2 ---").arg(i).arg(message.role);
+        lines << message.content;
+    }
+    return lines.join(QStringLiteral("\n"));
+}
+
+QString formatToolSpecs(const QList<AgentToolSpec> &tools)
+{
+    QStringList lines;
+    lines << QStringLiteral("tools=%1").arg(tools.size());
+    for (const AgentToolSpec &tool : tools) {
+        lines << QStringLiteral("--- tool name=%1 ---").arg(tool.name);
+        lines << QStringLiteral("description=%1").arg(tool.description.simplified());
+        lines << QStringLiteral("parameters=%1").arg(QString::fromStdString(tool.parameters.dump()));
+    }
+    return lines.join(QStringLiteral("\n"));
+}
+
+QString formatToolResults(const QList<AgentToolResult> &results)
+{
+    QStringList lines;
+    lines << QStringLiteral("tool_results=%1").arg(results.size());
+    for (const AgentToolResult &result : results) {
+        lines << QStringLiteral("--- tool_result id=%1 name=%2 success=%3 errorKind=%4 ---")
+                     .arg(result.callId,
+                          result.toolName,
+                          result.success ? QStringLiteral("true") : QStringLiteral("false"),
+                          QString::number(static_cast<int>(result.errorKind)));
+        lines << QStringLiteral("detail=%1").arg(result.detail);
+        lines << QStringLiteral("output=%1").arg(result.output);
+    }
+    return lines.join(QStringLiteral("\n"));
+}
+}
+
+AiRequestCoordinator::AiRequestCoordinator(AppSettings *settings,
+                                           ReasoningRouter *reasoningRouter,
+                                           LoggingService *loggingService)
     : m_settings(settings)
     , m_reasoningRouter(reasoningRouter)
+    , m_loggingService(loggingService)
 {
 }
 
@@ -98,6 +208,22 @@ quint64 AiRequestCoordinator::startConversationRequest(AiBackendClient *backendC
         mode,
         context.visionContext);
 
+    if (m_loggingService) {
+        m_loggingService->infoFor(
+            QStringLiteral("ai_prompt"),
+            QStringLiteral("[conversation_request] model=%1 mode=%2 stream=%3 timeoutMs=%4 historyCount=%5 visionContextChars=%6 sessionGoal=%7 nextStepHint=%8")
+                .arg(context.modelId,
+                     reasoningModeName(mode),
+                     context.streaming ? QStringLiteral("true") : QStringLiteral("false"),
+                     QString::number(context.timeoutMs),
+                     QString::number(context.history.size()),
+                     QString::number(context.visionContext.size()),
+                     context.sessionGoal.simplified(),
+                     context.nextStepHint.simplified()));
+        m_loggingService->infoFor(QStringLiteral("memory_audit"), clipAuditText(formatMemoryContext(context.memory)));
+        m_loggingService->infoFor(QStringLiteral("ai_prompt"), clipAuditText(formatMessages(messages)));
+    }
+
     return backendClient->sendChatRequest(messages,
                                           context.modelId,
                                           {.mode = mode,
@@ -118,25 +244,46 @@ AgentStartRequestResult AiRequestCoordinator::startAgentRequest(AiBackendClient 
     AgentStartRequestResult result;
     result.transportMode = resolveAgentTransport(capabilities, context.modelId);
     if (backendClient == nullptr || promptAdapter == nullptr || result.transportMode == AgentTransportMode::CapabilityError) {
+        if (m_loggingService && result.transportMode == AgentTransportMode::CapabilityError) {
+            m_loggingService->warnFor(
+                QStringLiteral("route_audit"),
+                QStringLiteral("[agent_request] blocked by capability mode=%1 model=%2")
+                    .arg(transportModeName(result.transportMode), context.modelId));
+        }
         return result;
     }
 
+    if (m_loggingService) {
+        m_loggingService->infoFor(
+            QStringLiteral("route_audit"),
+            QStringLiteral("[agent_request] transport=%1 model=%2 intent=%3 memoryAutoWrite=%4 toolCount=%5 toolResultCount=%6")
+                .arg(transportModeName(result.transportMode),
+                     context.modelId,
+                     QString::number(static_cast<int>(context.intent)),
+                     context.memoryAutoWrite ? QStringLiteral("true") : QStringLiteral("false"),
+                     QString::number(context.tools.size()),
+                     QString::number(context.toolResults.size())));
+        m_loggingService->infoFor(QStringLiteral("memory_audit"), clipAuditText(formatMemoryContext(context.memory)));
+        m_loggingService->infoFor(QStringLiteral("tool_audit"), clipAuditText(formatToolSpecs(context.tools)));
+    }
+
     if (result.transportMode == AgentTransportMode::Responses) {
+        const QString instructions = promptAdapter->buildAgentInstructions(
+            context.memory,
+            context.skills,
+            context.tools,
+            context.identity,
+            context.userProfile,
+            context.workspaceRoot,
+            context.intent,
+            context.memoryAutoWrite,
+            context.responseMode,
+            context.sessionGoal,
+            context.nextStepHint,
+            context.visionContext);
         const AgentRequest request{
             .model = context.modelId,
-            .instructions = promptAdapter->buildAgentInstructions(
-                context.memory,
-                context.skills,
-                context.tools,
-                context.identity,
-                context.userProfile,
-                context.workspaceRoot,
-                context.intent,
-                context.memoryAutoWrite,
-                context.responseMode,
-                context.sessionGoal,
-                context.nextStepHint,
-                context.visionContext),
+            .instructions = instructions,
             .inputText = context.input,
             .previousResponseId = {},
             .tools = context.tools,
@@ -145,6 +292,17 @@ AgentStartRequestResult AiRequestCoordinator::startAgentRequest(AiBackendClient 
             .mode = context.mode,
             .timeout = std::chrono::milliseconds(context.timeoutMs)
         };
+        if (m_loggingService) {
+            m_loggingService->infoFor(
+                QStringLiteral("ai_prompt"),
+                QStringLiteral("[agent_request.responses] model=%1 mode=%2 timeoutMs=%3 workspaceRoot=%4")
+                    .arg(context.modelId,
+                         reasoningModeName(context.mode),
+                         QString::number(context.timeoutMs),
+                         context.workspaceRoot));
+            m_loggingService->infoFor(QStringLiteral("ai_prompt"), clipAuditText(QStringLiteral("--- instructions ---\n%1").arg(instructions)));
+            m_loggingService->infoFor(QStringLiteral("ai_prompt"), clipAuditText(QStringLiteral("--- input_text ---\n%1").arg(context.input)));
+        }
         result.requestId = backendClient->sendAgentRequest(request);
         return result;
     }
@@ -162,6 +320,16 @@ AgentStartRequestResult AiRequestCoordinator::startAgentRequest(AiBackendClient 
         context.nextStepHint,
         context.mode,
         context.visionContext);
+
+    if (m_loggingService) {
+        m_loggingService->infoFor(
+            QStringLiteral("ai_prompt"),
+            QStringLiteral("[agent_request.chat_adapter] model=%1 mode=%2 timeoutMs=%3")
+                .arg(context.modelId,
+                     reasoningModeName(context.mode),
+                     QString::number(context.timeoutMs)));
+        m_loggingService->infoFor(QStringLiteral("ai_prompt"), clipAuditText(formatMessages(messages)));
+    }
 
     result.requestId = backendClient->sendChatRequest(messages,
                                                       context.modelId,
@@ -186,21 +354,22 @@ quint64 AiRequestCoordinator::continueAgentRequest(AiBackendClient *backendClien
     }
 
     if (useResponses) {
+        const QString instructions = promptAdapter->buildAgentInstructions(
+            context.memory,
+            context.skills,
+            context.tools,
+            context.identity,
+            context.userProfile,
+            context.workspaceRoot,
+            context.intent,
+            context.memoryAutoWrite,
+            context.responseMode,
+            context.sessionGoal,
+            context.nextStepHint,
+            context.visionContext);
         const AgentRequest request{
             .model = context.modelId,
-            .instructions = promptAdapter->buildAgentInstructions(
-                context.memory,
-                context.skills,
-                context.tools,
-                context.identity,
-                context.userProfile,
-                context.workspaceRoot,
-                context.intent,
-                context.memoryAutoWrite,
-                context.responseMode,
-                context.sessionGoal,
-                context.nextStepHint,
-                context.visionContext),
+            .instructions = instructions,
             .inputText = {},
             .previousResponseId = context.previousResponseId,
             .tools = context.tools,
@@ -209,6 +378,15 @@ quint64 AiRequestCoordinator::continueAgentRequest(AiBackendClient *backendClien
             .mode = context.mode,
             .timeout = std::chrono::milliseconds(context.timeoutMs)
         };
+        if (m_loggingService) {
+            m_loggingService->infoFor(
+                QStringLiteral("route_audit"),
+                QStringLiteral("[agent_continue.responses] model=%1 previousResponseId=%2 toolResultCount=%3")
+                    .arg(context.modelId, context.previousResponseId, QString::number(context.toolResults.size())));
+            m_loggingService->infoFor(QStringLiteral("memory_audit"), clipAuditText(formatMemoryContext(context.memory)));
+            m_loggingService->infoFor(QStringLiteral("tool_audit"), clipAuditText(formatToolResults(context.toolResults)));
+            m_loggingService->infoFor(QStringLiteral("ai_prompt"), clipAuditText(QStringLiteral("--- continuation instructions ---\n%1").arg(instructions)));
+        }
         return backendClient->sendAgentRequest(request);
     }
 
@@ -226,6 +404,16 @@ quint64 AiRequestCoordinator::continueAgentRequest(AiBackendClient *backendClien
         context.nextStepHint,
         context.mode,
         context.visionContext);
+
+    if (m_loggingService) {
+        m_loggingService->infoFor(
+            QStringLiteral("route_audit"),
+            QStringLiteral("[agent_continue.chat_adapter] model=%1 toolResultCount=%2")
+                .arg(context.modelId, QString::number(context.toolResults.size())));
+        m_loggingService->infoFor(QStringLiteral("memory_audit"), clipAuditText(formatMemoryContext(context.memory)));
+        m_loggingService->infoFor(QStringLiteral("tool_audit"), clipAuditText(formatToolResults(context.toolResults)));
+        m_loggingService->infoFor(QStringLiteral("ai_prompt"), clipAuditText(formatMessages(messages)));
+    }
 
     return backendClient->sendChatRequest(messages,
                                           context.modelId,
@@ -247,14 +435,26 @@ quint64 AiRequestCoordinator::startCommandRequest(AiBackendClient *backendClient
         return 0;
     }
 
+    const QList<AiMessage> messages = promptAdapter->buildCommandMessages(
+        context.input,
+        context.identity,
+        context.userProfile,
+        context.responseMode,
+        context.sessionGoal,
+        ReasoningMode::Fast);
+
+    if (m_loggingService) {
+        m_loggingService->infoFor(
+            QStringLiteral("ai_prompt"),
+            QStringLiteral("[command_request] model=%1 timeoutMs=%2 temperature=%3")
+                .arg(context.modelId)
+                .arg(context.timeoutMs)
+                .arg(context.temperature, 0, 'f', 3));
+        m_loggingService->infoFor(QStringLiteral("ai_prompt"), clipAuditText(formatMessages(messages)));
+    }
+
     return backendClient->sendChatRequest(
-        promptAdapter->buildCommandMessages(
-            context.input,
-            context.identity,
-            context.userProfile,
-            context.responseMode,
-            context.sessionGoal,
-            ReasoningMode::Fast),
+        messages,
         context.modelId,
         {.mode = ReasoningMode::Fast,
          .kind = RequestKind::CommandExtraction,
