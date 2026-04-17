@@ -1479,6 +1479,11 @@ void BackendFacade::setSelectedIntentModelId(const QString &modelId)
 void BackendFacade::setAgentEnabled(bool enabled) { m_assistantController->setAgentEnabled(enabled); }
 void BackendFacade::setBackgroundPanelVisible(bool visible) { m_assistantController->setBackgroundPanelVisible(visible); }
 void BackendFacade::notifyTaskToastShown(int taskId) { m_assistantController->noteTaskToastShown(taskId); }
+void BackendFacade::notifyProactiveSuggestionFeedback(const QString &signalType,
+                                                      const QString &suggestionType)
+{
+    m_assistantController->noteProactiveSuggestionFeedback(signalType, suggestionType);
+}
 void BackendFacade::notifyTaskPanelRendered() { m_assistantController->noteTaskPanelRendered(); }
 void BackendFacade::saveAgentSettings(bool enabled,
                                       const QString &providerMode,

@@ -48,6 +48,43 @@ bool isEditorApp(const QString &appId)
     return editorApps.contains(appId);
 }
 
+QString languageForExtension(QString extension)
+{
+    extension = extension.trimmed().toLower();
+    if (extension == QStringLiteral("cpp") || extension == QStringLiteral("cc") || extension == QStringLiteral("cxx")) {
+        return QStringLiteral("cpp");
+    }
+    if (extension == QStringLiteral("h") || extension == QStringLiteral("hpp")) {
+        return QStringLiteral("cpp_header");
+    }
+    if (extension == QStringLiteral("py")) {
+        return QStringLiteral("python");
+    }
+    if (extension == QStringLiteral("qml")) {
+        return QStringLiteral("qml");
+    }
+    if (extension == QStringLiteral("ts") || extension == QStringLiteral("tsx")) {
+        return QStringLiteral("typescript");
+    }
+    if (extension == QStringLiteral("js") || extension == QStringLiteral("jsx")) {
+        return QStringLiteral("javascript");
+    }
+    if (extension == QStringLiteral("md")) {
+        return QStringLiteral("markdown");
+    }
+    if (extension == QStringLiteral("json")) {
+        return QStringLiteral("json");
+    }
+    return {};
+}
+
+QString fileExtension(const QString &document)
+{
+    const QRegularExpressionMatch match =
+        QRegularExpression(QStringLiteral("\\.([A-Za-z0-9_]+)$")).match(document.trimmed());
+    return match.hasMatch() ? match.captured(1).toLower() : QString{};
+}
+
 QString cleanedChunk(QString value)
 {
     value = value.simplified();
@@ -89,11 +126,15 @@ CompanionContextSnapshot DesktopContextThreadBuilder::fromActiveWindow(const QSt
         }
         snapshot.metadata.insert(it.key(), it.value());
     }
+    const bool redacted = snapshot.metadata.value(QStringLiteral("metadataRedacted")).toBool()
+        || snapshot.metadata.value(QStringLiteral("metadataClass")).toString() == QStringLiteral("private_app_only");
     const QString topicSource = snapshot.metadata.value(QStringLiteral("documentContext")).toString().trimmed();
     const QString secondarySource = snapshot.metadata.value(QStringLiteral("siteContext")).toString().trimmed().isEmpty()
         ? snapshot.metadata.value(QStringLiteral("workspaceContext")).toString().trimmed()
         : snapshot.metadata.value(QStringLiteral("siteContext")).toString().trimmed();
-    snapshot.topic = inferTopic(topicSource.isEmpty() ? windowTitle : topicSource, secondarySource);
+    snapshot.topic = redacted
+        ? QStringLiteral("private_mode")
+        : inferTopic(topicSource.isEmpty() ? windowTitle : topicSource, secondarySource);
     snapshot.recentIntent = snapshot.taskId == QStringLiteral("browser_tab")
         ? QStringLiteral("reference current tab")
         : snapshot.taskId == QStringLiteral("editor_document")
@@ -190,6 +231,9 @@ QVariantMap DesktopContextThreadBuilder::activeWindowMetadata(const QString &nor
     if (isBrowserApp(normalizedAppId)) {
         const QStringList browserParts = firstPart.split(QRegularExpression(QStringLiteral("\\s+\\|\\s+")), Qt::SkipEmptyParts);
         metadata.insert(QStringLiteral("documentContext"), cleanedChunk(browserParts.value(0, firstPart)));
+        metadata.insert(QStringLiteral("documentKind"), QStringLiteral("browser_page"));
+        metadata.insert(QStringLiteral("metadataClass"), QStringLiteral("browser_document"));
+        metadata.insert(QStringLiteral("metadataSource"), QStringLiteral("window_title"));
         if (browserParts.size() > 1) {
             metadata.insert(QStringLiteral("siteContext"), cleanedChunk(browserParts.last()));
         } else if (!secondPart.isEmpty()) {
@@ -199,7 +243,19 @@ QVariantMap DesktopContextThreadBuilder::activeWindowMetadata(const QString &nor
     }
 
     if (isEditorApp(normalizedAppId)) {
-        metadata.insert(QStringLiteral("documentContext"), cleanedChunk(firstPart.isEmpty() ? firstMeaningfulChunk(windowTitle) : firstPart));
+        const QString document = cleanedChunk(firstPart.isEmpty() ? firstMeaningfulChunk(windowTitle) : firstPart);
+        metadata.insert(QStringLiteral("documentContext"), document);
+        metadata.insert(QStringLiteral("documentKind"), QStringLiteral("editor_file"));
+        metadata.insert(QStringLiteral("metadataClass"), QStringLiteral("editor_document"));
+        metadata.insert(QStringLiteral("metadataSource"), QStringLiteral("window_title"));
+        const QString extension = fileExtension(document);
+        if (!extension.isEmpty()) {
+            metadata.insert(QStringLiteral("fileExtension"), extension);
+            const QString language = languageForExtension(extension);
+            if (!language.isEmpty()) {
+                metadata.insert(QStringLiteral("languageHint"), language);
+            }
+        }
         if (parts.size() > 2) {
             metadata.insert(QStringLiteral("workspaceContext"), cleanedChunk(parts.at(1)));
         } else if (!secondPart.isEmpty() && !secondPart.contains(QStringLiteral("code"), Qt::CaseInsensitive)) {
@@ -209,6 +265,9 @@ QVariantMap DesktopContextThreadBuilder::activeWindowMetadata(const QString &nor
     }
 
     metadata.insert(QStringLiteral("documentContext"), cleanedChunk(firstPart.isEmpty() ? firstMeaningfulChunk(windowTitle) : firstPart));
+    metadata.insert(QStringLiteral("documentKind"), QStringLiteral("window_title"));
+    metadata.insert(QStringLiteral("metadataClass"), QStringLiteral("active_window"));
+    metadata.insert(QStringLiteral("metadataSource"), QStringLiteral("window_title"));
     return metadata;
 }
 

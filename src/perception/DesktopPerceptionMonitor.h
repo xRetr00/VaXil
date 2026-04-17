@@ -60,6 +60,7 @@ private:
                           const CompanionContextSnapshot &context);
     [[nodiscard]] bool shouldIgnoreClipboardPreview(const QString &preview) const;
     [[nodiscard]] ActiveWindowSnapshot currentActiveWindow() const;
+    [[nodiscard]] ActiveWindowSnapshot privateModeActiveWindow(const QString &appId) const;
     [[nodiscard]] QString clipboardPreview() const;
     [[nodiscard]] QVariantMap basePayload(const QVariantMap &payload) const;
     [[nodiscard]] FocusModeState currentFocusMode() const;

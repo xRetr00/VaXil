@@ -24,5 +24,6 @@ public:
         const QVariantMap &candidateState,
         const QVariantMap &persistedState,
         const QVariantList &persistedHistory,
-        qint64 nowMs);
+        qint64 nowMs,
+        const QVariantList &feedbackScores = {});
 };

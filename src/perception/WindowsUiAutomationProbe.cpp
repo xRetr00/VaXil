@@ -58,6 +58,28 @@ bool isEditorApp(const QString &appId)
     return editorApps.contains(appId);
 }
 
+#ifdef Q_OS_WIN
+QString controlTypeName(CONTROLTYPEID controlType)
+{
+    if (controlType == UIA_EditControlTypeId) {
+        return QStringLiteral("edit");
+    }
+    if (controlType == UIA_DocumentControlTypeId) {
+        return QStringLiteral("document");
+    }
+    if (controlType == UIA_TabItemControlTypeId) {
+        return QStringLiteral("tab_item");
+    }
+    if (controlType == UIA_WindowControlTypeId) {
+        return QStringLiteral("window");
+    }
+    if (controlType == UIA_PaneControlTypeId) {
+        return QStringLiteral("pane");
+    }
+    return QStringLiteral("unknown");
+}
+#endif
+
 QString safeCandidate(QString value)
 {
     value = value.simplified();
@@ -260,6 +282,7 @@ QVariantMap WindowsUiAutomationProbe::probeWindowMetadata(quintptr windowHandleV
     const ElementSnapshot focused = readElement(focusedElement.Get());
     const SanitizedCandidate focusedName = sanitizeCandidate(focused.name);
     noteRedaction(metadata, focusedName);
+    metadata.insert(QStringLiteral("focusedControlType"), controlTypeName(focused.controlType));
     if (!focusedName.value.isEmpty()) {
         metadata.insert(QStringLiteral("focusedElementName"), focusedName.value);
     }
@@ -292,6 +315,8 @@ QVariantMap WindowsUiAutomationProbe::probeWindowMetadata(quintptr windowHandleV
         const QUrl url(focused.value);
         if (url.isValid() && !url.host().trimmed().isEmpty()) {
             metadata.insert(QStringLiteral("siteContext"), url.host().trimmed());
+            metadata.insert(QStringLiteral("browserUrlScheme"), url.scheme().trimmed().toLower());
+            metadata.insert(QStringLiteral("browserUrlHost"), url.host().trimmed().toLower());
         }
         for (const QString &name : names) {
             if (!name.contains(QStringLiteral("address"), Qt::CaseInsensitive)
@@ -302,6 +327,8 @@ QVariantMap WindowsUiAutomationProbe::probeWindowMetadata(quintptr windowHandleV
             }
         }
         finalizeMetadata(metadata);
+        metadata.insert(QStringLiteral("metadataClass"), QStringLiteral("browser_document"));
+        metadata.insert(QStringLiteral("documentKind"), QStringLiteral("browser_page"));
         return metadata;
     }
 
@@ -323,6 +350,10 @@ QVariantMap WindowsUiAutomationProbe::probeWindowMetadata(quintptr windowHandleV
         }
     }
     finalizeMetadata(metadata);
+    if (!metadata.isEmpty()) {
+        metadata.insert(QStringLiteral("metadataClass"), QStringLiteral("editor_document"));
+        metadata.insert(QStringLiteral("documentKind"), QStringLiteral("editor_file"));
+    }
 #else
     Q_UNUSED(windowHandleValue);
     Q_UNUSED(appId);

@@ -80,6 +80,8 @@ public:
     Q_INVOKABLE void startListening();
     Q_INVOKABLE void interruptSpeechAndListen();
     Q_INVOKABLE void cancelRequest();
+    Q_INVOKABLE void notifyProactiveSuggestionFeedback(const QString &signalType,
+                                                       const QString &suggestionType);
 
 signals:
     void stateNameChanged();

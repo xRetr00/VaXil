@@ -11,6 +11,8 @@ private slots:
     void holdsCandidateWithInsufficientObservations();
     void boundsPromotionAgainstPersistedState();
     void rollsBackVolatileCandidateWhenHistoryExists();
+    void rollsBackPromotedVersionRejectedByFeedback();
+    void holdsRejectedFeedbackWithoutRollbackTarget();
 };
 
 void CompiledContextPolicyTuningPromotionPolicyTests::promotesBootstrapCandidateWhenStable()
@@ -133,6 +135,94 @@ void CompiledContextPolicyTuningPromotionPolicyTests::rollsBackVolatileCandidate
 
     QCOMPARE(decision.action, CompiledContextPolicyTuningPromotionDecision::Action::Rollback);
     QCOMPARE(decision.reasonCode, QStringLiteral("behavior_tuning.rollback_volatile_candidate"));
+}
+
+void CompiledContextPolicyTuningPromotionPolicyTests::rollsBackPromotedVersionRejectedByFeedback()
+{
+    const auto decision = CompiledContextPolicyTuningPromotionPolicy::evaluate(
+        {
+            {QStringLiteral("tuningCurrentMode"), QStringLiteral("research_analysis")},
+            {QStringLiteral("tuningVolatilityLevel"), QStringLiteral("steady")},
+            {QStringLiteral("tuningAlignmentBoost"), 0.10},
+            {QStringLiteral("tuningDefocusPenalty"), 0.08},
+            {QStringLiteral("tuningVolatilityPenalty"), 0.07},
+            {QStringLiteral("tuningSuppressionScoreThreshold"), 0.76},
+            {QStringLiteral("tuningObservedCount"), 4},
+            {QStringLiteral("tuningShiftCount"), 1},
+            {QStringLiteral("tuningTotalObservations"), 10},
+            {QStringLiteral("updatedAtMs"), 500000}
+        },
+        {
+            {QStringLiteral("tuningCurrentMode"), QStringLiteral("research_analysis")},
+            {QStringLiteral("tuningVolatilityLevel"), QStringLiteral("steady")},
+            {QStringLiteral("tuningAlignmentBoost"), 0.10},
+            {QStringLiteral("tuningDefocusPenalty"), 0.09},
+            {QStringLiteral("tuningVolatilityPenalty"), 0.07},
+            {QStringLiteral("tuningSuppressionScoreThreshold"), 0.75},
+            {QStringLiteral("updatedAtMs"), 400000},
+            {QStringLiteral("version"), 4}
+        },
+        {
+            QVariantMap{{QStringLiteral("version"), 3}},
+            QVariantMap{{QStringLiteral("version"), 4}}
+        },
+        500000,
+        {
+            QVariantMap{
+                {QStringLiteral("action"), QStringLiteral("promote")},
+                {QStringLiteral("toVersion"), 4},
+                {QStringLiteral("totalFeedbackCount"), 2},
+                {QStringLiteral("supportScore"), -2.0},
+                {QStringLiteral("outcome"), QStringLiteral("rejected")}
+            }
+        });
+
+    QCOMPARE(decision.action, CompiledContextPolicyTuningPromotionDecision::Action::Rollback);
+    QCOMPARE(decision.reasonCode, QStringLiteral("behavior_tuning.rollback_feedback_rejected"));
+}
+
+void CompiledContextPolicyTuningPromotionPolicyTests::holdsRejectedFeedbackWithoutRollbackTarget()
+{
+    const auto decision = CompiledContextPolicyTuningPromotionPolicy::evaluate(
+        {
+            {QStringLiteral("tuningCurrentMode"), QStringLiteral("document_work")},
+            {QStringLiteral("tuningVolatilityLevel"), QStringLiteral("steady")},
+            {QStringLiteral("tuningAlignmentBoost"), 0.10},
+            {QStringLiteral("tuningDefocusPenalty"), 0.08},
+            {QStringLiteral("tuningVolatilityPenalty"), 0.07},
+            {QStringLiteral("tuningSuppressionScoreThreshold"), 0.76},
+            {QStringLiteral("tuningObservedCount"), 4},
+            {QStringLiteral("tuningShiftCount"), 1},
+            {QStringLiteral("tuningTotalObservations"), 10},
+            {QStringLiteral("updatedAtMs"), 500000}
+        },
+        {
+            {QStringLiteral("tuningCurrentMode"), QStringLiteral("document_work")},
+            {QStringLiteral("tuningVolatilityLevel"), QStringLiteral("steady")},
+            {QStringLiteral("tuningAlignmentBoost"), 0.10},
+            {QStringLiteral("tuningDefocusPenalty"), 0.08},
+            {QStringLiteral("tuningVolatilityPenalty"), 0.07},
+            {QStringLiteral("tuningSuppressionScoreThreshold"), 0.76},
+            {QStringLiteral("updatedAtMs"), 400000},
+            {QStringLiteral("version"), 1}
+        },
+        {
+            QVariantMap{{QStringLiteral("version"), 1}}
+        },
+        500000,
+        {
+            QVariantMap{
+                {QStringLiteral("action"), QStringLiteral("promote")},
+                {QStringLiteral("toVersion"), 1},
+                {QStringLiteral("totalFeedbackCount"), 2},
+                {QStringLiteral("supportScore"), -1.5},
+                {QStringLiteral("outcome"), QStringLiteral("rejected")}
+            }
+        });
+
+    QCOMPARE(decision.action, CompiledContextPolicyTuningPromotionDecision::Action::Hold);
+    QCOMPARE(decision.reasonCode,
+             QStringLiteral("behavior_tuning.hold_feedback_rejected_no_rollback_target"));
 }
 
 QTEST_APPLESS_MAIN(CompiledContextPolicyTuningPromotionPolicyTests)

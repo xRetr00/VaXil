@@ -125,6 +125,7 @@ public slots:
     void setAgentEnabled(bool enabled);
     void setBackgroundPanelVisible(bool visible);
     void noteTaskToastShown(int taskId);
+    void noteProactiveSuggestionFeedback(const QString &signalType, const QString &suggestionType);
     void noteTaskPanelRendered();
     void saveAgentSettings(bool enabled,
                            const QString &providerMode,
@@ -368,6 +369,7 @@ private:
     void setLatestProactiveSuggestion(const QString &message,
                                       const QString &tone,
                                       const QString &type);
+    void logProactiveSuggestionFeedback(const QString &signalType, const QString &suggestionType);
 
     AppSettings *m_settings = nullptr;
     IdentityProfileService *m_identityProfileService = nullptr;

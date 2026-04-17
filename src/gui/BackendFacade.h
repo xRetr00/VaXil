@@ -260,6 +260,8 @@ public:
     Q_INVOKABLE void openToolsHub();
     Q_INVOKABLE void setBackgroundPanelVisible(bool visible);
     Q_INVOKABLE void notifyTaskToastShown(int taskId);
+    Q_INVOKABLE void notifyProactiveSuggestionFeedback(const QString &signalType,
+                                                       const QString &suggestionType);
     Q_INVOKABLE void notifyTaskPanelRendered();
     Q_INVOKABLE void saveAgentSettings(bool enabled,
                                        const QString &providerMode,

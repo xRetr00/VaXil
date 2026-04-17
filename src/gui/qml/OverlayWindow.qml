@@ -190,9 +190,17 @@ Window {
             anchors.bottom: parent.bottom
             anchors.bottomMargin: root.pageMargin
             latestUserPrompt: agentVm.transcript
-            onToastClicked: function(taskId) {
+            onToastClicked: function(taskId, taskType) {
                 if (taskId >= 0) {
                     taskVm.notifyTaskToastShown(taskId)
+                } else if ((taskType || "").toString().indexOf("proactive") === 0) {
+                    agentVm.notifyProactiveSuggestionFeedback("accepted", taskType)
+                }
+            }
+
+            onToastDismissed: function(taskId, taskType, reason) {
+                if (taskId < 0 && (taskType || "").toString().indexOf("proactive") === 0) {
+                    agentVm.notifyProactiveSuggestionFeedback(reason || "dismissed", taskType)
                 }
             }
         }

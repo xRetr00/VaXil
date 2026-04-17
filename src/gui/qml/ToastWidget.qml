@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Layouts
 
 Rectangle {
     id: root
@@ -46,6 +47,7 @@ Rectangle {
 
     Column {
         id: contentColumn
+        z: 1
         anchors.fill: parent
         anchors.margins: 14
         anchors.leftMargin: 16
@@ -69,6 +71,15 @@ Rectangle {
                 font.pixelSize: 10
                 elide: Text.ElideRight
             }
+
+            Item { width: 1; height: 1; Layout.fillWidth: true }
+
+            Button {
+                text: "Dismiss"
+                padding: 4
+                font.pixelSize: 10
+                onClicked: root.dismissed(root.taskId)
+            }
         }
 
         ScrollView {
@@ -89,9 +100,9 @@ Rectangle {
 
     MouseArea {
         anchors.fill: parent
+        z: 0
         cursorShape: Qt.PointingHandCursor
         onClicked: function() {
-            root.dismissed(root.taskId)
             root.clicked(root.taskId)
         }
     }

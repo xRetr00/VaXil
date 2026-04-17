@@ -78,10 +78,13 @@ void SelectionContextCompilerTuningTests::usesPolicyTuningSignalsInSelectionAndP
         nullptr);
 
     QVERIFY(compilation.selectionInput.contains(QStringLiteral("Tuning signal:")));
+    QVERIFY(compilation.selectionInput.contains(QStringLiteral("Tuning episode:")));
     QVERIFY(compilation.promptContext.contains(QStringLiteral("Tuning signal:")));
+    QVERIFY(compilation.promptContext.contains(QStringLiteral("Tuning episode:")));
 
     bool foundTuning = false;
     bool foundKnobs = false;
+    bool foundEpisode = false;
     for (const MemoryRecord &record : compilation.compiledContextRecords) {
         if (record.key == QStringLiteral("compiled_context_policy_tuning_signal")) {
             foundTuning = true;
@@ -89,9 +92,13 @@ void SelectionContextCompilerTuningTests::usesPolicyTuningSignalsInSelectionAndP
         if (record.key == QStringLiteral("compiled_context_policy_tuning_knobs")) {
             foundKnobs = true;
         }
+        if (record.source == QStringLiteral("compiled_history_policy_tuning_episode")) {
+            foundEpisode = true;
+        }
     }
     QVERIFY(foundTuning);
     QVERIFY(foundKnobs);
+    QVERIFY(foundEpisode);
 }
 
 QTEST_APPLESS_MAIN(SelectionContextCompilerTuningTests)

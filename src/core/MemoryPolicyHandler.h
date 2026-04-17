@@ -24,6 +24,9 @@ public:
     [[nodiscard]] QList<MemoryRecord> compiledContextLayeredMemoryRecords() const;
     [[nodiscard]] QList<MemoryRecord> compiledContextPolicyEvolutionRecords() const;
     [[nodiscard]] QList<MemoryRecord> compiledContextPolicyTuningSignalRecords() const;
+    [[nodiscard]] QList<MemoryRecord> compiledContextPolicyTuningEpisodeRecords() const;
+    [[nodiscard]] QList<MemoryRecord> compiledContextPolicyTuningFeedbackScoreRecords() const;
+    [[nodiscard]] QList<MemoryRecord> feedbackSignalRecords() const;
     void captureExplicitMemoryFromInput(const QString &input) const;
 
 private:

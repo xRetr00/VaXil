@@ -172,6 +172,14 @@ void AgentViewModel::cancelRequest()
     }
 }
 
+void AgentViewModel::notifyProactiveSuggestionFeedback(const QString &signalType,
+                                                       const QString &suggestionType)
+{
+    if (m_backend) {
+        m_backend->notifyProactiveSuggestionFeedback(signalType, suggestionType);
+    }
+}
+
 int AgentViewModel::mapUiState(const QString &stateName) const
 {
     const QString normalized = normalizeStateName(stateName);

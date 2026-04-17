@@ -13,6 +13,9 @@ private slots:
     void persistsCompiledContextPolicyMemory();
     void persistsCompiledContextPolicyHistory();
     void persistsAndRollsBackCompiledContextPolicyTuningState();
+    void recordsCompiledContextPolicyTuningEpisodes();
+    void persistsFeedbackSignalsAndBuildsAggregateMemory();
+    void scoresTuningEpisodesAgainstFeedbackSignals();
 };
 
 void MemoryStoreTests::returnsConnectorMemoryRecordsForRelevantQuery()
@@ -130,6 +133,121 @@ void MemoryStoreTests::persistsAndRollsBackCompiledContextPolicyTuningState()
     QCOMPARE(store.compiledContextPolicyTuningState().value(QStringLiteral("tuningPromotionAction")).toString(),
              QStringLiteral("rollback"));
     QCOMPARE(store.compiledContextPolicyTuningHistory().size(), 1);
+}
+
+void MemoryStoreTests::recordsCompiledContextPolicyTuningEpisodes()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    MemoryStore store(dir.path() + QStringLiteral("/memory.json"));
+
+    QVERIFY(store.promoteCompiledContextPolicyTuningState({
+        {QStringLiteral("tuningCurrentMode"), QStringLiteral("document_work")},
+        {QStringLiteral("tuningVolatilityLevel"), QStringLiteral("steady")},
+        {QStringLiteral("tuningAlignmentBoost"), 0.08},
+        {QStringLiteral("tuningDefocusPenalty"), 0.07},
+        {QStringLiteral("tuningVolatilityPenalty"), 0.05},
+        {QStringLiteral("tuningSuppressionScoreThreshold"), 0.72},
+        {QStringLiteral("tuningPromotionAction"), QStringLiteral("promote")},
+        {QStringLiteral("tuningPromotionReason"), QStringLiteral("behavior_tuning.promote_test")},
+        {QStringLiteral("updatedAtMs"), 4200}
+    }));
+    QVERIFY(store.promoteCompiledContextPolicyTuningState({
+        {QStringLiteral("tuningCurrentMode"), QStringLiteral("research_analysis")},
+        {QStringLiteral("tuningVolatilityLevel"), QStringLiteral("elevated")},
+        {QStringLiteral("tuningAlignmentBoost"), 0.10},
+        {QStringLiteral("tuningDefocusPenalty"), 0.08},
+        {QStringLiteral("tuningVolatilityPenalty"), 0.08},
+        {QStringLiteral("tuningSuppressionScoreThreshold"), 0.78},
+        {QStringLiteral("tuningPromotionAction"), QStringLiteral("promote")},
+        {QStringLiteral("tuningPromotionReason"), QStringLiteral("behavior_tuning.promote_shift")},
+        {QStringLiteral("updatedAtMs"), 5200}
+    }));
+
+    const QVariantList episodes = store.compiledContextPolicyTuningEpisodes();
+    QCOMPARE(episodes.size(), 2);
+    QCOMPARE(episodes.last().toMap().value(QStringLiteral("mode")).toString(),
+             QStringLiteral("research_analysis"));
+
+    const QList<MemoryRecord> records = store.compiledContextPolicyTuningEpisodeMemory();
+    QCOMPARE(records.size(), 2);
+    QVERIFY(records.last().value.contains(QStringLiteral("behavior_tuning.promote_shift")));
+}
+
+void MemoryStoreTests::persistsFeedbackSignalsAndBuildsAggregateMemory()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    MemoryStore store(dir.path() + QStringLiteral("/memory.json"));
+
+    FeedbackSignal accepted;
+    accepted.signalId = QStringLiteral("signal-1");
+    accepted.signalType = QStringLiteral("accepted");
+    accepted.traceId = QStringLiteral("thread-a");
+    accepted.value = QStringLiteral("proactive_coding_followup");
+    accepted.metadata = {
+        {QStringLiteral("suggestionType"), QStringLiteral("proactive_coding_followup")},
+        {QStringLiteral("occurredAtMs"), 4200}
+    };
+
+    FeedbackSignal dismissed = accepted;
+    dismissed.signalId = QStringLiteral("signal-2");
+    dismissed.signalType = QStringLiteral("dismissed");
+    dismissed.metadata.insert(QStringLiteral("occurredAtMs"), 5200);
+
+    QVERIFY(store.appendFeedbackSignal(accepted));
+    QVERIFY(store.appendFeedbackSignal(dismissed));
+
+    const QVariantList history = store.feedbackSignalHistory();
+    QCOMPARE(history.size(), 2);
+    QCOMPARE(history.last().toMap().value(QStringLiteral("signalType")).toString(),
+             QStringLiteral("dismissed"));
+
+    const QList<MemoryRecord> records = store.feedbackSignalMemory();
+    QVERIFY(records.size() >= 2);
+    QCOMPARE(records.first().key, QStringLiteral("behavior_tuning_feedback_aggregate"));
+    QVERIFY(records.first().value.contains(QStringLiteral("accepted=1")));
+    QVERIFY(records.first().value.contains(QStringLiteral("dismissed=1")));
+}
+
+void MemoryStoreTests::scoresTuningEpisodesAgainstFeedbackSignals()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    MemoryStore store(dir.path() + QStringLiteral("/memory.json"));
+
+    QVERIFY(store.promoteCompiledContextPolicyTuningState({
+        {QStringLiteral("tuningCurrentMode"), QStringLiteral("document_work")},
+        {QStringLiteral("tuningVolatilityLevel"), QStringLiteral("steady")},
+        {QStringLiteral("tuningAlignmentBoost"), 0.08},
+        {QStringLiteral("tuningDefocusPenalty"), 0.07},
+        {QStringLiteral("tuningVolatilityPenalty"), 0.05},
+        {QStringLiteral("tuningSuppressionScoreThreshold"), 0.72},
+        {QStringLiteral("tuningPromotionAction"), QStringLiteral("promote")},
+        {QStringLiteral("tuningPromotionReason"), QStringLiteral("behavior_tuning.promote_test")},
+        {QStringLiteral("updatedAtMs"), 4200}
+    }));
+
+    FeedbackSignal accepted;
+    accepted.signalId = QStringLiteral("signal-1");
+    accepted.signalType = QStringLiteral("accepted");
+    accepted.traceId = QStringLiteral("thread-a");
+    accepted.value = QStringLiteral("proactive_coding_followup");
+    accepted.metadata = {
+        {QStringLiteral("suggestionType"), QStringLiteral("proactive_coding_followup")},
+        {QStringLiteral("occurredAtMs"), 4300}
+    };
+    QVERIFY(store.appendFeedbackSignal(accepted));
+
+    const QVariantList scores = store.compiledContextPolicyTuningFeedbackScores();
+    QCOMPARE(scores.size(), 1);
+    QCOMPARE(scores.first().toMap().value(QStringLiteral("outcome")).toString(),
+             QStringLiteral("supported"));
+
+    const QList<MemoryRecord> records = store.compiledContextPolicyTuningFeedbackScoreMemory();
+    QCOMPARE(records.size(), 1);
+    QCOMPARE(records.first().source, QStringLiteral("compiled_history_policy_tuning_feedback_score"));
+    QVERIFY(records.first().value.contains(QStringLiteral("accepted=1")));
 }
 
 QTEST_APPLESS_MAIN(MemoryStoreTests)

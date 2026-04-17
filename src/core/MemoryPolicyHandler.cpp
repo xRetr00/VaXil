@@ -139,6 +139,9 @@ QList<MemoryRecord> MemoryPolicyHandler::requestMemory(const QString &query, con
         appendUnique(compiledContextLayeredMemoryRecords());
         appendUnique(compiledContextPolicyEvolutionRecords());
         appendUnique(compiledContextPolicyTuningSignalRecords());
+        appendUnique(compiledContextPolicyTuningEpisodeRecords());
+        appendUnique(compiledContextPolicyTuningFeedbackScoreRecords());
+        appendUnique(feedbackSignalRecords());
         appendUnique(m_memoryStore->compiledContextPolicyMemory(query));
         appendUnique(ConnectorContextCompiler::compileSummaries(query, m_memoryStore->connectorStateMap()));
         appendUnique(m_memoryStore->connectorMemory(query));
@@ -220,6 +223,21 @@ QList<MemoryRecord> MemoryPolicyHandler::compiledContextPolicyTuningSignalRecord
         return CompiledContextPolicyTuningSignalBuilder::buildFromState(persisted);
     }
     return {};
+}
+
+QList<MemoryRecord> MemoryPolicyHandler::compiledContextPolicyTuningEpisodeRecords() const
+{
+    return m_memoryStore ? m_memoryStore->compiledContextPolicyTuningEpisodeMemory() : QList<MemoryRecord>{};
+}
+
+QList<MemoryRecord> MemoryPolicyHandler::compiledContextPolicyTuningFeedbackScoreRecords() const
+{
+    return m_memoryStore ? m_memoryStore->compiledContextPolicyTuningFeedbackScoreMemory() : QList<MemoryRecord>{};
+}
+
+QList<MemoryRecord> MemoryPolicyHandler::feedbackSignalRecords() const
+{
+    return m_memoryStore ? m_memoryStore->feedbackSignalMemory() : QList<MemoryRecord>{};
 }
 
 void MemoryPolicyHandler::captureExplicitMemoryFromInput(const QString &input) const

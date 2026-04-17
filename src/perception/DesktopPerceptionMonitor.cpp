@@ -259,12 +259,30 @@ DesktopPerceptionMonitor::ActiveWindowSnapshot DesktopPerceptionMonitor::current
     }
     CloseHandle(processHandle);
 
-    if (m_settings == nullptr || !m_settings->privateModeEnabled()) {
-        snapshot.metadata = WindowsUiAutomationProbe::probeWindowMetadata(
-            reinterpret_cast<quintptr>(windowHandle),
-            snapshot.appId);
+    if (m_settings != nullptr && m_settings->privateModeEnabled()) {
+        return privateModeActiveWindow(snapshot.appId);
     }
+
+    snapshot.metadata = WindowsUiAutomationProbe::probeWindowMetadata(
+        reinterpret_cast<quintptr>(windowHandle),
+        snapshot.appId);
 #endif
+    return snapshot;
+}
+
+DesktopPerceptionMonitor::ActiveWindowSnapshot DesktopPerceptionMonitor::privateModeActiveWindow(const QString &appId) const
+{
+    ActiveWindowSnapshot snapshot;
+    snapshot.appId = appId;
+    snapshot.windowTitle = QStringLiteral("private_mode_redacted");
+    snapshot.metadata = {
+        {QStringLiteral("documentContext"), QStringLiteral("private_mode_redacted")},
+        {QStringLiteral("metadataRedacted"), true},
+        {QStringLiteral("redactionReason"), QStringLiteral("private_mode")},
+        {QStringLiteral("metadataQuality"), QStringLiteral("redacted")},
+        {QStringLiteral("metadataClass"), QStringLiteral("private_app_only")},
+        {QStringLiteral("metadataSource"), QStringLiteral("private_mode")}
+    };
     return snapshot;
 }
 

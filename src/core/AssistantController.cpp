@@ -39,6 +39,7 @@
 #include "core/ResponseFinalizer.h"
 #include "core/ToolCoordinator.h"
 #include "behavior_tuning/CompiledContextPolicyTuningPromotionPolicy.h"
+#include "behavior_tuning/FeedbackSignalEventBuilder.h"
 #include "connectors/BrowserBookmarksMonitor.h"
 #include "connectors/CalendarIcsMonitor.h"
 #include "connectors/ConnectorSnapshotMonitor.h"
@@ -2649,6 +2650,12 @@ void AssistantController::noteTaskToastShown(int taskId)
     }
 }
 
+void AssistantController::noteProactiveSuggestionFeedback(const QString &signalType,
+                                                          const QString &suggestionType)
+{
+    logProactiveSuggestionFeedback(signalType, suggestionType);
+}
+
 void AssistantController::noteTaskPanelRendered()
 {
     if (m_loggingService) {
@@ -3471,6 +3478,16 @@ ProactiveSuggestionPlan AssistantController::planNextStepSuggestion(const QStrin
             plannerMetadata.insert(QStringLiteral("compiledContextTuningKeys"), tuningKeys);
             plannerMetadata.insert(QStringLiteral("compiledContextTuningSummary"), tuningSummary);
         }
+        const QList<MemoryRecord> tuningEpisodeRecords =
+            m_memoryPolicyHandler->compiledContextPolicyTuningEpisodeRecords();
+        const QStringList tuningEpisodeKeys =
+            CompiledContextLayeredSignalBuilder::buildPlannerKeys(tuningEpisodeRecords);
+        const QString tuningEpisodeSummary =
+            CompiledContextLayeredSignalBuilder::buildPlannerSummary(tuningEpisodeRecords);
+        if (!tuningEpisodeKeys.isEmpty()) {
+            plannerMetadata.insert(QStringLiteral("compiledContextTuningEpisodeKeys"), tuningEpisodeKeys);
+            plannerMetadata.insert(QStringLiteral("compiledContextTuningEpisodeSummary"), tuningEpisodeSummary);
+        }
         const QVariantMap tuningMetadata = m_memoryPolicyHandler->compiledContextPolicyTuningMetadata();
         for (auto it = tuningMetadata.constBegin(); it != tuningMetadata.constEnd(); ++it) {
             plannerMetadata.insert(it.key(), it.value());
@@ -3594,6 +3611,30 @@ void AssistantController::logPlannedSuggestion(const ProactiveSuggestionPlan &pl
         event.capabilityId = QStringLiteral("proactive_suggestion_planner");
         event.threadId = threadId;
         m_loggingService->logBehaviorEvent(event);
+    }
+}
+
+void AssistantController::logProactiveSuggestionFeedback(const QString &signalType,
+                                                         const QString &suggestionType)
+{
+    const QString type = suggestionType.trimmed().isEmpty()
+        ? m_latestProactiveSuggestionType
+        : suggestionType.trimmed();
+    if (!type.startsWith(QStringLiteral("proactive"))) {
+        return;
+    }
+
+    const FeedbackSignal signal = FeedbackSignalEventBuilder::proactiveSuggestionSignal(
+        signalType,
+        type,
+        m_latestProactiveSuggestion,
+        m_lastProactiveSuggestionThreadId,
+        QDateTime::currentMSecsSinceEpoch());
+    if (m_memoryStore != nullptr) {
+        m_memoryStore->appendFeedbackSignal(signal);
+    }
+    if (m_loggingService != nullptr) {
+        m_loggingService->logBehaviorEvent(FeedbackSignalEventBuilder::behaviorEvent(signal));
     }
 }
 
@@ -3741,7 +3782,8 @@ QList<MemoryRecord> AssistantController::buildCompiledContextHistoryMemory() con
                     candidateTuningState,
                     m_memoryStore->compiledContextPolicyTuningState(),
                     m_memoryStore->compiledContextPolicyTuningHistory(),
-                    QDateTime::currentMSecsSinceEpoch());
+                    QDateTime::currentMSecsSinceEpoch(),
+                    m_memoryStore->compiledContextPolicyTuningFeedbackScores());
             if (tuningDecision.action
                 == CompiledContextPolicyTuningPromotionDecision::Action::Promote) {
                 m_memoryStore->promoteCompiledContextPolicyTuningState(tuningDecision.nextState);

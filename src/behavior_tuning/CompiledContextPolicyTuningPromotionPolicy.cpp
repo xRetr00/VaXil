@@ -15,6 +15,7 @@ constexpr double kAlignmentStepMax = 0.02;
 constexpr double kPenaltyStepMax = 0.02;
 constexpr double kThresholdStepMax = 0.03;
 constexpr qint64 kPromotionCooldownMs = 120000;
+constexpr int kFeedbackRollbackMinSignals = 2;
 
 double clampValue(double value, double minimum, double maximum)
 {
@@ -110,13 +111,41 @@ QVariantMap boundedPromotionState(const QVariantMap &persistedState,
                             kThresholdStepMax));
     return normalizedState(next, nowMs);
 }
+
+QVariantMap latestPromotedScoreForPersistedVersion(const QVariantMap &persistedState,
+                                                   const QVariantList &feedbackScores)
+{
+    const int version = persistedState.value(QStringLiteral("version"), 0).toInt();
+    if (version <= 0) {
+        return {};
+    }
+
+    for (int i = feedbackScores.size() - 1; i >= 0; --i) {
+        const QVariantMap score = feedbackScores.at(i).toMap();
+        if (score.value(QStringLiteral("action")).toString().trimmed() != QStringLiteral("promote")) {
+            continue;
+        }
+        if (score.value(QStringLiteral("toVersion")).toInt() == version) {
+            return score;
+        }
+    }
+    return {};
+}
+
+bool isRejectedFeedbackScore(const QVariantMap &score)
+{
+    return score.value(QStringLiteral("outcome")).toString().trimmed() == QStringLiteral("rejected")
+        && score.value(QStringLiteral("totalFeedbackCount")).toInt() >= kFeedbackRollbackMinSignals
+        && score.value(QStringLiteral("supportScore")).toDouble() <= -1.0;
+}
 }
 
 CompiledContextPolicyTuningPromotionDecision CompiledContextPolicyTuningPromotionPolicy::evaluate(
     const QVariantMap &candidateState,
     const QVariantMap &persistedState,
     const QVariantList &persistedHistory,
-    qint64 nowMs)
+    qint64 nowMs,
+    const QVariantList &feedbackScores)
 {
     CompiledContextPolicyTuningPromotionDecision decision;
     const QVariantMap candidate = normalizedState(candidateState, nowMs);
@@ -126,6 +155,18 @@ CompiledContextPolicyTuningPromotionDecision CompiledContextPolicyTuningPromotio
     }
 
     const QVariantMap persisted = normalizedState(persistedState, nowMs);
+    const QVariantMap latestFeedbackScore =
+        latestPromotedScoreForPersistedVersion(persisted, feedbackScores);
+    if (isRejectedFeedbackScore(latestFeedbackScore)) {
+        if (persistedHistory.size() >= 2) {
+            decision.action = CompiledContextPolicyTuningPromotionDecision::Action::Rollback;
+            decision.reasonCode = QStringLiteral("behavior_tuning.rollback_feedback_rejected");
+            return decision;
+        }
+        decision.reasonCode = QStringLiteral("behavior_tuning.hold_feedback_rejected_no_rollback_target");
+        return decision;
+    }
+
     const int observations = candidate.value(QStringLiteral("tuningObservedCount")).toInt();
     const int shifts = candidate.value(QStringLiteral("tuningShiftCount")).toInt();
     const QString volatility = candidate.value(QStringLiteral("tuningVolatilityLevel")).toString().trimmed();

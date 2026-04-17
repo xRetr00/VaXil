@@ -11,6 +11,7 @@ private slots:
     void buildsBrowserWindowContext();
     void prefersUiAutomationMetadataWhenAvailable();
     void preservesMetadataConfidenceAndRedactionMarkers();
+    void marksPrivateModeContextAsRedacted();
     void buildsClipboardContext();
     void buildsNotificationContext();
 };
@@ -26,6 +27,7 @@ void DesktopContextThreadBuilderTests::buildsActiveWindowContext()
     QVERIFY(snapshot.threadId.value.startsWith(QStringLiteral("desktop::editor_document::vscode::")));
     QCOMPARE(snapshot.topic, QStringLiteral("plan_md"));
     QCOMPARE(snapshot.recentIntent, QStringLiteral("reference current file"));
+    QCOMPARE(snapshot.metadata.value(QStringLiteral("languageHint")).toString(), QStringLiteral("markdown"));
     QVERIFY(DesktopContextThreadBuilder::describeContext(snapshot).contains(QStringLiteral("editor file")));
 }
 
@@ -39,6 +41,8 @@ void DesktopContextThreadBuilderTests::buildsBrowserWindowContext()
     QCOMPARE(snapshot.taskId, QStringLiteral("browser_tab"));
     QCOMPARE(snapshot.metadata.value(QStringLiteral("documentContext")).toString(), QStringLiteral("ChatGPT"));
     QCOMPARE(snapshot.metadata.value(QStringLiteral("siteContext")).toString(), QStringLiteral("OpenAI"));
+    QCOMPARE(snapshot.metadata.value(QStringLiteral("metadataClass")).toString(), QStringLiteral("browser_document"));
+    QCOMPARE(snapshot.metadata.value(QStringLiteral("documentKind")).toString(), QStringLiteral("browser_page"));
     QCOMPARE(snapshot.topic, QStringLiteral("chatgpt"));
     QVERIFY(DesktopContextThreadBuilder::describeContext(snapshot).contains(QStringLiteral("on OpenAI")));
 }
@@ -57,6 +61,7 @@ void DesktopContextThreadBuilderTests::prefersUiAutomationMetadataWhenAvailable(
 
     QCOMPARE(snapshot.metadata.value(QStringLiteral("documentContext")).toString(), QStringLiteral("AssistantController.cpp"));
     QCOMPARE(snapshot.metadata.value(QStringLiteral("workspaceContext")).toString(), QStringLiteral("Vaxil"));
+    QCOMPARE(snapshot.metadata.value(QStringLiteral("metadataClass")).toString(), QStringLiteral("editor_document"));
     QCOMPARE(snapshot.topic, QStringLiteral("assistantcontroller_cpp"));
     QVERIFY(snapshot.confidence > 0.8);
 }
@@ -79,6 +84,25 @@ void DesktopContextThreadBuilderTests::preservesMetadataConfidenceAndRedactionMa
     QVERIFY(snapshot.metadata.value(QStringLiteral("metadataRedacted")).toBool());
     QCOMPARE(snapshot.metadata.value(QStringLiteral("metadataQuality")).toString(), QStringLiteral("medium"));
     QCOMPARE(snapshot.metadata.value(QStringLiteral("redactionReason")).toString(), QStringLiteral("phrase_too_long"));
+}
+
+void DesktopContextThreadBuilderTests::marksPrivateModeContextAsRedacted()
+{
+    QVariantMap metadata;
+    metadata.insert(QStringLiteral("documentContext"), QStringLiteral("private_mode_redacted"));
+    metadata.insert(QStringLiteral("metadataClass"), QStringLiteral("private_app_only"));
+    metadata.insert(QStringLiteral("metadataRedacted"), true);
+    metadata.insert(QStringLiteral("redactionReason"), QStringLiteral("private_mode"));
+
+    const CompanionContextSnapshot snapshot = DesktopContextThreadBuilder::fromActiveWindow(
+        QStringLiteral("C:/Program Files/Google/Chrome/Application/chrome.exe"),
+        QStringLiteral("private_mode_redacted"),
+        metadata);
+
+    QCOMPARE(snapshot.taskId, QStringLiteral("browser_tab"));
+    QCOMPARE(snapshot.topic, QStringLiteral("private_mode"));
+    QVERIFY(snapshot.threadId.value.endsWith(QStringLiteral("::private_mode")));
+    QCOMPARE(snapshot.metadata.value(QStringLiteral("redactionReason")).toString(), QStringLiteral("private_mode"));
 }
 
 void DesktopContextThreadBuilderTests::buildsClipboardContext()

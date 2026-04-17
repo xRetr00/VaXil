@@ -8,6 +8,7 @@
 #include <memory>
 
 #include "core/AssistantTypes.h"
+#include "companion/contracts/FeedbackSignal.h"
 #include "memory/MemoryManager.h"
 
 class MemoryStore : public QObject
@@ -40,6 +41,13 @@ public:
     bool deleteCompiledContextPolicyTuningState();
     QVariantMap compiledContextPolicyTuningState() const;
     QVariantList compiledContextPolicyTuningHistory() const;
+    QVariantList compiledContextPolicyTuningEpisodes() const;
+    QList<MemoryRecord> compiledContextPolicyTuningEpisodeMemory(int maxCount = 4) const;
+    QVariantList compiledContextPolicyTuningFeedbackScores() const;
+    QList<MemoryRecord> compiledContextPolicyTuningFeedbackScoreMemory(int maxCount = 4) const;
+    bool appendFeedbackSignal(const FeedbackSignal &signal);
+    QVariantList feedbackSignalHistory() const;
+    QList<MemoryRecord> feedbackSignalMemory(int maxRecentCount = 3) const;
 
 private:
     QString transcriptPath() const;
@@ -50,5 +58,7 @@ private:
     QString compiledContextPolicyHistoryStorageKey() const;
     QString compiledContextPolicyTuningStorageKey() const;
     QString compiledContextPolicyTuningHistoryStorageKey() const;
+    QString compiledContextPolicyTuningEpisodesStorageKey() const;
+    QString feedbackSignalHistoryStorageKey() const;
     std::unique_ptr<MemoryManager> m_memoryManager;
 };

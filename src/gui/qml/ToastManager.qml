@@ -4,7 +4,8 @@ import QtQuick.Controls
 Item {
     id: root
 
-    signal toastClicked(int taskId)
+    signal toastClicked(int taskId, string taskType)
+    signal toastDismissed(int taskId, string taskType, string reason)
     z: 9999
 
     width: Math.max(320, Math.min(parent ? parent.width * 0.36 : 460, 540))
@@ -71,6 +72,8 @@ Item {
 
     function trimQueue() {
         while (toastModel.count > 4) {
+            const toast = toastModel.get(toastModel.count - 1)
+            root.toastDismissed(toast.taskId, toast.taskType, "deferred")
             toastModel.remove(toastModel.count - 1, 1)
         }
     }
@@ -85,6 +88,8 @@ Item {
         const now = Date.now()
         for (let i = toastModel.count - 1; i >= 0; --i) {
             if (toastModel.get(i).expiresAt <= now) {
+                const toast = toastModel.get(i)
+                root.toastDismissed(toast.taskId, toast.taskType, "ignored")
                 toastModel.remove(i, 1)
             }
         }
@@ -160,9 +165,11 @@ Item {
                 timestampLabel: createdAt
                 taskId: modelTaskId
                 onClicked: function(clickedTaskId) {
-                    root.toastClicked(clickedTaskId)
+                    root.toastClicked(clickedTaskId, taskType)
+                    root.dismissAt(index)
                 }
                 onDismissed: function() {
+                    root.toastDismissed(modelTaskId, taskType, "dismissed")
                     root.dismissAt(index)
                 }
 

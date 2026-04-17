@@ -275,6 +275,8 @@ set(JARVIS_SOURCES
     src/connectors/NotesDirectoryEventBuilder.cpp
     src/connectors/NotesDirectoryMonitor.cpp
     src/behavior_tuning/CompiledContextPolicyTuningPromotionPolicy.cpp
+    src/behavior_tuning/FeedbackSignalEventBuilder.cpp
+    src/behavior_tuning/TuningEpisodeFeedbackScorer.cpp
     src/cognition/CooldownEngine.cpp
     src/cognition/CompiledContextDeltaTracker.cpp
     src/cognition/CompiledContextHistoryPolicy.cpp
@@ -314,6 +316,9 @@ set(JARVIS_SOURCES
     src/memory/MemoryManager.cpp
     src/memory/MemoryStore.cpp
     src/memory/MemoryStoreContextPolicies.cpp
+    src/memory/MemoryStoreFeedbackSignals.cpp
+    src/memory/MemoryStoreTuningFeedbackScores.cpp
+    src/memory/MemoryStoreTuningEpisodes.cpp
     src/overlay/OverlayController.cpp
     src/perception/DesktopContextThreadBuilder.cpp
     src/perception/DesktopPerceptionMonitor.cpp
@@ -385,6 +390,8 @@ set(JARVIS_HEADERS
     src/connectors/NotesDirectoryEventBuilder.h
     src/connectors/NotesDirectoryMonitor.h
     src/behavior_tuning/CompiledContextPolicyTuningPromotionPolicy.h
+    src/behavior_tuning/FeedbackSignalEventBuilder.h
+    src/behavior_tuning/TuningEpisodeFeedbackScorer.h
     src/cognition/CooldownEngine.h
     src/cognition/CompiledContextDeltaTracker.h
     src/cognition/CompiledContextHistoryPolicy.h
@@ -1030,6 +1037,38 @@ if(JARVIS_BUILD_TESTS)
     add_test(NAME jarvis_behavior_tuning_policy_tests COMMAND jarvis_behavior_tuning_policy_tests)
     set_tests_properties(jarvis_behavior_tuning_policy_tests PROPERTIES ENVIRONMENT "PATH=${QT_BIN_DIR}${JARVIS_PATH_ENV_SEPARATOR}$ENV{PATH}")
     jarvis_copy_optional_runtime_libraries(jarvis_behavior_tuning_policy_tests)
+
+    qt_add_executable(jarvis_feedback_signal_tests
+        tests/FeedbackSignalEventBuilderTests.cpp
+        src/behavior_tuning/FeedbackSignalEventBuilder.cpp
+    )
+
+    target_include_directories(jarvis_feedback_signal_tests PRIVATE src)
+    target_link_libraries(jarvis_feedback_signal_tests
+        PRIVATE
+            Qt6::Core
+            Qt6::Test
+    )
+
+    add_test(NAME jarvis_feedback_signal_tests COMMAND jarvis_feedback_signal_tests)
+    set_tests_properties(jarvis_feedback_signal_tests PROPERTIES ENVIRONMENT "PATH=${QT_BIN_DIR}${JARVIS_PATH_ENV_SEPARATOR}$ENV{PATH}")
+    jarvis_copy_optional_runtime_libraries(jarvis_feedback_signal_tests)
+
+    qt_add_executable(jarvis_tuning_episode_feedback_scorer_tests
+        tests/TuningEpisodeFeedbackScorerTests.cpp
+        src/behavior_tuning/TuningEpisodeFeedbackScorer.cpp
+    )
+
+    target_include_directories(jarvis_tuning_episode_feedback_scorer_tests PRIVATE src)
+    target_link_libraries(jarvis_tuning_episode_feedback_scorer_tests
+        PRIVATE
+            Qt6::Core
+            Qt6::Test
+    )
+
+    add_test(NAME jarvis_tuning_episode_feedback_scorer_tests COMMAND jarvis_tuning_episode_feedback_scorer_tests)
+    set_tests_properties(jarvis_tuning_episode_feedback_scorer_tests PROPERTIES ENVIRONMENT "PATH=${QT_BIN_DIR}${JARVIS_PATH_ENV_SEPARATOR}$ENV{PATH}")
+    jarvis_copy_optional_runtime_libraries(jarvis_tuning_episode_feedback_scorer_tests)
 
     qt_add_executable(jarvis_response_finalizer_tests
         tests/ResponseFinalizerTests.cpp

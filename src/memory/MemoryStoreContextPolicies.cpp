@@ -67,6 +67,50 @@ bool upsertTuningHistoryEntry(MemoryStore *store, const QVariantList &history)
     return store->upsertEntry(entry);
 }
 
+bool upsertTuningEpisodesEntry(MemoryStore *store, const QVariantList &episodes)
+{
+    const QJsonDocument document = QJsonDocument::fromVariant(episodes);
+    MemoryEntry entry;
+    entry.type = MemoryType::Context;
+    entry.kind = QStringLiteral("context");
+    entry.key = QStringLiteral("compiled_context_policy_tuning_episodes_state");
+    entry.title = QStringLiteral("compiled_context_policy_tuning_episodes");
+    entry.value = QString::fromUtf8(document.toJson(QJsonDocument::Compact));
+    entry.content = entry.value;
+    entry.id = QStringLiteral("compiled-context-policy-tuning-episodes");
+    entry.confidence = 0.9f;
+    entry.source = QStringLiteral("compiled_history_policy_tuning_episodes");
+    entry.tags = {QStringLiteral("compiled_context_policy_tuning_episodes")};
+    entry.createdAt = QDateTime::currentDateTimeUtc();
+    entry.updatedAt = entry.createdAt.toUTC().toString(Qt::ISODate);
+    return store->upsertEntry(entry);
+}
+
+QVariantMap tuningEpisode(const QString &action,
+                          const QString &reason,
+                          const QVariantMap &state,
+                          int fromVersion,
+                          int toVersion,
+                          qint64 nowMs)
+{
+    return {
+        {QStringLiteral("action"), action},
+        {QStringLiteral("reasonCode"), reason.trimmed().isEmpty()
+             ? QStringLiteral("behavior_tuning.unknown")
+             : reason.trimmed()},
+        {QStringLiteral("fromVersion"), fromVersion},
+        {QStringLiteral("toVersion"), toVersion},
+        {QStringLiteral("mode"), state.value(QStringLiteral("tuningCurrentMode")).toString().trimmed()},
+        {QStringLiteral("volatility"), state.value(QStringLiteral("tuningVolatilityLevel")).toString().trimmed()},
+        {QStringLiteral("alignmentBoost"), state.value(QStringLiteral("tuningAlignmentBoost")).toDouble()},
+        {QStringLiteral("defocusPenalty"), state.value(QStringLiteral("tuningDefocusPenalty")).toDouble()},
+        {QStringLiteral("volatilityPenalty"), state.value(QStringLiteral("tuningVolatilityPenalty")).toDouble()},
+        {QStringLiteral("suppressionScoreThreshold"),
+         state.value(QStringLiteral("tuningSuppressionScoreThreshold")).toDouble()},
+        {QStringLiteral("createdAtMs"), nowMs}
+    };
+}
+
 bool tuningStateChanged(const QVariantMap &lhs, const QVariantMap &rhs)
 {
     const QStringList keys = {
@@ -254,6 +298,22 @@ bool MemoryStore::promoteCompiledContextPolicyTuningState(const QVariantMap &sta
         return false;
     }
 
+    const int fromVersion = existingState.value(QStringLiteral("version"), 0).toInt();
+    const int toVersion = normalizedState.value(QStringLiteral("version"), 1).toInt();
+    QVariantList episodes = compiledContextPolicyTuningEpisodes();
+    episodes.push_back(tuningEpisode(
+        normalizedState.value(QStringLiteral("tuningPromotionAction"), QStringLiteral("promote")).toString(),
+        normalizedState.value(QStringLiteral("tuningPromotionReason"),
+                              QStringLiteral("behavior_tuning.promote_direct")).toString(),
+        normalizedState,
+        fromVersion,
+        toVersion,
+        updatedAtMs));
+    while (episodes.size() > 48) {
+        episodes.removeFirst();
+    }
+    upsertTuningEpisodesEntry(this, episodes);
+
     QVariantList history = compiledContextPolicyTuningHistory();
     if (history.isEmpty() || tuningStateChanged(history.last().toMap(), normalizedState)) {
         QVariantMap snapshot = normalizedState;
@@ -274,6 +334,7 @@ bool MemoryStore::rollbackCompiledContextPolicyTuningState(const QVariantMap &me
         return false;
     }
 
+    const QVariantMap rolledBackState = history.last().toMap();
     history.removeLast();
     const QVariantMap rollbackState = history.last().toMap();
     if (rollbackState.isEmpty()) {
@@ -307,14 +368,31 @@ bool MemoryStore::rollbackCompiledContextPolicyTuningState(const QVariantMap &me
                   normalizedState.value(QStringLiteral("tuningCurrentMode")).toString().trimmed()};
     entry.createdAt = QDateTime::currentDateTimeUtc();
     entry.updatedAt = entry.createdAt.toUTC().toString(Qt::ISODate);
-    return upsertEntry(entry);
+    if (!upsertEntry(entry)) {
+        return false;
+    }
+
+    QVariantList episodes = compiledContextPolicyTuningEpisodes();
+    episodes.push_back(tuningEpisode(
+        QStringLiteral("rollback"),
+        normalizedState.value(QStringLiteral("tuningPromotionReason"),
+                              QStringLiteral("behavior_tuning.rollback")).toString(),
+        normalizedState,
+        rolledBackState.value(QStringLiteral("version"), 1).toInt(),
+        normalizedState.value(QStringLiteral("version"), 1).toInt(),
+        normalizedState.value(QStringLiteral("updatedAtMs")).toLongLong()));
+    while (episodes.size() > 48) {
+        episodes.removeFirst();
+    }
+    return upsertTuningEpisodesEntry(this, episodes);
 }
 
 bool MemoryStore::deleteCompiledContextPolicyTuningState()
 {
     const bool deletedCurrent = deleteEntry(compiledContextPolicyTuningStorageKey());
     const bool deletedHistory = deleteEntry(compiledContextPolicyTuningHistoryStorageKey());
-    return deletedCurrent || deletedHistory;
+    const bool deletedEpisodes = deleteEntry(compiledContextPolicyTuningEpisodesStorageKey());
+    return deletedCurrent || deletedHistory || deletedEpisodes;
 }
 
 QVariantMap MemoryStore::compiledContextPolicyTuningState() const

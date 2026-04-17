@@ -421,9 +421,10 @@ SelectionContextCompilation SelectionContextCompiler::compile(const QString &que
     const QList<MemoryRecord> evolutionRecords = memoryPolicyHandler != nullptr
         ? memoryPolicyHandler->compiledContextPolicyEvolutionRecords()
         : QList<MemoryRecord>{};
-    const QList<MemoryRecord> tuningRecords = memoryPolicyHandler != nullptr
-        ? memoryPolicyHandler->compiledContextPolicyTuningSignalRecords()
-        : QList<MemoryRecord>{};
+    const QList<MemoryRecord> tuningRecords = memoryPolicyHandler
+        ? memoryPolicyHandler->compiledContextPolicyTuningSignalRecords() : QList<MemoryRecord>{};
+    const QList<MemoryRecord> tuningEpisodeRecords = memoryPolicyHandler
+        ? memoryPolicyHandler->compiledContextPolicyTuningEpisodeRecords() : QList<MemoryRecord>{};
     const CompiledContextHistoryPolicyDecision effectiveHistoryDecision = historyDecision.isValid()
         ? historyDecision
         : CompiledContextHistoryPolicy::evaluate(historyRecords);
@@ -442,7 +443,8 @@ SelectionContextCompilation SelectionContextCompiler::compile(const QString &que
     }
     const QString layeredSelectionDirective =
         CompiledContextLayeredSignalBuilder::buildSelectionDirective(
-            mergedRecords(mergedRecords(layeredMemoryRecords, evolutionRecords), tuningRecords));
+            mergedRecords(mergedRecords(mergedRecords(layeredMemoryRecords, evolutionRecords), tuningRecords),
+                          tuningEpisodeRecords));
     if (!layeredSelectionDirective.isEmpty()) {
         compilation.selectionInput = QStringLiteral("%1\n\n%2")
             .arg(compilation.selectionInput.trimmed(), layeredSelectionDirective)
@@ -457,7 +459,8 @@ SelectionContextCompilation SelectionContextCompiler::compile(const QString &que
         effectiveHistoryDecision);
     compilation.promptContextRecords.append(
         CompiledContextLayeredSignalBuilder::buildPromptContextRecords(
-            mergedRecords(mergedRecords(layeredMemoryRecords, evolutionRecords), tuningRecords)));
+            mergedRecords(mergedRecords(mergedRecords(layeredMemoryRecords, evolutionRecords), tuningRecords),
+                          tuningEpisodeRecords)));
     compilation.promptContext = promptContextFromRecords(compilation.promptContextRecords);
     compilation.selectedMemoryRecords = memoryPolicyHandler
         ? memoryPolicyHandler->requestMemory(compilation.selectionInput, runtimeRecord)
@@ -475,6 +478,9 @@ SelectionContextCompilation SelectionContextCompiler::compile(const QString &que
             compilation.compiledContextRecords.push_back(record);
         }
         for (const MemoryRecord &record : tuningRecords) {
+            compilation.compiledContextRecords.push_back(record);
+        }
+        for (const MemoryRecord &record : tuningEpisodeRecords) {
             compilation.compiledContextRecords.push_back(record);
         }
     }
