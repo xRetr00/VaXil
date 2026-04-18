@@ -3,6 +3,7 @@
 #include <QSqlDatabase>
 #include <QTemporaryDir>
 
+#include "cognition/CooldownEngine.h"
 #include "cognition/ProactiveCooldownTracker.h"
 #include "cognition/ProactiveSuggestionPlanner.h"
 #include "telemetry/BehavioralEventLedger.h"
@@ -16,6 +17,7 @@ private slots:
     void connectorFreshnessAffectsNovelty();
     void connectorBurstLowersCooldownNovelty();
     void connectorFlowRecordsReconstructableLedgerTrace();
+    void multiSurfaceFlowCoversSuppressDeferPresentBranches();
     void focusedDesktopWorkSuppressesNonCriticalSuggestion();
 };
 
@@ -301,6 +303,98 @@ void ProactiveSuggestionLoopScenarioTests::connectorFlowRecordsReconstructableLe
     QVERIFY(sawProposal);
     QVERIFY(sawCooldown);
     QVERIFY(sawPresented);
+}
+
+void ProactiveSuggestionLoopScenarioTests::multiSurfaceFlowCoversSuppressDeferPresentBranches()
+{
+    const qint64 nowMs = QDateTime::fromString(QStringLiteral("2026-04-18T16:00:00.000Z"),
+                                               Qt::ISODateWithMs).toMSecsSinceEpoch();
+
+    // 1) Desktop-focused context should suppress non-critical proactive suggestions.
+    const ProactiveSuggestionPlan desktopSuppressed = ProactiveSuggestionPlanner::plan({
+        .sourceKind = QStringLiteral("desktop_context"),
+        .taskType = QStringLiteral("active_window"),
+        .resultSummary = QStringLiteral("User is editing ConnectorContextCompiler.cpp"),
+        .sourceUrls = {},
+        .sourceMetadata = {},
+        .success = true,
+        .desktopContext = {
+            {QStringLiteral("taskId"), QStringLiteral("editor_document")},
+            {QStringLiteral("threadId"), QStringLiteral("editor::vaxil::connector_compiler")},
+            {QStringLiteral("documentContext"), QStringLiteral("ConnectorContextCompiler.cpp")},
+            {QStringLiteral("workspaceContext"), QStringLiteral("Vaxil")}
+        },
+        .desktopContextAtMs = nowMs,
+        .cooldownState = CooldownState{},
+        .focusMode = FocusModeState{},
+        .nowMs = nowMs + 1000
+    });
+    QVERIFY(!desktopSuppressed.decision.allowed);
+    QCOMPARE(desktopSuppressed.decision.action, QStringLiteral("suppress_proposal"));
+
+    // 2) Low-signal task results should also be suppressed by source-specific policy.
+    const ProactiveSuggestionPlan taskSuppressed = ProactiveSuggestionPlanner::plan({
+        .sourceKind = QStringLiteral("task_result_surface"),
+        .taskType = QStringLiteral("background_sync"),
+        .resultSummary = QStringLiteral("Done"),
+        .sourceUrls = {},
+        .sourceMetadata = {},
+        .success = true,
+        .cooldownState = CooldownState{},
+        .focusMode = FocusModeState{},
+        .nowMs = nowMs + 2000
+    });
+    QVERIFY(!taskSuppressed.decision.allowed);
+    QCOMPARE(taskSuppressed.decision.reasonCode,
+             QStringLiteral("proposal.source_policy.low_signal_task_result"));
+
+    // 3) Defer branch is explicitly validated at cooldown-policy level.
+    CooldownEngine cooldownEngine;
+    const BehaviorDecision deferDecision = cooldownEngine.evaluate({
+        .context = CompanionContextSnapshot{
+            .threadId = ContextThreadId{},
+            .appId = QStringLiteral("system"),
+            .taskId = QStringLiteral("background_sync"),
+            .topic = QStringLiteral("maintenance"),
+            .recentIntent = QStringLiteral("none"),
+            .confidence = 0.20,
+            .metadata = {}
+        },
+        .state = CooldownState{},
+        .focusMode = FocusModeState{},
+        .priority = QStringLiteral("medium"),
+        .confidence = 0.40,
+        .novelty = 0.52,
+        .nowMs = nowMs + 2500
+    });
+    QVERIFY(!deferDecision.allowed);
+    QCOMPARE(deferDecision.action, QStringLiteral("defer"));
+    QCOMPARE(deferDecision.reasonCode, QStringLiteral("confidence.low"));
+
+    // 4) Fresh connector updates should still present when not blocked by focused desktop context.
+    const ProactiveSuggestionPlan connectorPresented = ProactiveSuggestionPlanner::plan({
+        .sourceKind = QStringLiteral("connector_schedule_calendar"),
+        .taskType = QStringLiteral("live_update"),
+        .resultSummary = QStringLiteral("Schedule updated: Sprint planning"),
+        .sourceUrls = {},
+        .sourceMetadata = scheduleMetadata(QStringLiteral("2026-04-18T15:58:00.000Z")),
+        .presentationKey = QStringLiteral("connector:schedule:team"),
+        .lastPresentedKey = QString(),
+        .lastPresentedAtMs = 0,
+        .success = true,
+        .desktopContext = {
+            {QStringLiteral("taskId"), QStringLiteral("idle")},
+            {QStringLiteral("threadId"), QStringLiteral("desktop::idle")}
+        },
+        .desktopContextAtMs = nowMs - 200000, // stale desktop context so focus suppression does not apply
+        .cooldownState = CooldownState{},
+        .focusMode = FocusModeState{},
+        .nowMs = nowMs + 4000
+    });
+    QVERIFY(connectorPresented.decision.allowed);
+    QCOMPARE(connectorPresented.decision.action, QStringLiteral("allow_proposal"));
+    QCOMPARE(connectorPresented.selectedProposal.capabilityId, QStringLiteral("schedule_follow_up"));
+    QVERIFY(!connectorPresented.selectedSummary.isEmpty());
 }
 
 void ProactiveSuggestionLoopScenarioTests::focusedDesktopWorkSuppressesNonCriticalSuggestion()

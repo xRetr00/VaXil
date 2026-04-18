@@ -742,7 +742,7 @@ bool LearningDataStorage::writeWavFile(const QString &absolutePath,
         return false;
     }
 
-    const quint32 dataSize = static_cast<quint32>(std::max(0, pcmData.size()));
+    const quint32 dataSize = static_cast<quint32>(std::max<qsizetype>(0, pcmData.size()));
     const quint32 chunkSize = 36 + dataSize;
     const quint32 byteRate = static_cast<quint32>(safeSampleRate * safeChannels * bytesPerSample);
     const quint16 blockAlign = static_cast<quint16>(safeChannels * bytesPerSample);
