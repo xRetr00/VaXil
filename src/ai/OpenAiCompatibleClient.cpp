@@ -5,6 +5,7 @@
 #include <QJsonObject>
 #include <QNetworkRequest>
 #include <QScopeGuard>
+#include <QDebug>
 #include <QVariantMap>
 #include <QUrl>
 
@@ -74,6 +75,8 @@ OpenAiCompatibleClient::OpenAiCompatibleClient(QObject *parent)
 void OpenAiCompatibleClient::setEndpoint(const QString &endpoint)
 {
     m_endpoint = normalizeEndpoint(endpoint, m_providerKind);
+    qInfo().noquote() << "[AI_PROVIDER] endpoint_set provider=" << m_providerKind
+                      << " endpoint=" << m_endpoint;
 }
 
 void OpenAiCompatibleClient::setProviderConfig(const QString &providerKind, const QString &apiKey)
@@ -82,6 +85,9 @@ void OpenAiCompatibleClient::setProviderConfig(const QString &providerKind, cons
     m_providerKind = normalizedProvider.isEmpty() ? QStringLiteral("openai_compatible_local") : normalizedProvider;
     m_apiKey = apiKey.trimmed();
     m_endpoint = normalizeEndpoint(m_endpoint, m_providerKind);
+    qInfo().noquote() << "[AI_PROVIDER] config_set provider=" << m_providerKind
+                      << " endpoint=" << m_endpoint
+                      << " apiKeyConfigured=" << (!m_apiKey.isEmpty() ? "true" : "false");
 }
 
 QString OpenAiCompatibleClient::endpoint() const
@@ -91,11 +97,18 @@ QString OpenAiCompatibleClient::endpoint() const
 
 void OpenAiCompatibleClient::fetchModels()
 {
+    qInfo().noquote() << "[AI_PROVIDER] fetch_models provider=" << m_providerKind
+                      << " endpoint=" << m_endpoint;
     auto *reply = m_networkAccessManager->get(buildJsonRequest(QStringLiteral("/v1/models")));
     connect(reply, &QNetworkReply::finished, this, [this, reply]() {
         const auto cleanup = qScopeGuard([reply]() { reply->deleteLater(); });
+        const int httpStatus = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
 
         if (reply->error() != QNetworkReply::NoError) {
+            qWarning().noquote() << "[AI_PROVIDER] fetch_models_failed provider=" << m_providerKind
+                                 << " endpoint=" << m_endpoint
+                                 << " httpStatus=" << httpStatus
+                                 << " error=" << reply->errorString();
             emit availabilityChanged({false, false, QStringLiteral("%1 offline").arg(providerDisplayName())});
             emit modelsReady({});
             return;
@@ -111,6 +124,10 @@ void OpenAiCompatibleClient::fetchModels()
             });
         }
 
+        qInfo().noquote() << "[AI_PROVIDER] fetch_models_ready provider=" << m_providerKind
+                          << " endpoint=" << m_endpoint
+                          << " httpStatus=" << httpStatus
+                          << " count=" << models.size();
         emit availabilityChanged({true, !models.isEmpty(), QStringLiteral("%1 connected").arg(providerDisplayName())});
         emit modelsReady(models);
         probeCapabilities();
@@ -159,6 +176,12 @@ quint64 OpenAiCompatibleClient::sendChatRequest(const QList<AiMessage> &messages
     }
 
     m_activeRequestId = ++m_requestCounter;
+    qInfo().noquote() << "[AI_PROVIDER] chat_request_start requestId=" << m_activeRequestId
+                      << " provider=" << m_providerKind
+                      << " endpoint=" << m_endpoint
+                      << " model=" << model
+                      << " stream=" << (options.stream ? "true" : "false")
+                      << " messageCount=" << messages.size();
 
     QNetworkRequest request = buildJsonRequest(QStringLiteral("/v1/chat/completions"));
     m_activeReply = m_networkAccessManager->post(request, QJsonDocument(body).toJson(QJsonDocument::Compact));
@@ -198,8 +221,15 @@ quint64 OpenAiCompatibleClient::sendChatRequest(const QList<AiMessage> &messages
             return;
         }
 
+        const int httpStatus = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+
         if (options.stream) {
             handleStreamingReply(requestId, reply);
+            qInfo().noquote() << "[AI_PROVIDER] chat_request_finished requestId=" << requestId
+                              << " provider=" << m_providerKind
+                              << " endpoint=" << m_endpoint
+                              << " httpStatus=" << httpStatus
+                              << " chars=" << m_streamedContent.size();
             emit requestFinished(requestId, m_streamedContent);
             return;
         }
@@ -209,6 +239,11 @@ quint64 OpenAiCompatibleClient::sendChatRequest(const QList<AiMessage> &messages
         const auto content = choices.isEmpty()
             ? QString{}
             : choices.first().toObject().value(QStringLiteral("message")).toObject().value(QStringLiteral("content")).toString();
+        qInfo().noquote() << "[AI_PROVIDER] chat_request_finished requestId=" << requestId
+                          << " provider=" << m_providerKind
+                          << " endpoint=" << m_endpoint
+                          << " httpStatus=" << httpStatus
+                          << " chars=" << content.size();
         emit requestFinished(requestId, content);
     });
 
@@ -270,6 +305,12 @@ quint64 OpenAiCompatibleClient::sendAgentRequest(const AgentRequest &request)
     body.insert(QStringLiteral("reasoning"), QJsonObject{{QStringLiteral("effort"), reasoningEffortForMode(request.mode)}});
 
     m_activeRequestId = ++m_requestCounter;
+    qInfo().noquote() << "[AI_PROVIDER] agent_request_start requestId=" << m_activeRequestId
+                      << " provider=" << m_providerKind
+                      << " endpoint=" << m_endpoint
+                      << " model=" << request.model
+                      << " hasPreviousResponse=" << (!request.previousResponseId.trimmed().isEmpty() ? "true" : "false")
+                      << " toolResultCount=" << request.toolResults.size();
     QNetworkRequest httpRequest = buildJsonRequest(QStringLiteral("/v1/responses"));
     m_activeReply = m_networkAccessManager->post(httpRequest, QJsonDocument(body).toJson(QJsonDocument::Compact));
     const quint64 requestId = m_activeRequestId;
@@ -301,6 +342,13 @@ quint64 OpenAiCompatibleClient::sendAgentRequest(const AgentRequest &request)
 
         const QByteArray payload = reply->readAll();
         const AgentResponse response = parseAgentResponse(payload);
+        const int httpStatus = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+        qInfo().noquote() << "[AI_PROVIDER] agent_request_finished requestId=" << requestId
+                          << " provider=" << m_providerKind
+                          << " endpoint=" << m_endpoint
+                          << " httpStatus=" << httpStatus
+                          << " responseChars=" << response.outputText.size()
+                          << " toolCalls=" << response.toolCalls.size();
         emit agentResponseReady(requestId, response);
     });
 
@@ -322,6 +370,10 @@ void OpenAiCompatibleClient::cancelActiveRequest()
 
 void OpenAiCompatibleClient::finishWithFailure(quint64 requestId, const QString &errorText)
 {
+    qWarning().noquote() << "[AI_PROVIDER] request_failed requestId=" << requestId
+                         << " provider=" << m_providerKind
+                         << " endpoint=" << m_endpoint
+                         << " error=" << errorText;
     emit requestFailed(requestId, errorText);
 }
 
@@ -336,6 +388,11 @@ QNetworkRequest OpenAiCompatibleClient::buildJsonRequest(const QString &path) co
         request.setRawHeader("HTTP-Referer", "https://github.com/xRetr00/Vaxil");
         request.setRawHeader("X-Title", "Vaxil");
     }
+    qInfo().noquote() << "[AI_PROVIDER] build_request provider=" << m_providerKind
+                      << " endpoint=" << m_endpoint
+                      << " path=" << path
+                      << " hasAuthHeader=" << (!m_apiKey.isEmpty() ? "true" : "false")
+                      << " openRouterHeaders=" << (m_providerKind == QStringLiteral("openrouter") ? "true" : "false");
     return request;
 }
 
@@ -352,6 +409,8 @@ QString OpenAiCompatibleClient::providerDisplayName() const
 
 void OpenAiCompatibleClient::probeCapabilities()
 {
+    qInfo().noquote() << "[AI_PROVIDER] probe_capabilities provider=" << m_providerKind
+                      << " endpoint=" << m_endpoint;
     auto *reply = m_networkAccessManager->sendCustomRequest(buildJsonRequest(QStringLiteral("/v1/responses")), "OPTIONS");
     connect(reply, &QNetworkReply::finished, this, [this, reply]() {
         const auto cleanup = qScopeGuard([reply]() { reply->deleteLater(); });
@@ -367,6 +426,11 @@ void OpenAiCompatibleClient::probeCapabilities()
         m_capabilities.status = responsesApi
             ? QStringLiteral("Agent tools available")
             : QStringLiteral("Agent tools unavailable; using chat completions fallback");
+        qInfo().noquote() << "[AI_PROVIDER] capabilities_ready provider=" << m_providerKind
+                          << " endpoint=" << m_endpoint
+                          << " httpStatus=" << httpStatus
+                          << " responsesApi=" << (responsesApi ? "true" : "false")
+                          << " providerMode=" << m_capabilities.providerMode;
         emit capabilitiesChanged(m_capabilities);
     });
 }

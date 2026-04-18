@@ -17,6 +17,17 @@ QString clipAuditText(QString text, int maxChars = 200000)
     return text;
 }
 
+QString providerKindForAudit(const AppSettings *settings)
+{
+    const QString kind = settings ? settings->chatBackendKind().trimmed().toLower() : QString{};
+    return kind.isEmpty() ? QStringLiteral("openai_compatible_local") : kind;
+}
+
+QString providerEndpointForAudit(const AppSettings *settings)
+{
+    return settings ? settings->chatBackendEndpoint().trimmed() : QString{};
+}
+
 QString reasoningModeName(ReasoningMode mode)
 {
     switch (mode) {
@@ -209,10 +220,14 @@ quint64 AiRequestCoordinator::startConversationRequest(AiBackendClient *backendC
         context.visionContext);
 
     if (m_loggingService) {
+        const QString providerKind = providerKindForAudit(m_settings);
+        const QString providerEndpoint = providerEndpointForAudit(m_settings);
         m_loggingService->infoFor(
             QStringLiteral("ai_prompt"),
-            QStringLiteral("[conversation_request] model=%1 mode=%2 stream=%3 timeoutMs=%4 historyCount=%5 visionContextChars=%6 sessionGoal=%7 nextStepHint=%8")
-                .arg(context.modelId,
+            QStringLiteral("[conversation_request] provider=%1 endpoint=%2 model=%3 mode=%4 stream=%5 timeoutMs=%6 historyCount=%7 visionContextChars=%8 sessionGoal=%9 nextStepHint=%10")
+                .arg(providerKind,
+                     providerEndpoint,
+                     context.modelId,
                      reasoningModeName(mode),
                      context.streaming ? QStringLiteral("true") : QStringLiteral("false"),
                      QString::number(context.timeoutMs),
@@ -254,10 +269,14 @@ AgentStartRequestResult AiRequestCoordinator::startAgentRequest(AiBackendClient 
     }
 
     if (m_loggingService) {
+        const QString providerKind = providerKindForAudit(m_settings);
+        const QString providerEndpoint = providerEndpointForAudit(m_settings);
         m_loggingService->infoFor(
             QStringLiteral("route_audit"),
-            QStringLiteral("[agent_request] transport=%1 model=%2 intent=%3 memoryAutoWrite=%4 toolCount=%5 toolResultCount=%6")
-                .arg(transportModeName(result.transportMode),
+            QStringLiteral("[agent_request] provider=%1 endpoint=%2 transport=%3 model=%4 intent=%5 memoryAutoWrite=%6 toolCount=%7 toolResultCount=%8")
+                .arg(providerKind,
+                     providerEndpoint,
+                     transportModeName(result.transportMode),
                      context.modelId,
                      QString::number(static_cast<int>(context.intent)),
                      context.memoryAutoWrite ? QStringLiteral("true") : QStringLiteral("false"),
@@ -293,10 +312,14 @@ AgentStartRequestResult AiRequestCoordinator::startAgentRequest(AiBackendClient 
             .timeout = std::chrono::milliseconds(context.timeoutMs)
         };
         if (m_loggingService) {
+            const QString providerKind = providerKindForAudit(m_settings);
+            const QString providerEndpoint = providerEndpointForAudit(m_settings);
             m_loggingService->infoFor(
                 QStringLiteral("ai_prompt"),
-                QStringLiteral("[agent_request.responses] model=%1 mode=%2 timeoutMs=%3 workspaceRoot=%4")
-                    .arg(context.modelId,
+                QStringLiteral("[agent_request.responses] provider=%1 endpoint=%2 model=%3 mode=%4 timeoutMs=%5 workspaceRoot=%6")
+                    .arg(providerKind,
+                         providerEndpoint,
+                         context.modelId,
                          reasoningModeName(context.mode),
                          QString::number(context.timeoutMs),
                          context.workspaceRoot));
@@ -322,10 +345,14 @@ AgentStartRequestResult AiRequestCoordinator::startAgentRequest(AiBackendClient 
         context.visionContext);
 
     if (m_loggingService) {
+        const QString providerKind = providerKindForAudit(m_settings);
+        const QString providerEndpoint = providerEndpointForAudit(m_settings);
         m_loggingService->infoFor(
             QStringLiteral("ai_prompt"),
-            QStringLiteral("[agent_request.chat_adapter] model=%1 mode=%2 timeoutMs=%3")
-                .arg(context.modelId,
+            QStringLiteral("[agent_request.chat_adapter] provider=%1 endpoint=%2 model=%3 mode=%4 timeoutMs=%5")
+                .arg(providerKind,
+                     providerEndpoint,
+                     context.modelId,
                      reasoningModeName(context.mode),
                      QString::number(context.timeoutMs)));
         m_loggingService->infoFor(QStringLiteral("ai_prompt"), clipAuditText(formatMessages(messages)));
@@ -379,10 +406,16 @@ quint64 AiRequestCoordinator::continueAgentRequest(AiBackendClient *backendClien
             .timeout = std::chrono::milliseconds(context.timeoutMs)
         };
         if (m_loggingService) {
+            const QString providerKind = providerKindForAudit(m_settings);
+            const QString providerEndpoint = providerEndpointForAudit(m_settings);
             m_loggingService->infoFor(
                 QStringLiteral("route_audit"),
-                QStringLiteral("[agent_continue.responses] model=%1 previousResponseId=%2 toolResultCount=%3")
-                    .arg(context.modelId, context.previousResponseId, QString::number(context.toolResults.size())));
+                QStringLiteral("[agent_continue.responses] provider=%1 endpoint=%2 model=%3 previousResponseId=%4 toolResultCount=%5")
+                    .arg(providerKind,
+                         providerEndpoint,
+                         context.modelId,
+                         context.previousResponseId,
+                         QString::number(context.toolResults.size())));
             m_loggingService->infoFor(QStringLiteral("memory_audit"), clipAuditText(formatMemoryContext(context.memory)));
             m_loggingService->infoFor(QStringLiteral("tool_audit"), clipAuditText(formatToolResults(context.toolResults)));
             m_loggingService->infoFor(QStringLiteral("ai_prompt"), clipAuditText(QStringLiteral("--- continuation instructions ---\n%1").arg(instructions)));
@@ -406,10 +439,15 @@ quint64 AiRequestCoordinator::continueAgentRequest(AiBackendClient *backendClien
         context.visionContext);
 
     if (m_loggingService) {
+        const QString providerKind = providerKindForAudit(m_settings);
+        const QString providerEndpoint = providerEndpointForAudit(m_settings);
         m_loggingService->infoFor(
             QStringLiteral("route_audit"),
-            QStringLiteral("[agent_continue.chat_adapter] model=%1 toolResultCount=%2")
-                .arg(context.modelId, QString::number(context.toolResults.size())));
+            QStringLiteral("[agent_continue.chat_adapter] provider=%1 endpoint=%2 model=%3 toolResultCount=%4")
+                .arg(providerKind,
+                     providerEndpoint,
+                     context.modelId,
+                     QString::number(context.toolResults.size())));
         m_loggingService->infoFor(QStringLiteral("memory_audit"), clipAuditText(formatMemoryContext(context.memory)));
         m_loggingService->infoFor(QStringLiteral("tool_audit"), clipAuditText(formatToolResults(context.toolResults)));
         m_loggingService->infoFor(QStringLiteral("ai_prompt"), clipAuditText(formatMessages(messages)));
@@ -444,9 +482,13 @@ quint64 AiRequestCoordinator::startCommandRequest(AiBackendClient *backendClient
         ReasoningMode::Fast);
 
     if (m_loggingService) {
+        const QString providerKind = providerKindForAudit(m_settings);
+        const QString providerEndpoint = providerEndpointForAudit(m_settings);
         m_loggingService->infoFor(
             QStringLiteral("ai_prompt"),
-            QStringLiteral("[command_request] model=%1 timeoutMs=%2 temperature=%3")
+            QStringLiteral("[command_request] provider=%1 endpoint=%2 model=%3 timeoutMs=%4 temperature=%5")
+                .arg(providerKind)
+                .arg(providerEndpoint)
                 .arg(context.modelId)
                 .arg(context.timeoutMs)
                 .arg(context.temperature, 0, 'f', 3));

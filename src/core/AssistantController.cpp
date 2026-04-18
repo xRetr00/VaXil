@@ -1586,6 +1586,14 @@ void AssistantController::initialize()
         m_visionIngestService->start();
     }
     m_voicePipelineRuntime->start();
+    if (m_loggingService) {
+        m_loggingService->infoFor(
+            QStringLiteral("route_audit"),
+            QStringLiteral("[ai_provider_config] action=initialize provider=%1 endpoint=%2 apiKeyConfigured=%3")
+                .arg(m_settings->chatBackendKind().trimmed().toLower(),
+                     m_settings->chatBackendEndpoint().trimmed(),
+                     m_settings->chatBackendApiKey().trimmed().isEmpty() ? QStringLiteral("false") : QStringLiteral("true")));
+    }
     m_aiBackendClient->setProviderConfig(m_settings->chatBackendKind(), m_settings->chatBackendApiKey());
     m_aiBackendClient->setEndpoint(m_settings->chatBackendEndpoint());
     m_deviceManager->registerDefaults();
@@ -1831,13 +1839,15 @@ void AssistantController::initialize()
         m_activeRequestId = requestId;
         clearSurfaceError(QStringLiteral("assistant"));
         if (m_loggingService) {
-            m_loggingService->info(QStringLiteral("Local AI backend request started. requestId=%1 kind=%2")
+            m_loggingService->info(QStringLiteral("Local AI backend request started. requestId=%1 kind=%2 provider=%3 endpoint=%4")
                 .arg(requestId)
                 .arg(m_activeRequestKind == RequestKind::CommandExtraction
                          ? QStringLiteral("command")
                          : (m_activeRequestKind == RequestKind::AgentConversation
                                 ? QStringLiteral("agent")
-                                : QStringLiteral("conversation"))));
+                                : QStringLiteral("conversation"))
+                .arg(m_settings->chatBackendKind().trimmed().toLower(),
+                     m_settings->chatBackendEndpoint().trimmed()));
         }
         setDuplexState(DuplexState::Processing);
         emit processingRequested();
@@ -1858,6 +1868,18 @@ void AssistantController::initialize()
                                                                m_agentCapabilities,
                                                                selectedModel(),
                                                                m_aiRequestCoordinator.get());
+        if (m_loggingService) {
+            m_loggingService->infoFor(
+                QStringLiteral("route_audit"),
+                QStringLiteral("[ai_provider_capabilities] provider=%1 endpoint=%2 responsesApi=%3 toolCalling=%4 selectedModelToolCapable=%5 effectiveMode=%6 status=%7")
+                    .arg(m_settings->chatBackendKind().trimmed().toLower(),
+                         m_settings->chatBackendEndpoint().trimmed(),
+                         m_agentCapabilities.responsesApi ? QStringLiteral("true") : QStringLiteral("false"),
+                         m_agentCapabilities.toolCalling ? QStringLiteral("true") : QStringLiteral("false"),
+                         m_agentCapabilities.selectedModelToolCapable ? QStringLiteral("true") : QStringLiteral("false"),
+                         m_agentCapabilities.providerMode,
+                         m_agentCapabilities.status.simplified()));
+        }
         emit agentStateChanged();
     });
     connect(m_aiBackendClient, &AiBackendClient::requestFinished, this, [this](quint64 requestId, const QString &fullText) {
@@ -1866,9 +1888,11 @@ void AssistantController::initialize()
         }
 
         if (m_loggingService) {
-            m_loggingService->info(QStringLiteral("Local AI backend request finished. requestId=%1 chars=%2")
+            m_loggingService->info(QStringLiteral("Local AI backend request finished. requestId=%1 chars=%2 provider=%3 endpoint=%4")
                 .arg(requestId)
-                .arg(fullText.size()));
+                .arg(fullText.size())
+                .arg(m_settings->chatBackendKind().trimmed().toLower(),
+                     m_settings->chatBackendEndpoint().trimmed()));
         }
 
         if (m_activeRequestKind == RequestKind::CommandExtraction) {
@@ -1888,8 +1912,11 @@ void AssistantController::initialize()
     connect(m_aiBackendClient, &AiBackendClient::requestFailed, this, [this](quint64 requestId, const QString &errorText) {
         if (requestId == m_activeRequestId) {
             if (m_loggingService) {
-                m_loggingService->error(QStringLiteral("Local AI backend request failed. requestId=%1 error=\"%2\"")
-                    .arg(QString::number(requestId), errorText));
+                m_loggingService->error(QStringLiteral("Local AI backend request failed. requestId=%1 provider=%2 endpoint=%3 error=\"%4\"")
+                    .arg(QString::number(requestId),
+                         m_settings->chatBackendKind().trimmed().toLower(),
+                         m_settings->chatBackendEndpoint().trimmed(),
+                         errorText));
             }
             const QString errorGroup = m_aiRequestCoordinator->errorGroupFor(errorText);
             refreshConversationSession();
@@ -2009,6 +2036,14 @@ void AssistantController::refreshModels()
 {
     m_modelCatalogResolved = false;
     updateStartupState();
+    if (m_loggingService) {
+        m_loggingService->infoFor(
+            QStringLiteral("route_audit"),
+            QStringLiteral("[ai_provider_config] action=refresh_models provider=%1 endpoint=%2 apiKeyConfigured=%3")
+                .arg(m_settings->chatBackendKind().trimmed().toLower(),
+                     m_settings->chatBackendEndpoint().trimmed(),
+                     m_settings->chatBackendApiKey().trimmed().isEmpty() ? QStringLiteral("false") : QStringLiteral("true")));
+    }
     m_aiBackendClient->setProviderConfig(m_settings->chatBackendKind(), m_settings->chatBackendApiKey());
     m_aiBackendClient->setEndpoint(m_settings->chatBackendEndpoint());
     m_modelCatalogService->refresh();
