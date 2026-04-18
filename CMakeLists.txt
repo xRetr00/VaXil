@@ -1542,10 +1542,11 @@ if(JARVIS_BUILD_TESTS)
         src/cognition/SuggestionProposalPolicyScoring.cpp
         src/cognition/DesktopWorkMode.cpp
         src/cognition/SuggestionProposalRanker.cpp
+        src/telemetry/BehavioralEventLedger.cpp
     )
 
     target_include_directories(jarvis_proactive_loop_scenario_tests PRIVATE src)
-    target_link_libraries(jarvis_proactive_loop_scenario_tests PRIVATE Qt6::Core Qt6::Test nlohmann_json::nlohmann_json)
+    target_link_libraries(jarvis_proactive_loop_scenario_tests PRIVATE Qt6::Core Qt6::Sql Qt6::Test nlohmann_json::nlohmann_json)
 
     add_test(NAME jarvis_proactive_loop_scenario_tests COMMAND jarvis_proactive_loop_scenario_tests)
     set_tests_properties(jarvis_proactive_loop_scenario_tests PROPERTIES ENVIRONMENT "PATH=${QT_BIN_DIR}${JARVIS_PATH_ENV_SEPARATOR}$ENV{PATH}")
