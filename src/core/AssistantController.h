@@ -52,6 +52,9 @@ class InputRouter;
 class MemoryPolicyHandler;
 class ResponseFinalizer;
 class ToolCoordinator;
+namespace LearningData {
+class LearningDataCollector;
+}
 struct ProactiveSuggestionPlan;
 struct SelectionContextCompilation;
 struct InputRouterContext;
@@ -370,6 +373,13 @@ private:
                                       const QString &tone,
                                       const QString &type);
     void logProactiveSuggestionFeedback(const QString &signalType, const QString &suggestionType);
+    void ensureLearningSession();
+    void closeLearningSession();
+    QString allocateLearningTurnId();
+    void recordFeedbackSignalForLearning(const QString &feedbackType,
+                                         const QString &freeformText = QString(),
+                                         const QStringList &linkedEventIds = {},
+                                         const QString &severity = QStringLiteral("normal"));
 
     AppSettings *m_settings = nullptr;
     IdentityProfileService *m_identityProfileService = nullptr;
@@ -386,6 +396,7 @@ private:
     std::unique_ptr<ExecutionNarrator> m_executionNarrator;
     std::unique_ptr<MemoryPolicyHandler> m_memoryPolicyHandler;
     std::unique_ptr<ToolCoordinator> m_toolCoordinator;
+    std::unique_ptr<LearningData::LearningDataCollector> m_learningDataCollector;
     SkillStore *m_skillStore = nullptr;
     AgentToolbox *m_agentToolbox = nullptr;
     DeviceManager *m_deviceManager = nullptr;
@@ -440,6 +451,7 @@ private:
     qint64 m_lastVisionGestureTriggerMs = 0;
     QString m_lastVisionGestureAction;
     qint64 m_lastVisionQueryMs = 0;
+    qint64 m_learningTurnCounter = 0;
     bool m_backgroundPanelVisible = false;
     QString m_latestProactiveSuggestion;
     QString m_latestProactiveSuggestionTone = QStringLiteral("response");
@@ -465,7 +477,17 @@ private:
     bool m_modelCatalogResolved = false;
     bool m_wakeEngineReady = false;
     bool m_wakeStartRequested = false;
+    bool m_learningSessionStarted = false;
+    bool m_lastInputFromVoice = false;
     QString m_lastWakeError;
+    QString m_learningSessionId;
+    QString m_activeTurnId;
+    QString m_nextTurnId;
+    QString m_lastAudioEventId;
+    QString m_lastToolDecisionEventId;
+    QString m_lastToolExecutionEventId;
+    QString m_lastBehaviorEventId;
+    QString m_lastMemoryEventId;
     QString m_startupBlockingIssue = QStringLiteral("Loading services...");
     QString m_latestDesktopContextSummary;
     QVariantMap m_latestDesktopContext;

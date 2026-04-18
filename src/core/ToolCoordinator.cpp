@@ -1,6 +1,7 @@
 #include "core/ToolCoordinator.h"
 
 #include <algorithm>
+#include <utility>
 
 #include <QDateTime>
 #include <QJsonArray>
@@ -100,6 +101,12 @@ QString ToolCoordinator::surfaceBackgroundSecondary() const
     return m_surfaceBackgroundSecondary;
 }
 
+void ToolCoordinator::setToolExecutionObserver(
+    std::function<void(const AgentToolCall &, const AgentToolResult &, qint64, qint64)> observer)
+{
+    m_toolExecutionObserver = std::move(observer);
+}
+
 void ToolCoordinator::dispatchBackgroundTasks(TaskDispatcher *dispatcher, const QList<AgentTask> &tasks)
 {
     if (dispatcher == nullptr) {
@@ -184,6 +191,10 @@ ToolResultHandling ToolCoordinator::handleTaskResult(const QJsonObject &resultOb
         return handling;
     }
 
+    const AgentTask taskContext = m_knownBackgroundTasks.value(result.taskId);
+    handling.taskArgs = taskContext.args;
+    handling.retryCount = taskContext.retryCount;
+
     if (result.state == TaskState::Canceled) {
         m_knownBackgroundTasks.remove(result.taskId);
         if (m_activeBackgroundTaskIds.value(activeKey, -1) == result.taskId) {
@@ -253,6 +264,7 @@ QList<AgentToolResult> ToolCoordinator::executeAgentToolCalls(
     }
 
     for (const AgentToolCall &toolCall : toolCalls) {
+        const qint64 startedAtMs = QDateTime::currentMSecsSinceEpoch();
         if (m_loggingService) {
             m_loggingService->infoFor(
                 QStringLiteral("tool_audit"),
@@ -263,6 +275,7 @@ QList<AgentToolResult> ToolCoordinator::executeAgentToolCalls(
             traceCallback(QStringLiteral("tool_call"), toolCall.name, toolCall.argumentsJson.left(500), true);
         }
         const AgentToolResult result = agentToolbox->execute(toolCall);
+        const qint64 finishedAtMs = QDateTime::currentMSecsSinceEpoch();
         if (m_loggingService) {
             m_loggingService->infoFor(
                 QStringLiteral("tool_audit"),
@@ -279,6 +292,9 @@ QList<AgentToolResult> ToolCoordinator::executeAgentToolCalls(
                 ? m_executionNarrator->summarizeToolResult(result)
                 : result.output.left(800);
             traceCallback(QStringLiteral("tool_result"), result.toolName, detail.left(800), result.success);
+        }
+        if (m_toolExecutionObserver) {
+            m_toolExecutionObserver(toolCall, result, startedAtMs, finishedAtMs);
         }
         results.push_back(result);
     }

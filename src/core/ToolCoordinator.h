@@ -6,6 +6,7 @@
 #include <QHash>
 #include <QList>
 #include <QPair>
+#include <QJsonObject>
 #include <QString>
 
 #include "core/AssistantTypes.h"
@@ -27,6 +28,8 @@ struct ToolResultHandling {
     bool traceSuccess = false;
     std::optional<BackgroundTaskResult> completedResult;
     std::optional<ConnectorEvent> connectorEvent;
+    QJsonObject taskArgs;
+    int retryCount = 0;
 };
 
 struct WebSearchFollowUp {
@@ -51,6 +54,9 @@ public:
     int surfaceBackgroundTaskId() const;
     QString surfaceBackgroundPrimary() const;
     QString surfaceBackgroundSecondary() const;
+
+    void setToolExecutionObserver(
+        std::function<void(const AgentToolCall &, const AgentToolResult &, qint64, qint64)> observer);
 
     void dispatchBackgroundTasks(TaskDispatcher *dispatcher, const QList<AgentTask> &tasks);
     bool handleTaskCanceled(int taskId);
@@ -83,6 +89,7 @@ private:
     int m_nextTaskId = 1;
     QHash<QString, int> m_activeBackgroundTaskIds;
     QHash<int, AgentTask> m_knownBackgroundTasks;
+    std::function<void(const AgentToolCall &, const AgentToolResult &, qint64, qint64)> m_toolExecutionObserver;
     int m_surfaceBackgroundTaskId = -1;
     QString m_surfaceBackgroundPrimary;
     QString m_surfaceBackgroundSecondary;

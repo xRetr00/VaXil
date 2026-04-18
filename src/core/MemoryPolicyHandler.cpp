@@ -1,5 +1,7 @@
 #include "core/MemoryPolicyHandler.h"
 
+#include <utility>
+
 #include <QDateTime>
 #include <QRegularExpression>
 
@@ -88,7 +90,12 @@ void MemoryPolicyHandler::applyUserInput(const QString &input) const
         if (m_identityProfileService) {
             m_identityProfileService->setUserName(userName);
         }
-        storeDerivedMemory(MemoryType::Fact, QStringLiteral("name"), userName, {QStringLiteral("profile")});
+        storeDerivedMemory(MemoryType::Fact,
+                           QStringLiteral("name"),
+                           userName,
+                           {QStringLiteral("profile")},
+                           QStringLiteral("conversation"),
+                           true);
         return;
     }
 
@@ -97,7 +104,12 @@ void MemoryPolicyHandler::applyUserInput(const QString &input) const
         if (m_identityProfileService) {
             m_identityProfileService->setUserName(userName);
         }
-        storeDerivedMemory(MemoryType::Fact, QStringLiteral("name"), userName, {QStringLiteral("profile")});
+        storeDerivedMemory(MemoryType::Fact,
+                           QStringLiteral("name"),
+                           userName,
+                           {QStringLiteral("profile")},
+                           QStringLiteral("conversation"),
+                           true);
         return;
     }
 
@@ -109,7 +121,9 @@ void MemoryPolicyHandler::applyUserInput(const QString &input) const
         storeDerivedMemory(MemoryType::Preference,
                            QStringLiteral("general_preference"),
                            preference,
-                           {QStringLiteral("profile"), QStringLiteral("style")});
+                           {QStringLiteral("profile"), QStringLiteral("style")},
+                           QStringLiteral("conversation"),
+                           true);
     }
 
     captureExplicitMemoryFromInput(input);
@@ -249,29 +263,77 @@ void MemoryPolicyHandler::captureExplicitMemoryFromInput(const QString &input) c
         return;
     }
 
+    bool stored = false;
     if (m_memoryStore) {
         m_memoryStore->extractUserFacts(input);
+        stored = true;
+    }
+
+    emitDecisionSignal({
+        .memoryCandidatePresent = true,
+        .memoryAction = stored ? QStringLiteral("save") : QStringLiteral("skip"),
+        .memoryType = QStringLiteral("fact"),
+        .confidence = stored ? 0.85f : 0.0f,
+        .privacyRiskLevel = QStringLiteral("medium"),
+        .wasUserConfirmed = true,
+        .outcomeLabel = stored ? QStringLiteral("stored") : QStringLiteral("skipped")
+    });
+}
+
+void MemoryPolicyHandler::setDecisionCallback(std::function<void(const MemoryDecisionSignal &)> callback)
+{
+    m_decisionCallback = std::move(callback);
+}
+
+void MemoryPolicyHandler::emitDecisionSignal(const MemoryDecisionSignal &signal) const
+{
+    if (m_decisionCallback) {
+        m_decisionCallback(signal);
     }
 }
 
-void MemoryPolicyHandler::storeDerivedMemory(MemoryType type,
+bool MemoryPolicyHandler::storeDerivedMemory(MemoryType type,
                                              const QString &key,
                                              const QString &value,
                                              const QStringList &tags,
-                                             const QString &source) const
+                                             const QString &source,
+                                             bool userConfirmed) const
 {
     if (m_memoryStore == nullptr || key.trimmed().isEmpty() || value.trimmed().isEmpty()) {
-        return;
+        emitDecisionSignal({
+            .memoryCandidatePresent = true,
+            .memoryAction = QStringLiteral("skip"),
+            .memoryType = type == MemoryType::Preference
+                ? QStringLiteral("preference")
+                : (type == MemoryType::Context ? QStringLiteral("context") : QStringLiteral("fact")),
+            .confidence = 0.0f,
+            .privacyRiskLevel = type == MemoryType::Preference ? QStringLiteral("low") : QStringLiteral("medium"),
+            .wasUserConfirmed = userConfirmed,
+            .outcomeLabel = QStringLiteral("skipped")
+        });
+        return false;
     }
 
     m_memoryStore->upsertEntry(derivedMemoryEntry(type, key, value, tags, source));
+    emitDecisionSignal({
+        .memoryCandidatePresent = true,
+        .memoryAction = QStringLiteral("save"),
+        .memoryType = type == MemoryType::Preference
+            ? QStringLiteral("preference")
+            : (type == MemoryType::Context ? QStringLiteral("context") : QStringLiteral("fact")),
+        .confidence = type == MemoryType::Context ? 0.78f : 0.90f,
+        .privacyRiskLevel = type == MemoryType::Preference ? QStringLiteral("low") : QStringLiteral("medium"),
+        .wasUserConfirmed = userConfirmed,
+        .outcomeLabel = QStringLiteral("stored")
+    });
+    return true;
 }
 
-void MemoryPolicyHandler::captureImplicitMemoryFromInput(const QString &input) const
+bool MemoryPolicyHandler::captureImplicitMemoryFromInput(const QString &input) const
 {
     const QString trimmed = input.trimmed();
     if (trimmed.isEmpty()) {
-        return;
+        return false;
     }
 
     const QString workContext = firstCaptured(
@@ -279,11 +341,10 @@ void MemoryPolicyHandler::captureImplicitMemoryFromInput(const QString &input) c
                            QRegularExpression::CaseInsensitiveOption),
         trimmed);
     if (!workContext.isEmpty()) {
-        storeDerivedMemory(MemoryType::Context,
-                           QStringLiteral("active_work"),
-                           workContext,
-                           {QStringLiteral("active_commitment"), QStringLiteral("work")});
-        return;
+        return storeDerivedMemory(MemoryType::Context,
+                                  QStringLiteral("active_work"),
+                                  workContext,
+                                  {QStringLiteral("active_commitment"), QStringLiteral("work")});
     }
 
     const QString projectName = firstCaptured(
@@ -291,11 +352,10 @@ void MemoryPolicyHandler::captureImplicitMemoryFromInput(const QString &input) c
                            QRegularExpression::CaseInsensitiveOption),
         trimmed);
     if (!projectName.isEmpty()) {
-        storeDerivedMemory(MemoryType::Context,
-                           QStringLiteral("current_project"),
-                           projectName,
-                           {QStringLiteral("active_commitment"), QStringLiteral("project")});
-        return;
+        return storeDerivedMemory(MemoryType::Context,
+                                  QStringLiteral("current_project"),
+                                  projectName,
+                                  {QStringLiteral("active_commitment"), QStringLiteral("project")});
     }
 
     const QString prefersPattern = firstCaptured(
@@ -303,9 +363,11 @@ void MemoryPolicyHandler::captureImplicitMemoryFromInput(const QString &input) c
                            QRegularExpression::CaseInsensitiveOption),
         trimmed);
     if (!prefersPattern.isEmpty()) {
-        storeDerivedMemory(MemoryType::Preference,
-                           QStringLiteral("general_preference"),
-                           prefersPattern,
-                           {QStringLiteral("profile"), QStringLiteral("style")});
+        return storeDerivedMemory(MemoryType::Preference,
+                                  QStringLiteral("general_preference"),
+                                  prefersPattern,
+                                  {QStringLiteral("profile"), QStringLiteral("style")});
     }
+
+    return false;
 }
