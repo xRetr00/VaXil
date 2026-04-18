@@ -119,6 +119,15 @@ bool ResponseFinalizer::finalizeResponse(const QString &source,
         m_loggingService->info(QStringLiteral("Response finalized. source=\"%1\" speak=%2 chars=%3")
                                    .arg(source, finalizedReply.shouldSpeak ? QStringLiteral("true") : QStringLiteral("false"))
                                    .arg(finalizedReply.displayText.size()));
+        if (finalizedReply.shouldSpeak) {
+            m_loggingService->infoFor(
+                QStringLiteral("tts"),
+                QStringLiteral("[tts_request] source=%1 displayChars=%2 spokenChars=%3 spokenText=%4")
+                    .arg(source,
+                         QString::number(finalizedReply.displayText.size()),
+                         QString::number(finalizedReply.spokenText.size()),
+                         finalizedReply.spokenText.left(1200)));
+        }
     }
     if (logPromptResponsePair) {
         logPromptResponsePair(finalizedReply.displayText, source, effectiveStatus);

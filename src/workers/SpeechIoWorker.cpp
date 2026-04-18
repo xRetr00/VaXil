@@ -9,7 +9,7 @@ SpeechIoWorker::SpeechIoWorker(AppSettings *settings, LoggingService *loggingSer
     : QObject(parent)
 {
     m_whisper = new WhisperSttEngine(settings, loggingService, this);
-    m_tts = new PiperTtsEngine(settings, this);
+    m_tts = new PiperTtsEngine(settings, loggingService, this);
 
     connect(m_whisper, &WhisperSttEngine::transcriptionReady, this, [this](quint64, const TranscriptionResult &result) {
         emit transcriptionReady(m_sttGeneration, result);

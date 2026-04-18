@@ -1845,7 +1845,7 @@ void AssistantController::initialize()
                          ? QStringLiteral("command")
                          : (m_activeRequestKind == RequestKind::AgentConversation
                                 ? QStringLiteral("agent")
-                                : QStringLiteral("conversation"))
+                              : QStringLiteral("conversation")))
                 .arg(m_settings->chatBackendKind().trimmed().toLower(),
                      m_settings->chatBackendEndpoint().trimmed()));
         }

@@ -18,6 +18,7 @@ struct TtsSynthesisResult
 };
 
 class AppSettings;
+class LoggingService;
 class QAudioSink;
 class QTimer;
 
@@ -26,7 +27,9 @@ class PiperTtsEngine : public TtsEngine
     Q_OBJECT
 
 public:
-    explicit PiperTtsEngine(AppSettings *settings, QObject *parent = nullptr);
+    explicit PiperTtsEngine(AppSettings *settings,
+                            LoggingService *loggingService,
+                            QObject *parent = nullptr);
 
     void speakText(const QString &text) override;
     void clear() override;
@@ -40,6 +43,7 @@ private:
     void stopPlayback();
 
     AppSettings *m_settings = nullptr;
+    LoggingService *m_loggingService = nullptr;
     QQueue<QString> m_pendingTexts;
     bool m_processing = false;
     QFutureWatcher<TtsSynthesisResult> m_synthesisWatcher;

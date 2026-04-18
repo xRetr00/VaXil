@@ -1,6 +1,7 @@
 #include "tts/PiperTtsEngine.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstring>
 
 #include <QtConcurrent>
@@ -19,9 +20,20 @@
 #include <QTimer>
 #include <QUuid>
 
+#include "logging/LoggingService.h"
 #include "settings/AppSettings.h"
 
 namespace {
+struct VoicePipelineTrace
+{
+    QString styled;
+    QString paused;
+    QString normalized;
+    QStringList decimalTokens;
+    int normalizedPointCount = 0;
+    int normalizedDotWordCount = 0;
+};
+
 QString collapseWhitespace(const QString &text)
 {
     QString normalized = text;
@@ -311,6 +323,181 @@ QString applyVoicePipeline(const QString &aiResponse)
     return normalizeSpeechText(paused);
 }
 
+int countRegexMatches(const QString &text, const QRegularExpression &pattern)
+{
+    int count = 0;
+    auto it = pattern.globalMatch(text);
+    while (it.hasNext()) {
+        it.next();
+        ++count;
+    }
+    return count;
+}
+
+VoicePipelineTrace analyzeVoicePipeline(const QString &aiResponse)
+{
+    VoicePipelineTrace trace;
+    trace.styled = styleFormatJarvisResponse(aiResponse);
+    trace.paused = injectNaturalPauses(trace.styled);
+    trace.normalized = normalizeSpeechText(trace.paused);
+
+    const QRegularExpression decimalTokenPattern(QStringLiteral("\\b\\d+(?:\\.\\d+)+\\b"));
+    auto matchIt = decimalTokenPattern.globalMatch(aiResponse);
+    while (matchIt.hasNext()) {
+        const QString token = matchIt.next().captured(0).trimmed();
+        if (!token.isEmpty()) {
+            trace.decimalTokens.push_back(token);
+        }
+    }
+
+    trace.normalizedPointCount = countRegexMatches(
+        trace.normalized,
+        QRegularExpression(QStringLiteral("\\b\\d+\\s+point\\s+\\d+\\b"),
+                           QRegularExpression::CaseInsensitiveOption));
+    trace.normalizedDotWordCount = countRegexMatches(
+        trace.normalized,
+        QRegularExpression(QStringLiteral("\\bdot\\b"), QRegularExpression::CaseInsensitiveOption));
+    return trace;
+}
+
+QString clipForTtsLog(QString text, int maxChars = 1200)
+{
+    if (text.size() > maxChars) {
+        text = text.left(maxChars) + QStringLiteral(" ...[truncated]");
+    }
+    return text;
+}
+
+QString summarizePauseHints(const QString &text)
+{
+    QStringList points;
+    points.reserve(8);
+    int count = 0;
+    for (int i = 0; i < text.size() && points.size() < 8; ++i) {
+        QString token;
+        int width = 1;
+        const QChar ch = text.at(i);
+        if (ch == QChar::fromLatin1(',')) {
+            token = QStringLiteral("comma");
+        } else if (ch == QChar::fromLatin1(';')) {
+            token = QStringLiteral("semicolon");
+        } else if (ch == QChar::fromLatin1(':')) {
+            token = QStringLiteral("colon");
+        } else if (ch == QChar::fromLatin1('.')) {
+            if (i + 2 < text.size()
+                && text.at(i + 1) == QChar::fromLatin1('.')
+                && text.at(i + 2) == QChar::fromLatin1('.')) {
+                token = QStringLiteral("ellipsis");
+                width = 3;
+                i += 2;
+            } else {
+                token = QStringLiteral("period");
+            }
+        } else if (ch == QChar::fromLatin1('!')) {
+            token = QStringLiteral("exclamation");
+        } else if (ch == QChar::fromLatin1('?')) {
+            token = QStringLiteral("question");
+        }
+
+        if (!token.isEmpty()) {
+            ++count;
+            const int start = std::max(0, i - 14);
+            const int len = std::min(34, static_cast<int>(text.size()) - start);
+            const QString context = text.mid(start, len).simplified();
+            points.push_back(QStringLiteral("%1@%2\"%3\"").arg(token, QString::number(i), context));
+        }
+        i += width - 1;
+    }
+
+    return QStringLiteral("pause_points=%1 sample=[%2]")
+        .arg(count)
+        .arg(points.join(QStringLiteral(" | ")));
+}
+
+QString summarizeWaveSilence(const QByteArray &pcmData, const QAudioFormat &format)
+{
+    if (format.sampleFormat() != QAudioFormat::Int16 || format.bytesPerSample() != 2 || format.sampleRate() <= 0) {
+        return QStringLiteral("silence_analysis=unsupported_format");
+    }
+
+    const int channelCount = std::max(1, format.channelCount());
+    const int samplesPerChannel = pcmData.size() / (2 * channelCount);
+    if (samplesPerChannel <= 0) {
+        return QStringLiteral("silence_analysis=empty_audio");
+    }
+
+    const int frameSamples = std::max(1, format.sampleRate() / 100);
+    const int frameCount = samplesPerChannel / frameSamples;
+    if (frameCount <= 0) {
+        return QStringLiteral("silence_analysis=short_audio");
+    }
+
+    const qint16 *samples = reinterpret_cast<const qint16 *>(pcmData.constData());
+    const double silenceThreshold = 0.0035;
+    const int minSilentFrames = 8;
+    int silentRunStart = -1;
+    QStringList segments;
+
+    auto finalizeRun = [&](int endFrame) {
+        if (silentRunStart < 0) {
+            return;
+        }
+        const int runFrames = endFrame - silentRunStart;
+        if (runFrames >= minSilentFrames) {
+            const double startSec = static_cast<double>(silentRunStart * frameSamples) / static_cast<double>(format.sampleRate());
+            const double durationSec = static_cast<double>(runFrames * frameSamples) / static_cast<double>(format.sampleRate());
+            if (segments.size() < 6) {
+                segments.push_back(QStringLiteral("%1s(+%2s)")
+                                       .arg(QString::number(startSec, 'f', 2),
+                                            QString::number(durationSec, 'f', 2)));
+            }
+        }
+        silentRunStart = -1;
+    };
+
+    int silentSegmentCount = 0;
+    for (int frame = 0; frame < frameCount; ++frame) {
+        double absSum = 0.0;
+        const int baseSample = frame * frameSamples;
+        for (int i = 0; i < frameSamples; ++i) {
+            const int sampleIndex = baseSample + i;
+            if (sampleIndex >= samplesPerChannel) {
+                break;
+            }
+            int mixed = 0;
+            for (int c = 0; c < channelCount; ++c) {
+                mixed += static_cast<int>(samples[sampleIndex * channelCount + c]);
+            }
+            const double mono = static_cast<double>(mixed) / static_cast<double>(channelCount * 32768.0);
+            absSum += std::abs(mono);
+        }
+
+        const double avgAbs = absSum / static_cast<double>(frameSamples);
+        const bool isSilent = avgAbs < silenceThreshold;
+        if (isSilent && silentRunStart < 0) {
+            silentRunStart = frame;
+        }
+        if (!isSilent && silentRunStart >= 0) {
+            const int runFrames = frame - silentRunStart;
+            if (runFrames >= minSilentFrames) {
+                ++silentSegmentCount;
+            }
+            finalizeRun(frame);
+        }
+    }
+
+    if (silentRunStart >= 0) {
+        const int runFrames = frameCount - silentRunStart;
+        if (runFrames >= minSilentFrames) {
+            ++silentSegmentCount;
+        }
+        finalizeRun(frameCount);
+    }
+
+    return QStringLiteral("silence_segments=%1 sample=[%2]")
+        .arg(QString::number(silentSegmentCount), segments.join(QStringLiteral(" | ")));
+}
+
 bool parseWaveFile(const QString &path, QByteArray *pcmData, QAudioFormat *format)
 {
     QFile file(path);
@@ -361,9 +548,12 @@ bool parseWaveFile(const QString &path, QByteArray *pcmData, QAudioFormat *forma
 }
 }
 
-PiperTtsEngine::PiperTtsEngine(AppSettings *settings, QObject *parent)
+PiperTtsEngine::PiperTtsEngine(AppSettings *settings,
+                               LoggingService *loggingService,
+                               QObject *parent)
     : TtsEngine(parent)
     , m_settings(settings)
+    , m_loggingService(loggingService)
 {
     m_farEndTimer = new QTimer(this);
     connect(&m_synthesisWatcher, &QFutureWatcher<TtsSynthesisResult>::finished, this, [this]() {
@@ -424,13 +614,53 @@ PiperTtsEngine::PiperTtsEngine(AppSettings *settings, QObject *parent)
 
 void PiperTtsEngine::speakText(const QString &text)
 {
-    const QString prepared = applyVoicePipeline(text);
+    const VoicePipelineTrace trace = analyzeVoicePipeline(text);
+    const QString prepared = trace.normalized;
+    if (m_loggingService) {
+        m_loggingService->infoFor(
+            QStringLiteral("tts"),
+            QStringLiteral("[tts_pipeline] rawChars=%1 styledChars=%2 pausedChars=%3 normalizedChars=%4 decimalTokens=%5 normalizedPointPhrases=%6 normalizedDotWords=%7")
+                .arg(QString::number(text.size()),
+                     QString::number(trace.styled.size()),
+                     QString::number(trace.paused.size()),
+                     QString::number(prepared.size()),
+                     QString::number(trace.decimalTokens.size()),
+                     QString::number(trace.normalizedPointCount),
+                     QString::number(trace.normalizedDotWordCount)));
+        m_loggingService->infoFor(
+            QStringLiteral("tts"),
+            QStringLiteral("[tts_text_raw] %1").arg(clipForTtsLog(text)));
+        m_loggingService->infoFor(
+            QStringLiteral("tts"),
+            QStringLiteral("[tts_text_spoken] %1").arg(clipForTtsLog(prepared)));
+        if (!trace.decimalTokens.isEmpty()) {
+            m_loggingService->infoFor(
+                QStringLiteral("tts"),
+                QStringLiteral("[tts_decimal_tokens] %1").arg(trace.decimalTokens.join(QStringLiteral(", "))));
+        }
+        m_loggingService->infoFor(
+            QStringLiteral("tts"),
+            QStringLiteral("[tts_pause_hints] %1").arg(summarizePauseHints(prepared)));
+    }
+
     if (prepared.isEmpty() || isStatusOnlyUtterance(prepared)) {
+        if (m_loggingService) {
+            m_loggingService->infoFor(
+                QStringLiteral("tts"),
+                QStringLiteral("[tts_pipeline_skipped] reason=%1")
+                    .arg(prepared.isEmpty() ? QStringLiteral("empty_after_normalization") : QStringLiteral("status_only_utterance")));
+        }
         emit playbackFinished();
         return;
     }
 
     m_pendingTexts.enqueue(prepared);
+    if (m_loggingService) {
+        m_loggingService->infoFor(
+            QStringLiteral("tts"),
+            QStringLiteral("[tts_queue] enqueued=true queueSize=%1")
+                .arg(QString::number(m_pendingTexts.size())));
+    }
     if (!m_processing) {
         processNext();
     }
@@ -442,6 +672,9 @@ void PiperTtsEngine::clear()
     m_activeGeneration = 0;
     m_pendingTexts.clear();
     m_processing = false;
+    if (m_loggingService) {
+        m_loggingService->infoFor(QStringLiteral("tts"), QStringLiteral("[tts_clear] queue_cleared=true"));
+    }
     stopPlayback();
 }
 
@@ -455,6 +688,9 @@ void PiperTtsEngine::processNext()
     if (m_pendingTexts.isEmpty()) {
         m_processing = false;
         m_activeGeneration = 0;
+        if (m_loggingService) {
+            m_loggingService->infoFor(QStringLiteral("tts"), QStringLiteral("[tts_queue] drained=true"));
+        }
         emit playbackFinished();
         return;
     }
@@ -471,6 +707,14 @@ void PiperTtsEngine::processNext()
     const QString sentence = m_pendingTexts.dequeue();
     const quint64 generation = ++m_generationCounter;
     m_activeGeneration = generation;
+    if (m_loggingService) {
+        m_loggingService->infoFor(
+            QStringLiteral("tts"),
+            QStringLiteral("[tts_speak] generation=%1 remainingQueue=%2 text=%3")
+                .arg(QString::number(generation),
+                     QString::number(m_pendingTexts.size()),
+                     clipForTtsLog(sentence)));
+    }
     m_synthesisWatcher.setFuture(QtConcurrent::run([this, sentence, generation]() {
         return synthesizeAndProcess(sentence, generation);
     }));
@@ -486,16 +730,28 @@ TtsSynthesisResult PiperTtsEngine::synthesizeAndProcess(const QString &sentence,
 
     if (piperExecutable.isEmpty() || voiceModelPath.isEmpty()) {
         result.errorText = QStringLiteral("Piper executable or voice model is not configured");
+        if (m_loggingService) {
+            m_loggingService->warnFor(QStringLiteral("tts"), QStringLiteral("[tts_synthesis_failed] generation=%1 reason=missing_configuration")
+                                                            .arg(QString::number(generation)));
+        }
         return result;
     }
 
     if (!QFileInfo::exists(piperExecutable)) {
         result.errorText = QStringLiteral("Piper executable was not found at %1").arg(piperExecutable);
+        if (m_loggingService) {
+            m_loggingService->warnFor(QStringLiteral("tts"), QStringLiteral("[tts_synthesis_failed] generation=%1 reason=missing_executable")
+                                                            .arg(QString::number(generation)));
+        }
         return result;
     }
 
     if (!QFileInfo::exists(voiceModelPath)) {
         result.errorText = QStringLiteral("Piper voice model was not found at %1").arg(voiceModelPath);
+        if (m_loggingService) {
+            m_loggingService->warnFor(QStringLiteral("tts"), QStringLiteral("[tts_synthesis_failed] generation=%1 reason=missing_voice_model")
+                                                            .arg(QString::number(generation)));
+        }
         return result;
     }
 
@@ -544,6 +800,10 @@ TtsSynthesisResult PiperTtsEngine::synthesizeAndProcess(const QString &sentence,
             process.kill();
             process.waitForFinished(1000);
             result.errorText = QStringLiteral("Piper synthesis timed out");
+            if (m_loggingService) {
+                m_loggingService->warnFor(QStringLiteral("tts"), QStringLiteral("[tts_synthesis_failed] generation=%1 reason=timeout")
+                                                                .arg(QString::number(generation)));
+            }
             return result;
         }
         if (process.exitStatus() != QProcess::NormalExit || process.exitCode() != 0) {
@@ -551,6 +811,12 @@ TtsSynthesisResult PiperTtsEngine::synthesizeAndProcess(const QString &sentence,
             result.errorText = stderrText.isEmpty()
                 ? QStringLiteral("Piper synthesis failed with exit code %1").arg(process.exitCode())
                 : QStringLiteral("Piper synthesis failed: %1").arg(stderrText);
+            if (m_loggingService) {
+                m_loggingService->warnFor(
+                    QStringLiteral("tts"),
+                    QStringLiteral("[tts_synthesis_failed] generation=%1 reason=process_error detail=%2")
+                        .arg(QString::number(generation), clipForTtsLog(result.errorText, 400)));
+            }
             return result;
         }
     }
@@ -605,8 +871,21 @@ void PiperTtsEngine::playFile(const QString &path)
     QAudioFormat format;
     if (!parseWaveFile(path, &pcmData, &format)) {
         m_processing = false;
+        if (m_loggingService) {
+            m_loggingService->warnFor(QStringLiteral("tts"), QStringLiteral("[tts_playback_failed] reason=parse_wave_failed path=%1").arg(path));
+        }
         emit playbackFailed(QStringLiteral("Failed to parse synthesized audio"));
         return;
+    }
+
+    if (m_loggingService) {
+        m_loggingService->infoFor(
+            QStringLiteral("tts"),
+            QStringLiteral("[tts_wave] sampleRate=%1 channels=%2 bytes=%3 %4")
+                .arg(QString::number(format.sampleRate()),
+                     QString::number(format.channelCount()),
+                     QString::number(pcmData.size()),
+                     summarizeWaveSilence(pcmData, format)));
     }
 
     QAudioDevice device = QMediaDevices::defaultAudioOutput();
@@ -633,12 +912,28 @@ void PiperTtsEngine::playFile(const QString &path)
         if (!audioSink || audioSink != m_audioSink) {
             return;
         }
+        if (m_loggingService) {
+            QString stateText = QStringLiteral("unknown");
+            if (state == QAudio::IdleState) {
+                stateText = QStringLiteral("idle");
+            } else if (state == QAudio::ActiveState) {
+                stateText = QStringLiteral("active");
+            } else if (state == QAudio::SuspendedState) {
+                stateText = QStringLiteral("suspended");
+            } else if (state == QAudio::StoppedState) {
+                stateText = QStringLiteral("stopped");
+            }
+            m_loggingService->infoFor(QStringLiteral("tts"), QStringLiteral("[tts_state] %1").arg(stateText));
+        }
         if (state == QAudio::IdleState) {
             stopPlayback();
             processNext();
         } else if (state == QAudio::StoppedState && m_audioSink != nullptr && m_audioSink->error() != QAudio::NoError) {
             stopPlayback();
             m_processing = false;
+            if (m_loggingService) {
+                m_loggingService->warnFor(QStringLiteral("tts"), QStringLiteral("[tts_playback_failed] reason=audio_sink_error"));
+            }
             emit playbackFailed(QStringLiteral("Audio playback failed"));
         }
     });
