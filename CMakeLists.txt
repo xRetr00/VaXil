@@ -352,6 +352,7 @@ set(JARVIS_SOURCES
     src/vision/VisionContextGate.cpp
     src/vision/WorldStateCache.cpp
     src/wakeword/WakeWordDetector.cpp
+    src/wakeword/WakeWordDataCapture.cpp
     src/wakeword/SherpaWakeWordEngine.cpp
     src/workers/AiBackendWorker.cpp
     src/workers/SpeechInputWorker.cpp
@@ -493,6 +494,7 @@ set(JARVIS_HEADERS
     src/vision/VisionContextGate.h
     src/vision/WorldStateCache.h
     src/wakeword/WakeWordDetector.h
+    src/wakeword/WakeWordDataCapture.h
     src/wakeword/SherpaWakeWordEngine.h
     src/wakeword/WakeWordEngine.h
     src/workers/AiBackendWorker.h
@@ -1551,6 +1553,50 @@ if(JARVIS_BUILD_TESTS)
     add_test(NAME jarvis_proactive_loop_scenario_tests COMMAND jarvis_proactive_loop_scenario_tests)
     set_tests_properties(jarvis_proactive_loop_scenario_tests PROPERTIES ENVIRONMENT "PATH=${QT_BIN_DIR}${JARVIS_PATH_ENV_SEPARATOR}$ENV{PATH}")
     jarvis_copy_optional_runtime_libraries(jarvis_proactive_loop_scenario_tests)
+
+    qt_add_executable(jarvis_proactive_action_cooccurrence_scenario_tests
+        tests/ProactiveActionCooccurrenceScenarioTests.cpp
+        src/cognition/CooldownEngine.cpp
+        src/cognition/ProactivePlannerInputEnricher.cpp
+        src/cognition/ProactiveSuggestionPlanner.cpp
+        src/cognition/ProactiveSuggestionGate.cpp
+        src/cognition/SuggestionProposalBuilder.cpp
+        src/cognition/SuggestionProposalPolicyScoring.cpp
+        src/cognition/DesktopWorkMode.cpp
+        src/cognition/SuggestionProposalRanker.cpp
+        src/core/ActionRiskPermissionService.cpp
+        src/core/ToolPermissionRegistry.cpp
+        src/telemetry/BehavioralEventLedger.cpp
+    )
+
+    target_include_directories(jarvis_proactive_action_cooccurrence_scenario_tests PRIVATE src)
+    target_link_libraries(jarvis_proactive_action_cooccurrence_scenario_tests PRIVATE Qt6::Core Qt6::Sql Qt6::Test nlohmann_json::nlohmann_json)
+
+    add_test(NAME jarvis_proactive_action_cooccurrence_scenario_tests COMMAND jarvis_proactive_action_cooccurrence_scenario_tests)
+    set_tests_properties(jarvis_proactive_action_cooccurrence_scenario_tests PROPERTIES ENVIRONMENT "PATH=${QT_BIN_DIR}${JARVIS_PATH_ENV_SEPARATOR}$ENV{PATH}")
+    jarvis_copy_optional_runtime_libraries(jarvis_proactive_action_cooccurrence_scenario_tests)
+
+    qt_add_executable(jarvis_proactive_action_cooccurrence_happy_scenario_tests
+        tests/ProactiveActionCooccurrenceHappyPathScenarioTests.cpp
+        src/cognition/CooldownEngine.cpp
+        src/cognition/ProactivePlannerInputEnricher.cpp
+        src/cognition/ProactiveSuggestionPlanner.cpp
+        src/cognition/ProactiveSuggestionGate.cpp
+        src/cognition/SuggestionProposalBuilder.cpp
+        src/cognition/SuggestionProposalPolicyScoring.cpp
+        src/cognition/DesktopWorkMode.cpp
+        src/cognition/SuggestionProposalRanker.cpp
+        src/core/ActionRiskPermissionService.cpp
+        src/core/ToolPermissionRegistry.cpp
+        src/telemetry/BehavioralEventLedger.cpp
+    )
+
+    target_include_directories(jarvis_proactive_action_cooccurrence_happy_scenario_tests PRIVATE src)
+    target_link_libraries(jarvis_proactive_action_cooccurrence_happy_scenario_tests PRIVATE Qt6::Core Qt6::Sql Qt6::Test nlohmann_json::nlohmann_json)
+
+    add_test(NAME jarvis_proactive_action_cooccurrence_happy_scenario_tests COMMAND jarvis_proactive_action_cooccurrence_happy_scenario_tests)
+    set_tests_properties(jarvis_proactive_action_cooccurrence_happy_scenario_tests PROPERTIES ENVIRONMENT "PATH=${QT_BIN_DIR}${JARVIS_PATH_ENV_SEPARATOR}$ENV{PATH}")
+    jarvis_copy_optional_runtime_libraries(jarvis_proactive_action_cooccurrence_happy_scenario_tests)
 
     qt_add_executable(jarvis_suggestion_history_policy_tests
         tests/SuggestionProposalHistoryPolicyTests.cpp

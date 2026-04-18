@@ -43,6 +43,7 @@ class TtsEngine;
 class ToolWorker;
 class VisionIngestService;
 class WakeWordEngine;
+class WakeWordDataCapture;
 class VoicePipelineRuntime;
 class WorldStateCache;
 class AiRequestCoordinator;
@@ -124,6 +125,7 @@ public slots:
     void stopListening();
     void cancelActiveRequest();
     void cancelCurrentRequest();
+    void captureMissedWakeWordSample(const QString &notes = QString());
     void setSelectedModel(const QString &modelId);
     void setAgentEnabled(bool enabled);
     void setBackgroundPanelVisible(bool visible);
@@ -397,6 +399,7 @@ private:
     std::unique_ptr<MemoryPolicyHandler> m_memoryPolicyHandler;
     std::unique_ptr<ToolCoordinator> m_toolCoordinator;
     std::unique_ptr<LearningData::LearningDataCollector> m_learningDataCollector;
+    std::unique_ptr<WakeWordDataCapture> m_wakeWordDataCapture;
     SkillStore *m_skillStore = nullptr;
     AgentToolbox *m_agentToolbox = nullptr;
     DeviceManager *m_deviceManager = nullptr;

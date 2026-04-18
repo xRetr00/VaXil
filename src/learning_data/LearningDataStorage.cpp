@@ -30,6 +30,8 @@ const QString kBucketToolExecutionEvents = QStringLiteral("tool_execution_events
 const QString kBucketBehaviorEvents = QStringLiteral("behavior_events");
 const QString kBucketMemoryEvents = QStringLiteral("memory_events");
 const QString kBucketFeedbackEvents = QStringLiteral("feedback_events");
+const QString kWakeWordEventsIndexFile = QStringLiteral("wakeword_events.jsonl");
+const QString kWakeWordManifestIndexFile = QStringLiteral("wakeword_manifest.jsonl");
 
 QString defaultRootPath()
 {
@@ -59,6 +61,67 @@ void appendObjectsForKey(QMultiHash<QString, QJsonObject> *map,
         return;
     }
     map->insert(key, payload);
+}
+
+QString wakeWordRoleDirectory(WakeWordClipRole role)
+{
+    switch (role) {
+    case WakeWordClipRole::Positive:
+        return QStringLiteral("positive");
+    case WakeWordClipRole::HardNegative:
+    case WakeWordClipRole::FalseAccept:
+    case WakeWordClipRole::FalseReject:
+        return QStringLiteral("hard_negative");
+    case WakeWordClipRole::Ambiguous:
+    case WakeWordClipRole::PreRoll:
+    case WakeWordClipRole::PostRoll:
+        return QStringLiteral("ambiguous");
+    case WakeWordClipRole::Negative:
+    default:
+        return QStringLiteral("negative");
+    }
+}
+
+QString wakeWordRolePrefix(WakeWordClipRole role)
+{
+    switch (role) {
+    case WakeWordClipRole::Positive:
+        return QStringLiteral("wwpos");
+    case WakeWordClipRole::HardNegative:
+    case WakeWordClipRole::FalseAccept:
+    case WakeWordClipRole::FalseReject:
+        return QStringLiteral("wwhardneg");
+    case WakeWordClipRole::Ambiguous:
+        return QStringLiteral("wwamb");
+    case WakeWordClipRole::PreRoll:
+        return QStringLiteral("wwpr");
+    case WakeWordClipRole::PostRoll:
+        return QStringLiteral("wwpost");
+    case WakeWordClipRole::Negative:
+    default:
+        return QStringLiteral("wwneg");
+    }
+}
+
+QList<QJsonObject> readJsonlFileObjects(const QString &absolutePath)
+{
+    QList<QJsonObject> rows;
+    QFile file(absolutePath);
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        return rows;
+    }
+
+    while (!file.atEnd()) {
+        const QByteArray line = file.readLine().trimmed();
+        if (line.isEmpty()) {
+            continue;
+        }
+        const QJsonDocument doc = QJsonDocument::fromJson(line);
+        if (doc.isObject()) {
+            rows.push_back(doc.object());
+        }
+    }
+    return rows;
 }
 
 } // namespace
@@ -133,6 +196,83 @@ bool LearningDataStorage::writeAudioCaptureEvent(AudioCaptureEvent event, const 
                             payload);
         return false;
     }
+    return true;
+}
+
+bool LearningDataStorage::writeWakeWordEvent(WakeWordEvent event, const QByteArray &pcmData)
+{
+    if (event.schemaVersion.trimmed().isEmpty()) {
+        event.schemaVersion = kSchemaVersion;
+    }
+    if (event.timestamp.trimmed().isEmpty()) {
+        event.timestamp = toIsoUtcNow();
+    }
+    if (event.eventId.trimmed().isEmpty()) {
+        event.eventId = QStringLiteral("wakeword_%1")
+                            .arg(QUuid::createUuid().toString(QUuid::WithoutBraces));
+    }
+
+    QString fileHash;
+    qint64 durationMs = 0;
+    const QString absolutePath = buildWakeWordFilePath(event);
+    if (!writeWavFile(absolutePath,
+                      pcmData,
+                      event.sampleRate,
+                      event.channels,
+                      &fileHash,
+                      &durationMs)) {
+        appendFailureRecord(QStringLiteral("wakeword"),
+                            QStringLiteral("wav_write_failed"),
+                            toJson(event));
+        return false;
+    }
+
+    event.filePath = asRelativePath(absolutePath);
+    event.fileHashSha256 = fileHash;
+    event.durationMs = durationMs;
+
+    const QJsonObject payload = toJson(event);
+    const QString eventsPath = QDir(indexRoot()).filePath(kWakeWordEventsIndexFile);
+    if (!appendJsonLine(eventsPath, payload)) {
+        appendFailureRecord(QStringLiteral("wakeword"),
+                            QStringLiteral("append_failed"),
+                            payload);
+        return false;
+    }
+
+    QJsonObject manifestRow{
+        {QStringLiteral("schema_version"), kSchemaVersion},
+        {QStringLiteral("event_kind"), QStringLiteral("wakeword_manifest_entry")},
+        {QStringLiteral("event_id"), event.eventId},
+        {QStringLiteral("session_id"), event.sessionId},
+        {QStringLiteral("turn_id"), event.turnId},
+        {QStringLiteral("timestamp"), event.timestamp},
+        {QStringLiteral("wav_path"), event.filePath},
+        {QStringLiteral("label"), detail::wakeWordClipRoleToString(event.clipRole)},
+        {QStringLiteral("label_status"), detail::wakeWordLabelStatusToString(event.labelStatus)},
+        {QStringLiteral("clip_duration_ms"), event.durationMs},
+        {QStringLiteral("sample_rate"), event.sampleRate},
+        {QStringLiteral("channels"), event.channels},
+        {QStringLiteral("wake_engine"), event.wakeEngine},
+        {QStringLiteral("keyword_text"), event.keywordText},
+        {QStringLiteral("detected"), event.detected},
+        {QStringLiteral("detection_score"), event.detectionScoreAvailable ? QJsonValue(event.detectionScore) : QJsonValue()},
+        {QStringLiteral("threshold"), event.thresholdAvailable ? QJsonValue(event.threshold) : QJsonValue()},
+        {QStringLiteral("collection_reason"), event.collectionReason},
+        {QStringLiteral("was_used_to_start_session"), event.wasUsedToStartSession},
+        {QStringLiteral("came_from_false_trigger"), event.cameFromFalseTrigger},
+        {QStringLiteral("came_from_missed_trigger_recovery"), event.cameFromMissedTriggerRecovery},
+        {QStringLiteral("hash_sha256"), event.fileHashSha256}
+    };
+
+    const QString manifestPath = QDir(indexRoot()).filePath(kWakeWordManifestIndexFile);
+    if (!appendJsonLine(manifestPath, manifestRow)) {
+        appendFailureRecord(QStringLiteral("wakeword"),
+                            QStringLiteral("manifest_append_failed"),
+                            manifestRow);
+        return false;
+    }
+
     return true;
 }
 
@@ -252,6 +392,7 @@ bool LearningDataStorage::runRetention(const LearningDataSettingsSnapshot &setti
 
     const QDateTime nowUtc = QDateTime::currentDateTimeUtc();
     const QDateTime audioCutoffUtc = nowUtc.addDays(-std::max(1, settings.maxDaysToKeepAudio));
+    const QDateTime wakeWordAudioCutoffUtc = nowUtc.addDays(-std::max(1, settings.maxDaysToKeepWakeWordAudio));
     const QDateTime structuredCutoffUtc = nowUtc.addDays(-std::max(1, settings.maxDaysToKeepStructuredLogs));
 
     bool ok = true;
@@ -261,6 +402,12 @@ bool LearningDataStorage::runRetention(const LearningDataSettingsSnapshot &setti
                               QStringLiteral("audio_retention_days"))
         && ok;
     ok = enforceAudioStorageLimitGb(settings.maxAudioStorageGb) && ok;
+    ok = removeFilesOlderThan(wakeWordRoot(),
+                              wakeWordAudioCutoffUtc,
+                              QStringLiteral("wakeword_audio_file"),
+                              QStringLiteral("wakeword_retention_days"))
+        && ok;
+    ok = enforceWakeWordStorageLimitGb(settings.maxWakeWordStorageGb) && ok;
     ok = removeFilesOlderThan(indexRoot(),
                               structuredCutoffUtc,
                               QStringLiteral("structured_log"),
@@ -271,9 +418,10 @@ bool LearningDataStorage::runRetention(const LearningDataSettingsSnapshot &setti
     if (m_loggingService) {
         m_loggingService->infoFor(
             QStringLiteral("tool_audit"),
-            QStringLiteral("[learning_data] sessions=%1 audio=%2 tool_decisions=%3 behavior=%4 memory=%5 feedback=%6 bytes=%7")
+            QStringLiteral("[learning_data] sessions=%1 audio=%2 wakeword=%3 tool_decisions=%4 behavior=%5 memory=%6 feedback=%7 bytes=%8")
                 .arg(diagnostics.sessions)
                 .arg(diagnostics.audioClips)
+                .arg(diagnostics.wakeWordClips)
                 .arg(diagnostics.toolDecisions)
                 .arg(diagnostics.behaviorDecisions)
                 .arg(diagnostics.memoryDecisions)
@@ -307,6 +455,7 @@ bool LearningDataStorage::exportPreparedManifests(const LearningDataSettingsSnap
     const QList<QJsonObject> behaviorRows = readAllJsonlObjects(QDir(indexRoot()).filePath(kBucketBehaviorEvents));
     const QList<QJsonObject> memoryRows = readAllJsonlObjects(QDir(indexRoot()).filePath(kBucketMemoryEvents));
     const QList<QJsonObject> feedbackRows = readAllJsonlObjects(QDir(indexRoot()).filePath(kBucketFeedbackEvents));
+    const QList<QJsonObject> wakeWordRows = readJsonlFileObjects(QDir(indexRoot()).filePath(kWakeWordEventsIndexFile));
 
     QHash<QString, QJsonObject> asrByAudioEvent;
     QMultiHash<QString, QJsonObject> asrByTurn;
@@ -482,21 +631,52 @@ bool LearningDataStorage::exportPreparedManifests(const LearningDataSettingsSnap
         memoryManifest.push_back(row);
     }
 
+    QList<QJsonObject> wakeWordManifest;
+    wakeWordManifest.reserve(wakeWordRows.size());
+    for (const QJsonObject &wakeWord : wakeWordRows) {
+        QJsonObject row{
+            {QStringLiteral("schema_version"), kSchemaVersion},
+            {QStringLiteral("event_id"), optionalString(wakeWord, QStringLiteral("event_id"))},
+            {QStringLiteral("session_id"), optionalString(wakeWord, QStringLiteral("session_id"))},
+            {QStringLiteral("turn_id"), optionalString(wakeWord, QStringLiteral("turn_id"))},
+            {QStringLiteral("timestamp"), optionalString(wakeWord, QStringLiteral("timestamp"))},
+            {QStringLiteral("wav_path"), optionalString(wakeWord, QStringLiteral("file_path"))},
+            {QStringLiteral("label"), optionalString(wakeWord, QStringLiteral("clip_role"))},
+            {QStringLiteral("label_status"), optionalString(wakeWord, QStringLiteral("label_status"))},
+            {QStringLiteral("clip_duration_ms"), wakeWord.value(QStringLiteral("duration_ms"))},
+            {QStringLiteral("sample_rate"), wakeWord.value(QStringLiteral("sample_rate"))},
+            {QStringLiteral("channels"), wakeWord.value(QStringLiteral("channels"))},
+            {QStringLiteral("wake_engine"), optionalString(wakeWord, QStringLiteral("wake_engine"))},
+            {QStringLiteral("keyword_text"), optionalString(wakeWord, QStringLiteral("keyword_text"))},
+            {QStringLiteral("detected"), wakeWord.value(QStringLiteral("detected"))},
+            {QStringLiteral("detection_score"), wakeWord.value(QStringLiteral("detection_score"))},
+            {QStringLiteral("threshold"), wakeWord.value(QStringLiteral("threshold"))},
+            {QStringLiteral("collection_reason"), optionalString(wakeWord, QStringLiteral("collection_reason"))},
+            {QStringLiteral("was_used_to_start_session"), wakeWord.value(QStringLiteral("was_used_to_start_session"))},
+            {QStringLiteral("came_from_false_trigger"), wakeWord.value(QStringLiteral("came_from_false_trigger"))},
+            {QStringLiteral("came_from_missed_trigger_recovery"), wakeWord.value(QStringLiteral("came_from_missed_trigger_recovery"))},
+            {QStringLiteral("hash_sha256"), optionalString(wakeWord, QStringLiteral("file_hash_sha256"))}
+        };
+        wakeWordManifest.push_back(row);
+    }
+
     bool ok = true;
     ok = writeJsonlFile(QDir(exportDir).filePath(QStringLiteral("export_audio_manifest.jsonl")), audioManifest) && ok;
     ok = writeJsonlFile(QDir(exportDir).filePath(QStringLiteral("export_tool_policy_manifest.jsonl")), toolManifest) && ok;
     ok = writeJsonlFile(QDir(exportDir).filePath(QStringLiteral("export_behavior_policy_manifest.jsonl")), behaviorManifest) && ok;
     ok = writeJsonlFile(QDir(exportDir).filePath(QStringLiteral("export_memory_policy_manifest.jsonl")), memoryManifest) && ok;
+    ok = writeJsonlFile(QDir(exportDir).filePath(QStringLiteral("wakeword_manifest.jsonl")), wakeWordManifest) && ok;
 
     if (m_loggingService) {
         m_loggingService->infoFor(
             QStringLiteral("tool_audit"),
-            QStringLiteral("[learning_data] export path=%1 audio_rows=%2 tool_rows=%3 behavior_rows=%4 memory_rows=%5")
+            QStringLiteral("[learning_data] export path=%1 audio_rows=%2 tool_rows=%3 behavior_rows=%4 memory_rows=%5 wakeword_rows=%6")
                 .arg(exportDir)
                 .arg(audioManifest.size())
                 .arg(toolManifest.size())
                 .arg(behaviorManifest.size())
-                .arg(memoryManifest.size()));
+                .arg(memoryManifest.size())
+                .arg(wakeWordManifest.size()));
     }
 
     return ok;
@@ -507,6 +687,22 @@ LearningDataDiagnostics LearningDataStorage::collectDiagnostics() const
     LearningDataDiagnostics out;
 
     auto countRows = [](const QString &rootDir) -> qint64 {
+        const QFileInfo rootInfo(rootDir);
+        if (rootInfo.exists() && rootInfo.isFile()) {
+            qint64 fileCount = 0;
+            QFile file(rootDir);
+            if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+                return 0;
+            }
+            while (!file.atEnd()) {
+                const QByteArray line = file.readLine().trimmed();
+                if (!line.isEmpty()) {
+                    ++fileCount;
+                }
+            }
+            return fileCount;
+        }
+
         qint64 count = 0;
         QDirIterator it(rootDir, QStringList{QStringLiteral("*.jsonl")}, QDir::Files, QDirIterator::Subdirectories);
         while (it.hasNext()) {
@@ -526,6 +722,7 @@ LearningDataDiagnostics LearningDataStorage::collectDiagnostics() const
 
     out.sessions = countRows(QDir(indexRoot()).filePath(kBucketSessions));
     out.audioClips = countRows(QDir(indexRoot()).filePath(kBucketAudioIndex));
+    out.wakeWordClips = countRows(QDir(indexRoot()).filePath(kWakeWordEventsIndexFile));
     out.toolDecisions = countRows(QDir(indexRoot()).filePath(kBucketToolDecisionEvents));
     out.toolExecutions = countRows(QDir(indexRoot()).filePath(kBucketToolExecutionEvents));
     out.behaviorDecisions = countRows(QDir(indexRoot()).filePath(kBucketBehaviorEvents));
@@ -726,6 +923,42 @@ QString LearningDataStorage::buildAudioFilePath(const AudioCaptureEvent &event) 
         QStringLiteral("%1/%2/%3/%4/%5").arg(year, month, safeSession, safeTurn, fileName));
 }
 
+QString LearningDataStorage::buildWakeWordFilePath(const WakeWordEvent &event) const
+{
+    const QDateTime timestamp = parseIsoOrNow(event.timestamp);
+    const QString year = timestamp.toString(QStringLiteral("yyyy"));
+    const QString month = timestamp.toString(QStringLiteral("MM"));
+
+    const QString safeSession = QStringLiteral("session_%1").arg(
+        sanitizeToken(event.sessionId, QStringLiteral("unknown")));
+    const QString safeEvent = sanitizeToken(event.eventId, QUuid::createUuid().toString(QUuid::WithoutBraces));
+    const QString rolePrefix = wakeWordRolePrefix(event.clipRole);
+    const QString fileStem = QStringLiteral("%1_%2_%3")
+                                 .arg(rolePrefix,
+                                      timestamp.toString(QStringLiteral("yyyyMMdd_HHmmss_zzz")),
+                                      safeEvent);
+
+    const QString folder = QDir(wakeWordRoleRoot(event.clipRole)).filePath(
+        QStringLiteral("%1/%2/%3").arg(year, month, safeSession));
+    QString candidate = QDir(folder).filePath(fileStem + QStringLiteral(".wav"));
+    if (!QFileInfo::exists(candidate)) {
+        return candidate;
+    }
+
+    for (int attempt = 1; attempt <= 1000; ++attempt) {
+        const QString withSuffix = QDir(folder).filePath(
+            QStringLiteral("%1_%2.wav").arg(fileStem).arg(attempt));
+        if (!QFileInfo::exists(withSuffix)) {
+            return withSuffix;
+        }
+    }
+
+    return QDir(folder).filePath(
+        QStringLiteral("%1_%2.wav")
+            .arg(fileStem,
+                 QUuid::createUuid().toString(QUuid::WithoutBraces).left(8)));
+}
+
 bool LearningDataStorage::writeWavFile(const QString &absolutePath,
                                        const QByteArray &pcmData,
                                        int sampleRate,
@@ -907,6 +1140,55 @@ bool LearningDataStorage::enforceAudioStorageLimitGb(double maxGb)
             ok = false;
             appendFailureRecord(QStringLiteral("retention"),
                                 QStringLiteral("audio_storage_cap_delete_failed"),
+                                QJsonObject{{QStringLiteral("path"), asRelativePath(file.path)}});
+        }
+    }
+
+    return ok;
+}
+
+bool LearningDataStorage::removeFilesOlderThan(const QString &rootDir,
+                                               const QDateTime &cutoffUtc,
+                                               const QString &kind,
+                                               const QString &reason)
+{
+    bool ok = true;
+    QDirIterator it(rootDir, QDir::Files, QDirIterator::Subdirectories);
+    while (it.hasNext()) {
+        const QFileInfo info(it.next());
+        if (info.lastModified().toUTC() >= cutoffUtc) {
+            continue;
+        }
+
+        const bool deleted = QFile::remove(info.absoluteFilePath());
+        appendTombstone(kind,
+                        reason,
+                        asRelativePath(info.absoluteFilePath()),
+                        info.size(),
+                        deleted);
+        if (!deleted) {
+            ok = false;
+            appendFailureRecord(QStringLiteral("retention"),
+                                QStringLiteral("delete_failed"),
+                                QJsonObject{{QStringLiteral("path"), asRelativePath(info.absoluteFilePath())}});
+        }
+    }
+    return ok;
+}
+
+} // namespace LearningData
+        const bool deleted = QFile::remove(file.path);
+        appendTombstone(QStringLiteral("wakeword_audio_file"),
+                        QStringLiteral("wakeword_storage_cap_gb"),
+                        asRelativePath(file.path),
+                        file.size,
+                        deleted);
+        if (deleted) {
+            totalBytes -= file.size;
+        } else {
+            ok = false;
+            appendFailureRecord(QStringLiteral("retention"),
+                                QStringLiteral("wakeword_storage_cap_delete_failed"),
                                 QJsonObject{{QStringLiteral("path"), asRelativePath(file.path)}});
         }
     }

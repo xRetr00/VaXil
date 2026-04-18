@@ -10,6 +10,33 @@
 
 namespace LearningData {
 
+namespace {
+
+bool isWakeWordRoleEnabled(const LearningDataSettingsSnapshot &settings, WakeWordClipRole role)
+{
+    if (!settings.wakeWordCollectionEnabled) {
+        return false;
+    }
+
+    switch (role) {
+    case WakeWordClipRole::Positive:
+        return settings.wakeWordPositiveCollectionEnabled;
+    case WakeWordClipRole::HardNegative:
+    case WakeWordClipRole::FalseAccept:
+    case WakeWordClipRole::FalseReject:
+        return settings.wakeWordHardNegativeCollectionEnabled;
+    case WakeWordClipRole::Negative:
+    case WakeWordClipRole::Ambiguous:
+    case WakeWordClipRole::PreRoll:
+    case WakeWordClipRole::PostRoll:
+        return settings.wakeWordNegativeCollectionEnabled;
+    }
+
+    return false;
+}
+
+} // namespace
+
 LearningDataCollector::LearningDataCollector(AppSettings *settings,
                                              LoggingService *loggingService,
                                              QString rootPath)
@@ -129,6 +156,23 @@ void LearningDataCollector::recordAudioCaptureEvent(const AudioCaptureEvent &eve
             return;
         }
         (void)m_storage.writeAudioCaptureEvent(payload, payloadPcm);
+    });
+}
+
+void LearningDataCollector::recordWakeWordEvent(const WakeWordEvent &event, const QByteArray &pcmData)
+{
+    const LearningDataSettingsSnapshot settings = currentSettings();
+    if (!shouldRecordCategory(isWakeWordRoleEnabled(settings, event.clipRole))) {
+        return;
+    }
+
+    WakeWordEvent payload = event;
+    QByteArray payloadPcm = pcmData;
+    enqueueTask([this, settings, payload = std::move(payload), payloadPcm = std::move(payloadPcm)]() {
+        if (!m_storage.initialize(settings)) {
+            return;
+        }
+        (void)m_storage.writeWakeWordEvent(payload, payloadPcm);
     });
 }
 

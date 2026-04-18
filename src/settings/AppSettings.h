@@ -218,6 +218,18 @@ public:
     bool learningAudioCollectionEnabled() const;
     void setLearningAudioCollectionEnabled(bool enabled);
 
+    bool learningWakeWordCollectionEnabled() const;
+    void setLearningWakeWordCollectionEnabled(bool enabled);
+
+    bool learningWakeWordPositiveCollectionEnabled() const;
+    void setLearningWakeWordPositiveCollectionEnabled(bool enabled);
+
+    bool learningWakeWordNegativeCollectionEnabled() const;
+    void setLearningWakeWordNegativeCollectionEnabled(bool enabled);
+
+    bool learningWakeWordHardNegativeCollectionEnabled() const;
+    void setLearningWakeWordHardNegativeCollectionEnabled(bool enabled);
+
     bool learningTranscriptCollectionEnabled() const;
     void setLearningTranscriptCollectionEnabled(bool enabled);
 
@@ -233,8 +245,14 @@ public:
     double learningMaxAudioStorageGb() const;
     void setLearningMaxAudioStorageGb(double value);
 
+    double learningMaxWakeWordStorageGb() const;
+    void setLearningMaxWakeWordStorageGb(double value);
+
     int learningMaxDaysToKeepAudio() const;
     void setLearningMaxDaysToKeepAudio(int days);
+
+    int learningMaxDaysToKeepWakeWordAudio() const;
+    void setLearningMaxDaysToKeepWakeWordAudio(int days);
 
     int learningMaxDaysToKeepStructuredLogs() const;
     void setLearningMaxDaysToKeepStructuredLogs(int days);
@@ -316,12 +334,18 @@ private:
     QString m_wakeEngineKind = QStringLiteral("sherpa-onnx");
     bool m_learningDataCollectionEnabled = false;
     bool m_learningAudioCollectionEnabled = false;
+    bool m_learningWakeWordCollectionEnabled = false;
+    bool m_learningWakeWordPositiveCollectionEnabled = false;
+    bool m_learningWakeWordNegativeCollectionEnabled = false;
+    bool m_learningWakeWordHardNegativeCollectionEnabled = false;
     bool m_learningTranscriptCollectionEnabled = false;
     bool m_learningToolLoggingEnabled = false;
     bool m_learningBehaviorLoggingEnabled = false;
     bool m_learningMemoryLoggingEnabled = false;
     double m_learningMaxAudioStorageGb = 4.0;
+    double m_learningMaxWakeWordStorageGb = 2.0;
     int m_learningMaxDaysToKeepAudio = 30;
+    int m_learningMaxDaysToKeepWakeWordAudio = 45;
     int m_learningMaxDaysToKeepStructuredLogs = 90;
     bool m_learningAllowPreparedDatasetExport = false;
 };

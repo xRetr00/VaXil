@@ -87,6 +87,7 @@
 #include "vision/VisionContextGate.h"
 #include "vision/WorldStateCache.h"
 #include "wakeword/WakeWordDetector.h"
+#include "wakeword/WakeWordDataCapture.h"
 #include "wakeword/SherpaWakeWordEngine.h"
 #include "wakeword/WakeWordEngine.h"
 #include "workers/VoicePipelineRuntime.h"
@@ -1578,6 +1579,7 @@ AssistantController::AssistantController(
     m_memoryPolicyHandler = std::make_unique<MemoryPolicyHandler>(m_identityProfileService, m_memoryStore);
     m_toolCoordinator = std::make_unique<ToolCoordinator>(m_loggingService, m_executionNarrator.get());
     m_learningDataCollector = std::make_unique<LearningData::LearningDataCollector>(m_settings, m_loggingService);
+    m_wakeWordDataCapture = std::make_unique<WakeWordDataCapture>(m_settings);
     m_skillStore = new SkillStore(this);
     m_agentToolbox = new AgentToolbox(m_settings, m_memoryStore, m_skillStore, m_loggingService, this);
     m_deviceManager = new DeviceManager(this);
@@ -1859,6 +1861,23 @@ void AssistantController::initialize()
             return;
         }
 
+        if (m_wakeWordDataCapture) {
+            m_wakeWordDataCapture->appendWakeMonitorFrame(frame);
+            if (m_learningDataCollector && frame.speechDetected) {
+                ensureLearningSession();
+                if (m_learningSessionStarted) {
+                    m_wakeWordDataCapture->maybeRecordNegativeSample(
+                        m_learningDataCollector.get(),
+                        m_learningSessionId,
+                        m_settings->selectedAudioInputDeviceId(),
+                        m_settings->wakeEngineKind(),
+                        m_settings->wakeWordPhrase(),
+                        m_settings->wakeTriggerThreshold(),
+                        frame.speechDetected);
+                }
+            }
+        }
+
         if (m_wakeWordEngine && m_wakeWordEngine->isActive() && m_wakeWordEngine->usesExternalAudioInput()) {
             m_wakeWordEngine->processAudioFrame(frame);
         }
@@ -1932,6 +1951,19 @@ void AssistantController::initialize()
         }
 
         if (!hadSpeech || pcmData.isEmpty()) {
+            if (completedMode == AudioCaptureMode::Direct
+                && m_followUpListeningAfterWakeAck
+                && m_wakeWordDataCapture
+                && m_learningDataCollector) {
+                ensureLearningSession();
+                if (m_learningSessionStarted) {
+                    m_wakeWordDataCapture->recordFalseAcceptFromLastDetection(
+                        m_learningDataCollector.get(),
+                        m_learningSessionId,
+                        m_nextTurnId,
+                        QStringLiteral("false_trigger_no_speech"));
+                }
+            }
             handleConversationSessionMiss(QStringLiteral("No speech detected"));
             return;
         }
@@ -1990,6 +2022,18 @@ void AssistantController::initialize()
             return;
         }
         if (shouldIgnoreAmbiguousTranscript(transcript)) {
+            if (m_followUpListeningAfterWakeAck
+                && m_wakeWordDataCapture
+                && m_learningDataCollector) {
+                ensureLearningSession();
+                if (m_learningSessionStarted) {
+                    m_wakeWordDataCapture->recordAmbiguousFromLastDetection(
+                        m_learningDataCollector.get(),
+                        m_learningSessionId,
+                        m_nextTurnId,
+                        QStringLiteral("ambiguous_follow_up_transcript"));
+                }
+            }
             m_nextTurnId.clear();
             if (m_loggingService) {
                 m_loggingService->info(QStringLiteral("Ignoring ambiguous transcription. text=\"%1\"").arg(transcript.left(120)));
@@ -2645,6 +2689,14 @@ void AssistantController::submitText(const QString &text)
         return;
     }
 
+    const QString lowered = trimmed.toLower();
+    if (lowered.contains(QStringLiteral("wake word"))
+        && (lowered.contains(QStringLiteral("didn't trigger"))
+            || lowered.contains(QStringLiteral("did not trigger"))
+            || lowered.contains(QStringLiteral("missed trigger")))) {
+        captureMissedWakeWordSample(QStringLiteral("user_reported_missed_wake_word"));
+    }
+
     ensureLearningSession();
     if (!m_nextTurnId.isEmpty()) {
         m_activeTurnId = m_nextTurnId;
@@ -2994,6 +3046,36 @@ void AssistantController::cancelCurrentRequest()
     cancelActiveRequest();
 }
 
+void AssistantController::captureMissedWakeWordSample(const QString &notes)
+{
+    if (!m_wakeWordDataCapture || !m_learningDataCollector) {
+        return;
+    }
+
+    ensureLearningSession();
+    if (!m_learningSessionStarted) {
+        return;
+    }
+
+    const QString turnId = m_nextTurnId.isEmpty() ? allocateLearningTurnId() : m_nextTurnId;
+    m_wakeWordDataCapture->recordFalseRejectRecovery(
+        m_learningDataCollector.get(),
+        m_learningSessionId,
+        turnId,
+        m_settings->selectedAudioInputDeviceId(),
+        m_settings->wakeEngineKind(),
+        m_settings->wakeWordPhrase(),
+        m_settings->wakeTriggerThreshold(),
+        notes,
+        false);
+
+    if (m_loggingService) {
+        m_loggingService->infoFor(
+            QStringLiteral("wake_engine"),
+            QStringLiteral("Captured wakeword missed-trigger recovery sample."));
+    }
+}
+
 void AssistantController::setSelectedModel(const QString &modelId)
 {
     m_settings->setChatBackendModel(modelId);
@@ -3224,6 +3306,19 @@ void AssistantController::bindWakeWordEngineSignals()
             emit responseTextChanged();
         }
         noteWakeTrigger();
+        if (m_wakeWordDataCapture && m_learningDataCollector) {
+            ensureLearningSession();
+            if (m_learningSessionStarted) {
+                m_wakeWordDataCapture->recordWakeDetected(
+                    m_learningDataCollector.get(),
+                    m_learningSessionId,
+                    m_settings->selectedAudioInputDeviceId(),
+                    m_settings->wakeEngineKind(),
+                    m_settings->wakeWordPhrase(),
+                    m_settings->wakeTriggerThreshold(),
+                    true);
+            }
+        }
         activateConversationSession();
         m_followUpListeningAfterWakeAck = true;
         m_lastPromptForAiLog = m_settings->wakeWordPhrase();

@@ -332,6 +332,18 @@ bool AppSettings::load()
     m_learningAudioCollectionEnabled = parsed.value(
         "enable_audio_collection",
         parsed.value("learningAudioCollectionEnabled", false));
+    m_learningWakeWordCollectionEnabled = parsed.value(
+        "enable_wakeword_collection",
+        parsed.value("learningWakeWordCollectionEnabled", false));
+    m_learningWakeWordPositiveCollectionEnabled = parsed.value(
+        "enable_wakeword_positive_collection",
+        parsed.value("learningWakeWordPositiveCollectionEnabled", false));
+    m_learningWakeWordNegativeCollectionEnabled = parsed.value(
+        "enable_wakeword_negative_collection",
+        parsed.value("learningWakeWordNegativeCollectionEnabled", false));
+    m_learningWakeWordHardNegativeCollectionEnabled = parsed.value(
+        "enable_wakeword_hard_negative_collection",
+        parsed.value("learningWakeWordHardNegativeCollectionEnabled", false));
     m_learningTranscriptCollectionEnabled = parsed.value(
         "enable_transcript_collection",
         parsed.value("learningTranscriptCollectionEnabled", false));
@@ -347,9 +359,15 @@ bool AppSettings::load()
     m_learningMaxAudioStorageGb = clampLearningMaxAudioStorageGb(parsed.value(
         "max_audio_storage_gb",
         parsed.value("learningMaxAudioStorageGb", 4.0)));
+    m_learningMaxWakeWordStorageGb = clampLearningMaxAudioStorageGb(parsed.value(
+        "max_wakeword_storage_gb",
+        parsed.value("learningMaxWakeWordStorageGb", 2.0)));
     m_learningMaxDaysToKeepAudio = clampLearningRetentionDays(parsed.value(
         "max_days_to_keep_audio",
         parsed.value("learningMaxDaysToKeepAudio", 30)));
+    m_learningMaxDaysToKeepWakeWordAudio = clampLearningRetentionDays(parsed.value(
+        "max_days_to_keep_wakeword_audio",
+        parsed.value("learningMaxDaysToKeepWakeWordAudio", 45)));
     m_learningMaxDaysToKeepStructuredLogs = clampLearningRetentionDays(parsed.value(
         "max_days_to_keep_structured_logs",
         parsed.value("learningMaxDaysToKeepStructuredLogs", 90)));
@@ -435,12 +453,18 @@ bool AppSettings::save() const
         {"wakeEngineKind", m_wakeEngineKind.toStdString()},
         {"enable_learning_data_collection", m_learningDataCollectionEnabled},
         {"enable_audio_collection", m_learningAudioCollectionEnabled},
+        {"enable_wakeword_collection", m_learningWakeWordCollectionEnabled},
+        {"enable_wakeword_positive_collection", m_learningWakeWordPositiveCollectionEnabled},
+        {"enable_wakeword_negative_collection", m_learningWakeWordNegativeCollectionEnabled},
+        {"enable_wakeword_hard_negative_collection", m_learningWakeWordHardNegativeCollectionEnabled},
         {"enable_transcript_collection", m_learningTranscriptCollectionEnabled},
         {"enable_tool_logging", m_learningToolLoggingEnabled},
         {"enable_behavior_logging", m_learningBehaviorLoggingEnabled},
         {"enable_memory_logging", m_learningMemoryLoggingEnabled},
         {"max_audio_storage_gb", m_learningMaxAudioStorageGb},
+        {"max_wakeword_storage_gb", m_learningMaxWakeWordStorageGb},
         {"max_days_to_keep_audio", m_learningMaxDaysToKeepAudio},
+        {"max_days_to_keep_wakeword_audio", m_learningMaxDaysToKeepWakeWordAudio},
         {"max_days_to_keep_structured_logs", m_learningMaxDaysToKeepStructuredLogs},
         {"allow_export_prepared_datasets", m_learningAllowPreparedDatasetExport}
     };
@@ -748,6 +772,30 @@ void AppSettings::setLearningAudioCollectionEnabled(bool enabled)
     m_learningAudioCollectionEnabled = enabled;
     emit settingsChanged();
 }
+bool AppSettings::learningWakeWordCollectionEnabled() const { return m_learningWakeWordCollectionEnabled; }
+void AppSettings::setLearningWakeWordCollectionEnabled(bool enabled)
+{
+    m_learningWakeWordCollectionEnabled = enabled;
+    emit settingsChanged();
+}
+bool AppSettings::learningWakeWordPositiveCollectionEnabled() const { return m_learningWakeWordPositiveCollectionEnabled; }
+void AppSettings::setLearningWakeWordPositiveCollectionEnabled(bool enabled)
+{
+    m_learningWakeWordPositiveCollectionEnabled = enabled;
+    emit settingsChanged();
+}
+bool AppSettings::learningWakeWordNegativeCollectionEnabled() const { return m_learningWakeWordNegativeCollectionEnabled; }
+void AppSettings::setLearningWakeWordNegativeCollectionEnabled(bool enabled)
+{
+    m_learningWakeWordNegativeCollectionEnabled = enabled;
+    emit settingsChanged();
+}
+bool AppSettings::learningWakeWordHardNegativeCollectionEnabled() const { return m_learningWakeWordHardNegativeCollectionEnabled; }
+void AppSettings::setLearningWakeWordHardNegativeCollectionEnabled(bool enabled)
+{
+    m_learningWakeWordHardNegativeCollectionEnabled = enabled;
+    emit settingsChanged();
+}
 bool AppSettings::learningTranscriptCollectionEnabled() const { return m_learningTranscriptCollectionEnabled; }
 void AppSettings::setLearningTranscriptCollectionEnabled(bool enabled)
 {
@@ -778,10 +826,22 @@ void AppSettings::setLearningMaxAudioStorageGb(double value)
     m_learningMaxAudioStorageGb = clampLearningMaxAudioStorageGb(value);
     emit settingsChanged();
 }
+double AppSettings::learningMaxWakeWordStorageGb() const { return m_learningMaxWakeWordStorageGb; }
+void AppSettings::setLearningMaxWakeWordStorageGb(double value)
+{
+    m_learningMaxWakeWordStorageGb = clampLearningMaxAudioStorageGb(value);
+    emit settingsChanged();
+}
 int AppSettings::learningMaxDaysToKeepAudio() const { return m_learningMaxDaysToKeepAudio; }
 void AppSettings::setLearningMaxDaysToKeepAudio(int days)
 {
     m_learningMaxDaysToKeepAudio = clampLearningRetentionDays(days);
+    emit settingsChanged();
+}
+int AppSettings::learningMaxDaysToKeepWakeWordAudio() const { return m_learningMaxDaysToKeepWakeWordAudio; }
+void AppSettings::setLearningMaxDaysToKeepWakeWordAudio(int days)
+{
+    m_learningMaxDaysToKeepWakeWordAudio = clampLearningRetentionDays(days);
     emit settingsChanged();
 }
 int AppSettings::learningMaxDaysToKeepStructuredLogs() const { return m_learningMaxDaysToKeepStructuredLogs; }

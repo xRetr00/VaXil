@@ -22,6 +22,7 @@ public:
 
     bool writeSessionEvent(const SessionEvent &event);
     bool writeAudioCaptureEvent(AudioCaptureEvent event, const QByteArray &pcmData);
+    bool writeWakeWordEvent(WakeWordEvent event, const QByteArray &pcmData);
     bool writeAsrEvent(const AsrEvent &event);
     bool writeToolDecisionEvent(const ToolDecisionEvent &event);
     bool writeToolExecutionEvent(const ToolExecutionEvent &event);
@@ -39,6 +40,8 @@ private:
     [[nodiscard]] QString rootPath() const;
     [[nodiscard]] QString indexRoot() const;
     [[nodiscard]] QString audioRoot() const;
+    [[nodiscard]] QString wakeWordRoot() const;
+    [[nodiscard]] QString wakeWordRoleRoot(WakeWordClipRole role) const;
     [[nodiscard]] QString snapshotsRoot() const;
     [[nodiscard]] QString exportsRoot() const;
     [[nodiscard]] QString quarantineRoot() const;
@@ -59,6 +62,7 @@ private:
 
     bool writeSchemaVersionFile() const;
     QString buildAudioFilePath(const AudioCaptureEvent &event) const;
+    QString buildWakeWordFilePath(const WakeWordEvent &event) const;
     bool writeWavFile(const QString &absolutePath,
                       const QByteArray &pcmData,
                       int sampleRate,
@@ -73,6 +77,7 @@ private:
     static bool writeJsonlFile(const QString &absolutePath, const QList<QJsonObject> &rows);
 
     bool enforceAudioStorageLimitGb(double maxGb);
+    bool enforceWakeWordStorageLimitGb(double maxGb);
     bool removeFilesOlderThan(const QString &rootDir,
                               const QDateTime &cutoffUtc,
                               const QString &kind,

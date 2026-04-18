@@ -36,6 +36,7 @@ public:
 
     void recordSessionEvent(const SessionEvent &event);
     void recordAudioCaptureEvent(const AudioCaptureEvent &event, const QByteArray &pcmData);
+    void recordWakeWordEvent(const WakeWordEvent &event, const QByteArray &pcmData);
     void recordAsrEvent(const AsrEvent &event);
     void recordToolDecisionEvent(const ToolDecisionEvent &event);
     void recordToolExecutionEvent(const ToolExecutionEvent &event);

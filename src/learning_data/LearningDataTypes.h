@@ -17,6 +17,24 @@ struct ToolCandidateScore
     double score = 0.0;
 };
 
+enum class WakeWordClipRole {
+    Positive,
+    Negative,
+    HardNegative,
+    Ambiguous,
+    FalseAccept,
+    FalseReject,
+    PreRoll,
+    PostRoll
+};
+
+enum class WakeWordLabelStatus {
+    AutoLabeled,
+    UserConfirmed,
+    Assumed,
+    Rejected
+};
+
 struct SessionEvent
 {
     QString schemaVersion = kSchemaVersion;
@@ -51,6 +69,35 @@ struct AudioCaptureEvent
     bool wakeWordDetected = false;
     QString collectionReason;
     QString labelStatus = QStringLiteral("unlabeled");
+    QString notes;
+    QString fileHashSha256;
+};
+
+struct WakeWordEvent
+{
+    QString schemaVersion = kSchemaVersion;
+    QString eventId;
+    QString sessionId;
+    QString turnId;
+    QString timestamp;
+    QString filePath;
+    WakeWordClipRole clipRole = WakeWordClipRole::Negative;
+    WakeWordLabelStatus labelStatus = WakeWordLabelStatus::Assumed;
+    QString wakeEngine;
+    QString keywordText;
+    bool detected = false;
+    double detectionScore = 0.0;
+    bool detectionScoreAvailable = false;
+    double threshold = 0.0;
+    bool thresholdAvailable = false;
+    qint64 durationMs = 0;
+    int sampleRate = 16000;
+    int channels = 1;
+    QString captureSource;
+    QString collectionReason;
+    bool wasUsedToStartSession = false;
+    bool cameFromFalseTrigger = false;
+    bool cameFromMissedTriggerRecovery = false;
     QString notes;
     QString fileHashSha256;
 };
@@ -162,6 +209,7 @@ struct LearningDataDiagnostics
     QString schemaVersion = kSchemaVersion;
     qint64 sessions = 0;
     qint64 audioClips = 0;
+    qint64 wakeWordClips = 0;
     qint64 toolDecisions = 0;
     qint64 toolExecutions = 0;
     qint64 behaviorDecisions = 0;
@@ -171,6 +219,86 @@ struct LearningDataDiagnostics
 };
 
 namespace detail {
+
+inline QString wakeWordClipRoleToString(WakeWordClipRole role)
+{
+    switch (role) {
+    case WakeWordClipRole::Positive:
+        return QStringLiteral("positive");
+    case WakeWordClipRole::Negative:
+        return QStringLiteral("negative");
+    case WakeWordClipRole::HardNegative:
+        return QStringLiteral("hard_negative");
+    case WakeWordClipRole::Ambiguous:
+        return QStringLiteral("ambiguous");
+    case WakeWordClipRole::FalseAccept:
+        return QStringLiteral("false_accept");
+    case WakeWordClipRole::FalseReject:
+        return QStringLiteral("false_reject");
+    case WakeWordClipRole::PreRoll:
+        return QStringLiteral("pre_roll");
+    case WakeWordClipRole::PostRoll:
+        return QStringLiteral("post_roll");
+    }
+    return QStringLiteral("negative");
+}
+
+inline WakeWordClipRole wakeWordClipRoleFromString(const QString &value)
+{
+    const QString normalized = value.trimmed().toLower();
+    if (normalized == QStringLiteral("positive")) {
+        return WakeWordClipRole::Positive;
+    }
+    if (normalized == QStringLiteral("hard_negative")) {
+        return WakeWordClipRole::HardNegative;
+    }
+    if (normalized == QStringLiteral("ambiguous")) {
+        return WakeWordClipRole::Ambiguous;
+    }
+    if (normalized == QStringLiteral("false_accept")) {
+        return WakeWordClipRole::FalseAccept;
+    }
+    if (normalized == QStringLiteral("false_reject")) {
+        return WakeWordClipRole::FalseReject;
+    }
+    if (normalized == QStringLiteral("pre_roll")) {
+        return WakeWordClipRole::PreRoll;
+    }
+    if (normalized == QStringLiteral("post_roll")) {
+        return WakeWordClipRole::PostRoll;
+    }
+    return WakeWordClipRole::Negative;
+}
+
+inline QString wakeWordLabelStatusToString(WakeWordLabelStatus status)
+{
+    switch (status) {
+    case WakeWordLabelStatus::AutoLabeled:
+        return QStringLiteral("auto_labeled");
+    case WakeWordLabelStatus::UserConfirmed:
+        return QStringLiteral("user_confirmed");
+    case WakeWordLabelStatus::Assumed:
+        return QStringLiteral("assumed");
+    case WakeWordLabelStatus::Rejected:
+        return QStringLiteral("rejected");
+    }
+    return QStringLiteral("assumed");
+}
+
+inline WakeWordLabelStatus wakeWordLabelStatusFromString(const QString &value)
+{
+    const QString normalized = value.trimmed().toLower();
+    if (normalized == QStringLiteral("auto_labeled")) {
+        return WakeWordLabelStatus::AutoLabeled;
+    }
+    if (normalized == QStringLiteral("user_confirmed")) {
+        return WakeWordLabelStatus::UserConfirmed;
+    }
+    if (normalized == QStringLiteral("rejected")) {
+        return WakeWordLabelStatus::Rejected;
+    }
+    return WakeWordLabelStatus::Assumed;
+}
 
 inline QString objectString(const QJsonObject &obj, const QString &key, const QString &fallback = QString())
 {
@@ -363,6 +491,67 @@ inline AudioCaptureEvent audioCaptureEventFromJson(const QJsonObject &obj)
     event.wakeWordDetected = detail::objectBool(obj, QStringLiteral("wake_word_detected"), false);
     event.collectionReason = detail::objectString(obj, QStringLiteral("collection_reason"));
     event.labelStatus = detail::objectString(obj, QStringLiteral("label_status"), QStringLiteral("unlabeled"));
+    event.notes = detail::objectString(obj, QStringLiteral("notes"));
+    event.fileHashSha256 = detail::objectString(obj, QStringLiteral("file_hash_sha256"));
+    return event;
+}
+
+inline QJsonObject toJson(const WakeWordEvent &event)
+{
+    return {
+        {QStringLiteral("schema_version"), event.schemaVersion},
+        {QStringLiteral("event_kind"), QStringLiteral("wakeword")},
+        {QStringLiteral("event_id"), event.eventId},
+        {QStringLiteral("session_id"), event.sessionId},
+        {QStringLiteral("turn_id"), event.turnId},
+        {QStringLiteral("timestamp"), event.timestamp},
+        {QStringLiteral("file_path"), event.filePath},
+        {QStringLiteral("clip_role"), detail::wakeWordClipRoleToString(event.clipRole)},
+        {QStringLiteral("label_status"), detail::wakeWordLabelStatusToString(event.labelStatus)},
+        {QStringLiteral("wake_engine"), event.wakeEngine},
+        {QStringLiteral("keyword_text"), event.keywordText},
+        {QStringLiteral("detected"), event.detected},
+        {QStringLiteral("detection_score"), event.detectionScoreAvailable ? QJsonValue(event.detectionScore) : QJsonValue()},
+        {QStringLiteral("threshold"), event.thresholdAvailable ? QJsonValue(event.threshold) : QJsonValue()},
+        {QStringLiteral("duration_ms"), event.durationMs},
+        {QStringLiteral("sample_rate"), event.sampleRate},
+        {QStringLiteral("channels"), event.channels},
+        {QStringLiteral("capture_source"), event.captureSource},
+        {QStringLiteral("collection_reason"), event.collectionReason},
+        {QStringLiteral("was_used_to_start_session"), event.wasUsedToStartSession},
+        {QStringLiteral("came_from_false_trigger"), event.cameFromFalseTrigger},
+        {QStringLiteral("came_from_missed_trigger_recovery"), event.cameFromMissedTriggerRecovery},
+        {QStringLiteral("notes"), event.notes},
+        {QStringLiteral("file_hash_sha256"), event.fileHashSha256}
+    };
+}
+
+inline WakeWordEvent wakeWordEventFromJson(const QJsonObject &obj)
+{
+    WakeWordEvent event;
+    event.schemaVersion = detail::normalizedSchemaVersion(obj);
+    event.eventId = detail::objectString(obj, QStringLiteral("event_id"));
+    event.sessionId = detail::objectString(obj, QStringLiteral("session_id"));
+    event.turnId = detail::objectString(obj, QStringLiteral("turn_id"));
+    event.timestamp = detail::objectString(obj, QStringLiteral("timestamp"));
+    event.filePath = detail::objectString(obj, QStringLiteral("file_path"));
+    event.clipRole = detail::wakeWordClipRoleFromString(detail::objectString(obj, QStringLiteral("clip_role"), QStringLiteral("negative")));
+    event.labelStatus = detail::wakeWordLabelStatusFromString(detail::objectString(obj, QStringLiteral("label_status"), QStringLiteral("assumed")));
+    event.wakeEngine = detail::objectString(obj, QStringLiteral("wake_engine"));
+    event.keywordText = detail::objectString(obj, QStringLiteral("keyword_text"));
+    event.detected = detail::objectBool(obj, QStringLiteral("detected"), false);
+    event.detectionScoreAvailable = obj.value(QStringLiteral("detection_score")).isDouble();
+    event.detectionScore = detail::objectDouble(obj, QStringLiteral("detection_score"), 0.0);
+    event.thresholdAvailable = obj.value(QStringLiteral("threshold")).isDouble();
+    event.threshold = detail::objectDouble(obj, QStringLiteral("threshold"), 0.0);
+    event.durationMs = detail::objectInt64(obj, QStringLiteral("duration_ms"), 0);
+    event.sampleRate = detail::objectInt(obj, QStringLiteral("sample_rate"), 16000);
+    event.channels = detail::objectInt(obj, QStringLiteral("channels"), 1);
+    event.captureSource = detail::objectString(obj, QStringLiteral("capture_source"));
+    event.collectionReason = detail::objectString(obj, QStringLiteral("collection_reason"));
+    event.wasUsedToStartSession = detail::objectBool(obj, QStringLiteral("was_used_to_start_session"), false);
+    event.cameFromFalseTrigger = detail::objectBool(obj, QStringLiteral("came_from_false_trigger"), false);
+    event.cameFromMissedTriggerRecovery = detail::objectBool(obj, QStringLiteral("came_from_missed_trigger_recovery"), false);
     event.notes = detail::objectString(obj, QStringLiteral("notes"));
     event.fileHashSha256 = detail::objectString(obj, QStringLiteral("file_hash_sha256"));
     return event;
@@ -608,6 +797,7 @@ inline QJsonObject toJson(const LearningDataDiagnostics &diag)
         {QStringLiteral("schema_version"), diag.schemaVersion},
         {QStringLiteral("sessions"), diag.sessions},
         {QStringLiteral("audio_clips"), diag.audioClips},
+        {QStringLiteral("wakeword_clips"), diag.wakeWordClips},
         {QStringLiteral("tool_decisions"), diag.toolDecisions},
         {QStringLiteral("tool_executions"), diag.toolExecutions},
         {QStringLiteral("behavior_decisions"), diag.behaviorDecisions},
