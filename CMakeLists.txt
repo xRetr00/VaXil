@@ -1181,9 +1181,10 @@ if(JARVIS_BUILD_TESTS)
         tests/LearningDataCollectorTests.cpp
     )
 
+    target_include_directories(jarvis_learning_data_tests PRIVATE src)
     target_link_libraries(jarvis_learning_data_tests
         PRIVATE
-            jarvis_lib
+            Qt6::Core
             Qt6::Test
     )
 
