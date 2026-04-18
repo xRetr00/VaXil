@@ -1,7 +1,11 @@
 #include <QtTest>
 
+#include <QSqlDatabase>
+#include <QTemporaryDir>
+
 #include "cognition/ProactiveCooldownTracker.h"
 #include "cognition/ProactiveSuggestionPlanner.h"
+#include "telemetry/BehavioralEventLedger.h"
 
 class ProactiveSuggestionLoopScenarioTests : public QObject
 {
@@ -11,6 +15,7 @@ private slots:
     void connectorSuggestionPresentThenDuplicateSuppress();
     void connectorFreshnessAffectsNovelty();
     void connectorBurstLowersCooldownNovelty();
+    void connectorFlowRecordsReconstructableLedgerTrace();
     void focusedDesktopWorkSuppressesNonCriticalSuggestion();
 };
 
@@ -156,6 +161,146 @@ void ProactiveSuggestionLoopScenarioTests::connectorBurstLowersCooldownNovelty()
     QVERIFY(plan.noveltyScore < 0.50);
     QVERIFY(plan.cooldownDecision.details.value(QStringLiteral("noveltyReasonCodes")).toStringList()
                 .contains(QStringLiteral("novelty.connector_burst")));
+}
+
+void ProactiveSuggestionLoopScenarioTests::connectorFlowRecordsReconstructableLedgerTrace()
+{
+    if (!QSqlDatabase::drivers().contains(QStringLiteral("QSQLITE"))) {
+        QSKIP("QSQLITE driver is not available in this runtime.");
+    }
+
+    const qint64 nowMs = QDateTime::fromString(QStringLiteral("2026-04-18T15:00:00.000Z"),
+                                               Qt::ISODateWithMs).toMSecsSinceEpoch();
+    const ProactiveSuggestionPlan plan = ProactiveSuggestionPlanner::plan({
+        .sourceKind = QStringLiteral("connector_schedule_calendar"),
+        .taskType = QStringLiteral("live_update"),
+        .resultSummary = QStringLiteral("Schedule updated: Sprint planning"),
+        .sourceUrls = {},
+        .sourceMetadata = scheduleMetadata(),
+        .presentationKey = QStringLiteral("connector:schedule:team"),
+        .lastPresentedKey = QString(),
+        .lastPresentedAtMs = 0,
+        .success = true,
+        .cooldownState = CooldownState{},
+        .focusMode = FocusModeState{},
+        .nowMs = nowMs
+    });
+
+    QVERIFY(plan.decision.allowed);
+    QVERIFY(!plan.selectedSummary.isEmpty());
+
+    const ProactiveCooldownCommit commit = ProactiveCooldownTracker::commitPresentedSurface({
+        .state = CooldownState{},
+        .desktopContext = {
+            {QStringLiteral("threadId"), QStringLiteral("calendar::sprint")},
+            {QStringLiteral("taskId"), QStringLiteral("calendar_event")}
+        },
+        .taskType = QStringLiteral("live_update"),
+        .surfaceKind = QStringLiteral("connector_event_toast"),
+        .priority = plan.selectedProposal.priority,
+        .nowMs = nowMs
+    });
+
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    BehavioralEventLedger ledger(dir.path(), true);
+    QVERIFY(ledger.initialize());
+
+    const QString traceId = QStringLiteral("trace_connector_schedule_flow");
+    const QString threadId = commit.nextState.threadId;
+    BehaviorTraceEvent ingested = BehaviorTraceEvent::create(
+        QStringLiteral("connector_event"),
+        QStringLiteral("ingested"),
+        QStringLiteral("connector_event.ingested"),
+        {
+            {QStringLiteral("connectorKind"), QStringLiteral("schedule")},
+            {QStringLiteral("eventTitle"), QStringLiteral("Sprint planning")}
+        });
+    ingested.traceId = traceId;
+    ingested.sessionId = QStringLiteral("session_proactive_loop");
+    ingested.threadId = threadId;
+    ingested.capabilityId = QStringLiteral("connector_schedule_calendar");
+    ingested.timestampUtc = QDateTime::fromMSecsSinceEpoch(nowMs, Qt::UTC);
+
+    BehaviorTraceEvent proposal = BehaviorTraceEvent::create(
+        QStringLiteral("action_proposal"),
+        QStringLiteral("selected"),
+        QStringLiteral("proposal.selected"),
+        {
+            {QStringLiteral("proposalId"), plan.selectedProposal.proposalId},
+            {QStringLiteral("capabilityId"), plan.selectedProposal.capabilityId},
+            {QStringLiteral("sourceLabel"), plan.selectedProposal.arguments.value(QStringLiteral("sourceLabel")).toString()},
+            {QStringLiteral("presentationKeyHint"), plan.selectedProposal.arguments.value(QStringLiteral("presentationKeyHint")).toString()}
+        });
+    proposal.traceId = traceId;
+    proposal.sessionId = ingested.sessionId;
+    proposal.threadId = threadId;
+    proposal.capabilityId = plan.selectedProposal.capabilityId;
+    proposal.timestampUtc = ingested.timestampUtc.addMSecs(1);
+
+    BehaviorTraceEvent cooldown = BehaviorTraceEvent::create(
+        QStringLiteral("cooldown"),
+        QStringLiteral("evaluated"),
+        plan.cooldownDecision.reasonCode,
+        {
+            {QStringLiteral("novelty"), plan.noveltyScore},
+            {QStringLiteral("confidence"), plan.confidenceScore},
+            {QStringLiteral("noveltyReasonCodes"), plan.cooldownDecision.details.value(QStringLiteral("noveltyReasonCodes")).toStringList()}
+        });
+    cooldown.traceId = traceId;
+    cooldown.sessionId = ingested.sessionId;
+    cooldown.threadId = threadId;
+    cooldown.capabilityId = QStringLiteral("cooldown_engine");
+    cooldown.timestampUtc = ingested.timestampUtc.addMSecs(2);
+
+    BehaviorTraceEvent presented = BehaviorTraceEvent::create(
+        QStringLiteral("ui_presentation"),
+        QStringLiteral("presented"),
+        QStringLiteral("proposal.presented"),
+        {
+            {QStringLiteral("proposalId"), plan.selectedProposal.proposalId},
+            {QStringLiteral("surfaceKind"), QStringLiteral("connector_event_toast")},
+            {QStringLiteral("summary"), plan.selectedSummary}
+        });
+    presented.traceId = traceId;
+    presented.sessionId = ingested.sessionId;
+    presented.threadId = threadId;
+    presented.capabilityId = plan.selectedProposal.capabilityId;
+    presented.timestampUtc = ingested.timestampUtc.addMSecs(3);
+
+    QVERIFY(ledger.recordEvent(ingested));
+    QVERIFY(ledger.recordEvent(proposal));
+    QVERIFY(ledger.recordEvent(cooldown));
+    QVERIFY(ledger.recordEvent(presented));
+
+    const QList<BehaviorTraceEvent> events = ledger.recentEvents(8);
+    QCOMPARE(events.size(), 4);
+
+    bool sawIngested = false;
+    bool sawProposal = false;
+    bool sawCooldown = false;
+    bool sawPresented = false;
+    for (const BehaviorTraceEvent &event : events) {
+        QCOMPARE(event.traceId, traceId);
+        QCOMPARE(event.threadId, threadId);
+        if (event.family == QStringLiteral("connector_event")) {
+            sawIngested = true;
+        } else if (event.family == QStringLiteral("action_proposal")) {
+            sawProposal = true;
+        } else if (event.family == QStringLiteral("cooldown")) {
+            sawCooldown = true;
+            QVERIFY(!event.payload.value(QStringLiteral("noveltyReasonCodes")).toStringList().isEmpty());
+        } else if (event.family == QStringLiteral("ui_presentation")) {
+            sawPresented = true;
+            QCOMPARE(event.payload.value(QStringLiteral("proposalId")).toString(),
+                     plan.selectedProposal.proposalId);
+        }
+    }
+
+    QVERIFY(sawIngested);
+    QVERIFY(sawProposal);
+    QVERIFY(sawCooldown);
+    QVERIFY(sawPresented);
 }
 
 void ProactiveSuggestionLoopScenarioTests::focusedDesktopWorkSuppressesNonCriticalSuggestion()
