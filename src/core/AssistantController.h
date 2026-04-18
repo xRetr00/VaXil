@@ -481,6 +481,7 @@ private:
     bool m_lastInputFromVoice = false;
     QString m_lastWakeError;
     QString m_learningSessionId;
+    QString m_learningSessionStartedAt;
     QString m_activeTurnId;
     QString m_nextTurnId;
     QString m_lastAudioEventId;

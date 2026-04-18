@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <optional>
 
+#include <QCoreApplication>
 #include <QDateTime>
 #include <QDir>
 #include <QFileInfo>
@@ -13,8 +14,10 @@
 #include <QRegularExpression>
 #include <QSet>
 #include <QStandardPaths>
+#include <QSysInfo>
 #include <QTimer>
 #include <QTime>
+#include <QUuid>
 #include <QUrl>
 
 #include <nlohmann/json.hpp>
@@ -67,6 +70,8 @@
 #include "cognition/ProactiveSurfaceGate.h"
 #include "devices/DeviceManager.h"
 #include "logging/LoggingService.h"
+#include "learning_data/LearningDataCollector.h"
+#include "learning_data/LearningDataTypes.h"
 #include "memory/MemoryStore.h"
 #include "settings/AppSettings.h"
 #include "settings/IdentityProfileService.h"
@@ -87,6 +92,136 @@
 #include "workers/VoicePipelineRuntime.h"
 
 namespace {
+QString isoNowUtc()
+{
+    return QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs);
+}
+
+QString responseModeToLearningLabel(ResponseMode mode)
+{
+    switch (mode) {
+    case ResponseMode::Confirm:
+        return QStringLiteral("ask_confirmation");
+    case ResponseMode::Clarify:
+        return QStringLiteral("ask_clarification");
+    case ResponseMode::ActWithProgress:
+        return QStringLiteral("proactive_followup");
+    case ResponseMode::Act:
+        return QStringLiteral("concise_report");
+    case ResponseMode::Summarize:
+        return QStringLiteral("concise_report");
+    case ResponseMode::Recover:
+        return QStringLiteral("full_response");
+    case ResponseMode::Chat:
+        return QStringLiteral("full_response");
+    }
+
+    return QStringLiteral("full_response");
+}
+
+QString verbosityLabelForResponseMode(ResponseMode mode)
+{
+    switch (mode) {
+    case ResponseMode::Summarize:
+    case ResponseMode::Act:
+        return QStringLiteral("concise");
+    case ResponseMode::Confirm:
+    case ResponseMode::Clarify:
+        return QStringLiteral("targeted");
+    case ResponseMode::ActWithProgress:
+        return QStringLiteral("brief_progress");
+    case ResponseMode::Recover:
+    case ResponseMode::Chat:
+    default:
+        return QStringLiteral("full");
+    }
+}
+
+QString feedbackTypeFromSignal(const QString &signalType)
+{
+    const QString lowered = signalType.trimmed().toLower();
+    if (lowered.contains(QStringLiteral("positive")) || lowered == QStringLiteral("helpful")) {
+        return QStringLiteral("explicit_positive");
+    }
+    if (lowered.contains(QStringLiteral("negative")) || lowered == QStringLiteral("unhelpful")) {
+        return QStringLiteral("explicit_negative");
+    }
+    if (lowered.contains(QStringLiteral("verbose"))) {
+        return QStringLiteral("too_verbose");
+    }
+    if (lowered.contains(QStringLiteral("silence"))) {
+        return QStringLiteral("silence_preferred");
+    }
+    return QStringLiteral("correction");
+}
+
+QString failureTypeFromToolErrorKind(ToolErrorKind kind)
+{
+    switch (kind) {
+    case ToolErrorKind::None:
+        return QStringLiteral("none");
+    case ToolErrorKind::Transport:
+        return QStringLiteral("transport");
+    case ToolErrorKind::Auth:
+        return QStringLiteral("auth");
+    case ToolErrorKind::Capability:
+        return QStringLiteral("capability");
+    case ToolErrorKind::Invalid:
+        return QStringLiteral("invalid");
+    case ToolErrorKind::Timeout:
+        return QStringLiteral("timeout");
+    case ToolErrorKind::Unknown:
+    default:
+        return QStringLiteral("unknown");
+    }
+}
+
+QJsonObject redactedToolArgs(const QJsonObject &args)
+{
+    const QSet<QString> sensitiveKeys{
+        QStringLiteral("apiKey"),
+        QStringLiteral("api_key"),
+        QStringLiteral("token"),
+        QStringLiteral("password"),
+        QStringLiteral("secret"),
+        QStringLiteral("authorization"),
+        QStringLiteral("auth")
+    };
+
+    QJsonObject redacted;
+    for (auto it = args.begin(); it != args.end(); ++it) {
+        const QString key = it.key();
+        const QString loweredKey = key.toLower();
+        bool sensitive = false;
+        for (const QString &candidate : sensitiveKeys) {
+            if (loweredKey.contains(candidate.toLower())) {
+                sensitive = true;
+                break;
+            }
+        }
+
+        if (sensitive) {
+            redacted.insert(key, QStringLiteral("***redacted***"));
+        } else {
+            redacted.insert(key, it.value());
+        }
+    }
+    return redacted;
+}
+
+bool inputLikelyMemoryCandidate(const QString &input)
+{
+    const QString lowered = input.trimmed().toLower();
+    return lowered.startsWith(QStringLiteral("remember "))
+        || lowered.startsWith(QStringLiteral("remember that "))
+        || lowered.startsWith(QStringLiteral("save this preference "))
+        || lowered.startsWith(QStringLiteral("my name is "))
+        || lowered.startsWith(QStringLiteral("call me "))
+        || lowered.startsWith(QStringLiteral("i am working on "))
+        || lowered.startsWith(QStringLiteral("i'm working on "))
+        || lowered.startsWith(QStringLiteral("my project is "));
+}
+
 QString stateToString(AssistantState state)
 {
     switch (state) {
@@ -1442,6 +1577,7 @@ AssistantController::AssistantController(
     m_executionNarrator = std::make_unique<ExecutionNarrator>();
     m_memoryPolicyHandler = std::make_unique<MemoryPolicyHandler>(m_identityProfileService, m_memoryStore);
     m_toolCoordinator = std::make_unique<ToolCoordinator>(m_loggingService, m_executionNarrator.get());
+    m_learningDataCollector = std::make_unique<LearningData::LearningDataCollector>(m_settings, m_loggingService);
     m_skillStore = new SkillStore(this);
     m_agentToolbox = new AgentToolbox(m_settings, m_memoryStore, m_skillStore, m_loggingService, this);
     m_deviceManager = new DeviceManager(this);
@@ -1470,6 +1606,56 @@ AssistantController::AssistantController(
     m_toolWorker->moveToThread(&m_toolWorkerThread);
     m_gestureStateMachine->moveToThread(&m_gestureActionRouterThread);
     m_gestureActionRouter->moveToThread(&m_gestureActionRouterThread);
+    m_memoryPolicyHandler->setDecisionCallback([this](const MemoryDecisionSignal &signal) {
+        if (!m_learningDataCollector) {
+            return;
+        }
+        ensureLearningSession();
+        LearningData::MemoryDecisionEvent event;
+        event.sessionId = m_learningSessionId;
+        event.turnId = m_activeTurnId;
+        event.eventId = LearningData::LearningDataCollector::createEventId(QStringLiteral("memory"));
+        event.timestamp = isoNowUtc();
+        event.memoryCandidatePresent = signal.memoryCandidatePresent;
+        event.memoryAction = signal.memoryAction;
+        event.memoryType = signal.memoryType;
+        event.confidence = signal.confidence;
+        event.privacyRiskLevel = signal.privacyRiskLevel;
+        event.wasUserConfirmed = signal.wasUserConfirmed;
+        event.outcomeLabel = signal.outcomeLabel;
+        m_lastMemoryEventId = event.eventId;
+        m_learningDataCollector->recordMemoryDecisionEvent(event);
+    });
+    m_toolCoordinator->setToolExecutionObserver([this](const AgentToolCall &toolCall,
+                                                       const AgentToolResult &result,
+                                                       qint64 startedAtMs,
+                                                       qint64 finishedAtMs) {
+        if (!m_learningDataCollector) {
+            return;
+        }
+        ensureLearningSession();
+        LearningData::ToolExecutionEvent event;
+        event.sessionId = m_learningSessionId;
+        event.turnId = m_activeTurnId;
+        event.eventId = LearningData::LearningDataCollector::createEventId(QStringLiteral("tool_exec"));
+        event.timestamp = isoNowUtc();
+        event.selectedTool = result.toolName;
+        const QJsonDocument argsDoc = QJsonDocument::fromJson(toolCall.argumentsJson.toUtf8());
+        if (argsDoc.isObject()) {
+            event.toolArgsRedacted = redactedToolArgs(argsDoc.object());
+        }
+        event.executionStartedAt = QDateTime::fromMSecsSinceEpoch(startedAtMs, Qt::UTC).toString(Qt::ISODateWithMs);
+        event.executionFinishedAt = QDateTime::fromMSecsSinceEpoch(finishedAtMs, Qt::UTC).toString(Qt::ISODateWithMs);
+        event.latencyMs = std::max<qint64>(0, finishedAtMs - startedAtMs);
+        event.succeeded = result.success;
+        event.failureType = failureTypeFromToolErrorKind(result.errorKind);
+        event.retried = false;
+        event.retryCount = 0;
+        event.userCorrectedToolChoice = false;
+        event.finalOutcomeLabel = result.success ? QStringLiteral("good") : QStringLiteral("bad");
+        m_lastToolExecutionEventId = event.eventId;
+        m_learningDataCollector->recordToolExecutionEvent(event);
+    });
     connect(&m_toolWorkerThread, &QThread::finished, m_toolWorker, &QObject::deleteLater);
     connect(&m_gestureActionRouterThread, &QThread::finished, m_gestureStateMachine, &QObject::deleteLater);
     connect(&m_gestureActionRouterThread, &QThread::finished, m_gestureActionRouter, &QObject::deleteLater);
@@ -1540,6 +1726,11 @@ AssistantController::AssistantController(
 
 AssistantController::~AssistantController()
 {
+    closeLearningSession();
+    if (m_learningDataCollector) {
+        m_learningDataCollector->waitForIdle();
+    }
+
     if (m_gestureActionRouterThread.isRunning()) {
         m_gestureActionRouterThread.quit();
         m_gestureActionRouterThread.wait();
@@ -1584,6 +1775,9 @@ void AssistantController::initialize()
     reconfigureGestureActionRouter();
     if (m_visionIngestService) {
         m_visionIngestService->start();
+    }
+    if (m_learningDataCollector) {
+        m_learningDataCollector->initialize();
     }
     m_voicePipelineRuntime->start();
     if (m_loggingService) {
@@ -1690,7 +1884,49 @@ void AssistantController::initialize()
                 .arg(hadSpeech ? QStringLiteral("true") : QStringLiteral("false")));
         }
 
+        if (m_learningDataCollector
+            && completedMode == AudioCaptureMode::Direct
+            && !pcmData.isEmpty()) {
+            ensureLearningSession();
+            if (m_learningSessionStarted) {
+                QString turnId;
+                if (hadSpeech) {
+                    if (m_nextTurnId.isEmpty()) {
+                        m_nextTurnId = allocateLearningTurnId();
+                    }
+                    turnId = m_nextTurnId;
+                }
+
+                LearningData::AudioCaptureEvent audioEvent;
+                audioEvent.sessionId = m_learningSessionId;
+                audioEvent.turnId = turnId;
+                audioEvent.eventId = LearningData::LearningDataCollector::createEventId(QStringLiteral("audio"));
+                audioEvent.timestamp = isoNowUtc();
+                audioEvent.audioRole = hadSpeech ? QStringLiteral("command_raw") : QStringLiteral("rejected_segment");
+                audioEvent.sampleRate = 16000;
+                audioEvent.channels = 1;
+                audioEvent.sampleFormat = QStringLiteral("pcm_s16le");
+                audioEvent.captureSource = m_settings->selectedAudioInputDeviceId();
+                audioEvent.voiceActivityDetected = hadSpeech;
+                audioEvent.wakeWordDetected = m_followUpListeningAfterWakeAck;
+                audioEvent.collectionReason = hadSpeech
+                    ? QStringLiteral("direct_command_capture")
+                    : QStringLiteral("no_speech_segment");
+                audioEvent.labelStatus = hadSpeech
+                    ? QStringLiteral("assumed_owner")
+                    : QStringLiteral("unlabeled");
+                audioEvent.notes = completedMode == AudioCaptureMode::Direct
+                    ? QStringLiteral("capture_mode=direct")
+                    : QStringLiteral("capture_mode=other");
+                if (hadSpeech) {
+                    m_lastAudioEventId = audioEvent.eventId;
+                }
+                m_learningDataCollector->recordAudioCaptureEvent(audioEvent, pcmData);
+            }
+        }
+
         if (isMicrophoneBlocked()) {
+            m_nextTurnId.clear();
             clearActiveSpeechCapture();
             return;
         }
@@ -1738,6 +1974,7 @@ void AssistantController::initialize()
         m_transcript = transcript;
         emit transcriptChanged();
         if (transcript.isEmpty() || isLikelyNonSpeechTranscript(transcript)) {
+            m_nextTurnId.clear();
             if (m_loggingService && isLikelyNonSpeechTranscript(transcript)) {
                 m_loggingService->info(QStringLiteral("Ignoring non-speech transcription token. text=\"%1\"").arg(transcript.left(120)));
             }
@@ -1745,6 +1982,7 @@ void AssistantController::initialize()
             return;
         }
         if (isLikelySttArtifactTranscript(transcript)) {
+            m_nextTurnId.clear();
             if (m_loggingService) {
                 m_loggingService->infoFor(QStringLiteral("stt"), QStringLiteral("Ignoring STT artifact transcription. text=\"%1\"").arg(transcript.left(120)));
             }
@@ -1752,6 +1990,7 @@ void AssistantController::initialize()
             return;
         }
         if (shouldIgnoreAmbiguousTranscript(transcript)) {
+            m_nextTurnId.clear();
             if (m_loggingService) {
                 m_loggingService->info(QStringLiteral("Ignoring ambiguous transcription. text=\"%1\"").arg(transcript.left(120)));
             }
@@ -1772,12 +2011,35 @@ void AssistantController::initialize()
             m_loggingService->info(QStringLiteral("Transcription ready. mode=direct text=\"%1\"")
                 .arg(transcript.left(240)));
         }
+
+        if (m_learningDataCollector) {
+            ensureLearningSession();
+            if (m_learningSessionStarted) {
+                LearningData::AsrEvent asrEvent;
+                asrEvent.sessionId = m_learningSessionId;
+                asrEvent.turnId = m_nextTurnId;
+                asrEvent.eventId = LearningData::LearningDataCollector::createEventId(QStringLiteral("asr"));
+                asrEvent.timestamp = isoNowUtc();
+                asrEvent.sttEngine = QStringLiteral("whisper_cpp");
+                asrEvent.sourceAudioEventId = m_lastAudioEventId;
+                asrEvent.rawTranscript = result.text;
+                asrEvent.normalizedTranscript = transcript;
+                asrEvent.finalTranscript = transcript;
+                asrEvent.transcriptSource = QStringLiteral("raw_asr");
+                asrEvent.language = QStringLiteral("en");
+                asrEvent.confidence = result.confidence;
+                asrEvent.wasUserEdited = false;
+                asrEvent.transcriptChanged = result.text.trimmed() != transcript;
+                m_learningDataCollector->recordAsrEvent(asrEvent);
+            }
+        }
         submitText(transcript);
     });
     connect(m_whisperSttEngine, &SpeechRecognizer::transcriptionFailed, this, [this](quint64 requestId, const QString &errorText) {
         if (requestId != m_activeSttRequestId) {
             return;
         }
+        m_nextTurnId.clear();
         if (m_loggingService) {
             m_loggingService->error(QStringLiteral("Speech transcription failed: %1").arg(errorText));
         }
@@ -2190,6 +2452,57 @@ bool AssistantController::executeRouteDecision(const InputRouteDecision &decisio
         ? m_assistantBehaviorPolicy->createActionSession(routedInput, decision, toolPlan, trustDecision, m_latestDesktopContext)
         : ActionSession{};
 
+    if (m_learningDataCollector) {
+        ensureLearningSession();
+        if (m_learningSessionStarted) {
+            LearningData::ToolDecisionEvent toolDecisionEvent;
+            toolDecisionEvent.sessionId = m_learningSessionId;
+            toolDecisionEvent.turnId = m_activeTurnId;
+            toolDecisionEvent.eventId = LearningData::LearningDataCollector::createEventId(QStringLiteral("tool_decision"));
+            toolDecisionEvent.timestamp = isoNowUtc();
+            toolDecisionEvent.userInputText = routedInput;
+            toolDecisionEvent.inputMode = m_lastInputFromVoice ? QStringLiteral("voice") : QStringLiteral("text");
+            for (const AgentToolSpec &tool : availableTools) {
+                toolDecisionEvent.availableTools.push_back(tool.name);
+            }
+            toolDecisionEvent.selectedTool = !toolPlan.orderedToolNames.isEmpty()
+                ? toolPlan.orderedToolNames.first()
+                : (decision.tasks.isEmpty() ? QString{} : decision.tasks.first().type);
+            for (const ToolPlanStep &candidate : toolPlan.candidates) {
+                toolDecisionEvent.candidateToolsWithScores.push_back({
+                    .toolName = candidate.toolName,
+                    .score = static_cast<double>(candidate.affordanceScore)
+                });
+            }
+            toolDecisionEvent.decisionSource = QStringLiteral("heuristic_policy");
+            toolDecisionEvent.expectedConfirmationLevel = trustDecision.requiresConfirmation
+                ? QStringLiteral("required")
+                : (trustDecision.highRisk ? QStringLiteral("recommended") : QStringLiteral("none"));
+            toolDecisionEvent.noToolOptionConsidered = toolDecisionEvent.selectedTool.trimmed().isEmpty();
+            toolDecisionEvent.notes = QStringLiteral("route_kind=%1").arg(routeKindToString(decision.kind));
+            m_lastToolDecisionEventId = toolDecisionEvent.eventId;
+            m_learningDataCollector->recordToolDecisionEvent(toolDecisionEvent);
+
+            LearningData::BehaviorDecisionEvent behaviorDecisionEvent;
+            behaviorDecisionEvent.sessionId = m_learningSessionId;
+            behaviorDecisionEvent.turnId = m_activeTurnId;
+            behaviorDecisionEvent.eventId = LearningData::LearningDataCollector::createEventId(QStringLiteral("behavior"));
+            behaviorDecisionEvent.timestamp = toolDecisionEvent.timestamp;
+            behaviorDecisionEvent.responseMode = responseModeToLearningLabel(m_activeActionSession.responseMode);
+            behaviorDecisionEvent.whySelected = !trustDecision.reason.trimmed().isEmpty()
+                ? trustDecision.reason
+                : m_activeActionSession.toolPlan.rationale;
+            behaviorDecisionEvent.interruptedUser = false;
+            behaviorDecisionEvent.followUpAttempted = decision.kind == InputRouteKind::BackgroundTasks
+                || decision.kind == InputRouteKind::DeterministicTasks;
+            behaviorDecisionEvent.followUpHelpfulLabel = QStringLiteral("unknown");
+            behaviorDecisionEvent.verbosityLevel = verbosityLabelForResponseMode(m_activeActionSession.responseMode);
+            behaviorDecisionEvent.speakingDurationMs = 0;
+            m_lastBehaviorEventId = behaviorDecisionEvent.eventId;
+            m_learningDataCollector->recordBehaviorDecisionEvent(behaviorDecisionEvent);
+        }
+    }
+
     if (!confirmationGranted
         && m_assistantBehaviorPolicy
         && m_activeActionSession.trust.requiresConfirmation
@@ -2332,8 +2645,35 @@ void AssistantController::submitText(const QString &text)
         return;
     }
 
+    ensureLearningSession();
+    if (!m_nextTurnId.isEmpty()) {
+        m_activeTurnId = m_nextTurnId;
+        m_nextTurnId.clear();
+        m_lastInputFromVoice = true;
+    } else {
+        m_activeTurnId = allocateLearningTurnId();
+        m_lastInputFromVoice = false;
+    }
+
     if (handlePendingConfirmationInput(trimmed)) {
         return;
+    }
+
+    if (m_learningDataCollector && m_learningSessionStarted && !inputLikelyMemoryCandidate(trimmed)) {
+        LearningData::MemoryDecisionEvent memoryEvent;
+        memoryEvent.sessionId = m_learningSessionId;
+        memoryEvent.turnId = m_activeTurnId;
+        memoryEvent.eventId = LearningData::LearningDataCollector::createEventId(QStringLiteral("memory"));
+        memoryEvent.timestamp = isoNowUtc();
+        memoryEvent.memoryCandidatePresent = false;
+        memoryEvent.memoryAction = QStringLiteral("none");
+        memoryEvent.memoryType = QStringLiteral("none");
+        memoryEvent.confidence = 0.0;
+        memoryEvent.privacyRiskLevel = QStringLiteral("low");
+        memoryEvent.wasUserConfirmed = false;
+        memoryEvent.outcomeLabel = QStringLiteral("none");
+        m_lastMemoryEventId = memoryEvent.eventId;
+        m_learningDataCollector->recordMemoryDecisionEvent(memoryEvent);
     }
 
     clearSurfaceError(QStringLiteral("assistant"));
@@ -2707,6 +3047,11 @@ void AssistantController::noteProactiveSuggestionFeedback(const QString &signalT
                                                           const QString &suggestionType)
 {
     logProactiveSuggestionFeedback(signalType, suggestionType);
+    recordFeedbackSignalForLearning(
+        feedbackTypeFromSignal(signalType),
+        QStringLiteral("suggestion_type=%1; signal_type=%2").arg(suggestionType, signalType),
+        {},
+        QStringLiteral("normal"));
 }
 
 void AssistantController::noteTaskPanelRendered()
@@ -3111,6 +3456,9 @@ void AssistantController::endConversationSession()
     m_consecutiveSessionMisses = 0;
     m_conversationSessionExpiresAtMs = 0;
     m_followUpListeningAfterWakeAck = false;
+    if (m_learningDataCollector) {
+        m_learningDataCollector->runMaintenance();
+    }
 }
 
 bool AssistantController::conversationSessionShouldContinue() const
@@ -5534,6 +5882,34 @@ void AssistantController::recordTaskResult(const QJsonObject &resultObject)
         return;
     }
 
+    if (m_learningDataCollector) {
+        ensureLearningSession();
+        if (m_learningSessionStarted) {
+            LearningData::ToolExecutionEvent event;
+            event.sessionId = m_learningSessionId;
+            event.turnId = m_activeTurnId;
+            event.eventId = LearningData::LearningDataCollector::createEventId(QStringLiteral("tool_exec"));
+            event.timestamp = isoNowUtc();
+            event.selectedTool = handling.completedResult->type;
+            event.toolArgsRedacted = redactedToolArgs(handling.taskArgs);
+            event.executionStartedAt = event.timestamp;
+            event.executionFinishedAt = handling.completedResult->finishedAt.trimmed().isEmpty()
+                ? event.timestamp
+                : handling.completedResult->finishedAt;
+            event.latencyMs = 0;
+            event.succeeded = handling.completedResult->success;
+            event.failureType = failureTypeFromToolErrorKind(handling.completedResult->errorKind);
+            event.retried = handling.retryCount > 0;
+            event.retryCount = handling.retryCount;
+            event.userCorrectedToolChoice = false;
+            event.finalOutcomeLabel = handling.completedResult->success
+                ? QStringLiteral("good")
+                : QStringLiteral("bad");
+            m_lastToolExecutionEventId = event.eventId;
+            m_learningDataCollector->recordToolExecutionEvent(event);
+        }
+    }
+
     const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
     rememberActionThreadResult(*handling.completedResult, nowMs);
 
@@ -5958,6 +6334,11 @@ bool AssistantController::handlePendingConfirmationInput(const QString &input)
         const InputRouteDecision pendingDecision = m_pendingRouteDecision;
         const QString pendingInput = m_pendingRouteInput;
         const LocalIntent pendingLocalIntent = m_pendingLocalIntent;
+        recordFeedbackSignalForLearning(
+            QStringLiteral("explicit_positive"),
+            QStringLiteral("confirmation=approved"),
+            {},
+            QStringLiteral("normal"));
         clearPendingConfirmation();
         executeRouteDecision(pendingDecision, pendingInput, pendingLocalIntent, true, QDateTime::currentMSecsSinceEpoch());
         return true;
@@ -5983,6 +6364,11 @@ bool AssistantController::handlePendingConfirmationInput(const QString &input)
                 m_latestDesktopContext));
         }
         const ActionSession pendingSession = m_pendingActionSession;
+        recordFeedbackSignalForLearning(
+            QStringLiteral("explicit_negative"),
+            QStringLiteral("confirmation=rejected"),
+            {},
+            QStringLiteral("normal"));
         clearPendingConfirmation();
         deliverLocalResponse(
             m_executionNarrator
@@ -6011,6 +6397,11 @@ bool AssistantController::handlePendingConfirmationInput(const QString &input)
             userFacingPromptForLogging(input),
             m_latestDesktopContext));
     }
+    recordFeedbackSignalForLearning(
+        QStringLiteral("correction"),
+        QStringLiteral("confirmation=unrecognized; input=%1").arg(input.left(120)),
+        {},
+        QStringLiteral("low"));
     clearPendingConfirmation();
     return false;
 }
@@ -6132,4 +6523,121 @@ CommandEnvelope AssistantController::parseCommand(const QString &payload) const
     command.args = json.contains("args") ? json.at("args") : nlohmann::json::object();
     command.valid = !command.intent.isEmpty() && command.intent != QStringLiteral("unknown");
     return command;
+}
+
+void AssistantController::ensureLearningSession()
+{
+    if (!m_learningDataCollector || m_learningSessionStarted) {
+        return;
+    }
+
+    const auto settingsSnapshot = m_learningDataCollector->currentSettings();
+    if (!settingsSnapshot.enabled || !settingsSnapshot.hasAnyCategoryEnabled()) {
+        return;
+    }
+
+    m_learningSessionId = QStringLiteral("session_%1_%2")
+        .arg(QDateTime::currentMSecsSinceEpoch())
+        .arg(QUuid::createUuid().toString(QUuid::WithoutBraces).left(6));
+    m_learningSessionStartedAt = isoNowUtc();
+    m_learningSessionStarted = true;
+
+    LearningData::SessionEvent sessionEvent;
+    sessionEvent.sessionId = m_learningSessionId;
+    sessionEvent.startedAt = m_learningSessionStartedAt;
+    sessionEvent.appVersion = QCoreApplication::applicationVersion().trimmed().isEmpty()
+        ? QStringLiteral("unknown")
+        : QCoreApplication::applicationVersion().trimmed();
+    sessionEvent.deviceInfo = {
+        {QStringLiteral("cpu_arch"), QSysInfo::currentCpuArchitecture()},
+        {QStringLiteral("kernel_type"), QSysInfo::kernelType()},
+        {QStringLiteral("kernel_version"), QSysInfo::kernelVersion()},
+        {QStringLiteral("product_type"), QSysInfo::productType()},
+        {QStringLiteral("product_version"), QSysInfo::productVersion()},
+        {QStringLiteral("pretty_product_name"), QSysInfo::prettyProductName()},
+        {QStringLiteral("machine_unique_id"), QString::fromUtf8(QSysInfo::machineUniqueId().toHex())}
+    };
+    sessionEvent.collectionEnabled = settingsSnapshot.enabled;
+    sessionEvent.audioCollectionEnabled = settingsSnapshot.audioCollectionEnabled;
+    sessionEvent.transcriptCollectionEnabled = settingsSnapshot.transcriptCollectionEnabled;
+    sessionEvent.toolLoggingEnabled = settingsSnapshot.toolLoggingEnabled;
+    sessionEvent.behaviorLoggingEnabled = settingsSnapshot.behaviorLoggingEnabled;
+    sessionEvent.memoryLoggingEnabled = settingsSnapshot.memoryLoggingEnabled;
+    m_learningDataCollector->recordSessionEvent(sessionEvent);
+}
+
+void AssistantController::closeLearningSession()
+{
+    if (!m_learningDataCollector || !m_learningSessionStarted) {
+        return;
+    }
+
+    LearningData::SessionEvent sessionEvent;
+    sessionEvent.sessionId = m_learningSessionId;
+    sessionEvent.startedAt = m_learningSessionStartedAt;
+    sessionEvent.endedAt = isoNowUtc();
+    sessionEvent.appVersion = QCoreApplication::applicationVersion().trimmed().isEmpty()
+        ? QStringLiteral("unknown")
+        : QCoreApplication::applicationVersion().trimmed();
+    const auto settingsSnapshot = m_learningDataCollector->currentSettings();
+    sessionEvent.collectionEnabled = settingsSnapshot.enabled;
+    sessionEvent.audioCollectionEnabled = settingsSnapshot.audioCollectionEnabled;
+    sessionEvent.transcriptCollectionEnabled = settingsSnapshot.transcriptCollectionEnabled;
+    sessionEvent.toolLoggingEnabled = settingsSnapshot.toolLoggingEnabled;
+    sessionEvent.behaviorLoggingEnabled = settingsSnapshot.behaviorLoggingEnabled;
+    sessionEvent.memoryLoggingEnabled = settingsSnapshot.memoryLoggingEnabled;
+    m_learningDataCollector->recordSessionEvent(sessionEvent);
+    m_learningDataCollector->runMaintenance();
+
+    m_learningSessionStarted = false;
+    m_learningSessionId.clear();
+    m_learningSessionStartedAt.clear();
+}
+
+QString AssistantController::allocateLearningTurnId()
+{
+    ++m_learningTurnCounter;
+    return QString::number(m_learningTurnCounter);
+}
+
+void AssistantController::recordFeedbackSignalForLearning(const QString &feedbackType,
+                                                          const QString &freeformText,
+                                                          const QStringList &linkedEventIds,
+                                                          const QString &severity)
+{
+    if (!m_learningDataCollector) {
+        return;
+    }
+
+    ensureLearningSession();
+    if (!m_learningSessionStarted) {
+        return;
+    }
+
+    QStringList linked = linkedEventIds;
+    if (linked.isEmpty()) {
+        if (!m_lastToolDecisionEventId.isEmpty()) {
+            linked.push_back(m_lastToolDecisionEventId);
+        }
+        if (!m_lastToolExecutionEventId.isEmpty()) {
+            linked.push_back(m_lastToolExecutionEventId);
+        }
+        if (!m_lastBehaviorEventId.isEmpty()) {
+            linked.push_back(m_lastBehaviorEventId);
+        }
+        if (!m_lastMemoryEventId.isEmpty()) {
+            linked.push_back(m_lastMemoryEventId);
+        }
+    }
+
+    LearningData::UserFeedbackEvent event;
+    event.sessionId = m_learningSessionId;
+    event.turnId = m_activeTurnId;
+    event.eventId = LearningData::LearningDataCollector::createEventId(QStringLiteral("feedback"));
+    event.timestamp = isoNowUtc();
+    event.feedbackType = feedbackType;
+    event.linkedEventIds = linked;
+    event.freeformText = freeformText;
+    event.severity = severity;
+    m_learningDataCollector->recordUserFeedbackEvent(event);
 }

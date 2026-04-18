@@ -82,19 +82,6 @@ int clampMaxOutputTokens(int value)
     return std::clamp(value, 64, 8192);
 }
 
-double clampLearningMaxAudioStorageGb(double value)
-{
-    if (std::isnan(value)) {
-        return 4.0;
-    }
-    return std::clamp(value, 0.25, 256.0);
-}
-
-int clampLearningRetentionDays(int value)
-{
-    return std::clamp(value, 0, 3650);
-}
-
 double clampVadSensitivity(double value)
 {
     return std::clamp(value, 0.05, 0.95);
@@ -250,16 +237,6 @@ bool AppSettings::load()
     }
     m_maxOutputTokens = clampMaxOutputTokens(parsed.value("maxOutputTokens", 1024));
     m_memoryAutoWrite = parsed.value("memoryAutoWrite", true);
-    m_learningDataCollectionEnabled = parsed.value("enable_learning_data_collection", false);
-    m_learningAudioCollectionEnabled = parsed.value("enable_audio_collection", false);
-    m_learningTranscriptCollectionEnabled = parsed.value("enable_transcript_collection", false);
-    m_learningToolLoggingEnabled = parsed.value("enable_tool_logging", false);
-    m_learningBehaviorLoggingEnabled = parsed.value("enable_behavior_logging", false);
-    m_learningMemoryLoggingEnabled = parsed.value("enable_memory_logging", false);
-    m_learningMaxAudioStorageGb = clampLearningMaxAudioStorageGb(parsed.value("max_audio_storage_gb", 4.0));
-    m_learningMaxDaysToKeepAudio = clampLearningRetentionDays(parsed.value("max_days_to_keep_audio", 30));
-    m_learningMaxDaysToKeepStructuredLogs = clampLearningRetentionDays(parsed.value("max_days_to_keep_structured_logs", 90));
-    m_learningAllowPreparedDatasetExport = parsed.value("allow_export_prepared_datasets", false);
     m_webSearchProvider = QString::fromStdString(parsed.value("webSearchProvider", m_webSearchProvider.toStdString()));
     m_braveSearchApiKey = QString::fromStdString(parsed.value("braveSearchApiKey", std::string{}));
     m_mcpEnabled = parsed.value("mcpEnabled", false);
@@ -367,16 +344,6 @@ bool AppSettings::save() const
         {"providerTopK", m_providerTopK.has_value() ? nlohmann::json(*m_providerTopK) : nlohmann::json(nullptr)},
         {"maxOutputTokens", m_maxOutputTokens},
         {"memoryAutoWrite", m_memoryAutoWrite},
-        {"enable_learning_data_collection", m_learningDataCollectionEnabled},
-        {"enable_audio_collection", m_learningAudioCollectionEnabled},
-        {"enable_transcript_collection", m_learningTranscriptCollectionEnabled},
-        {"enable_tool_logging", m_learningToolLoggingEnabled},
-        {"enable_behavior_logging", m_learningBehaviorLoggingEnabled},
-        {"enable_memory_logging", m_learningMemoryLoggingEnabled},
-        {"max_audio_storage_gb", m_learningMaxAudioStorageGb},
-        {"max_days_to_keep_audio", m_learningMaxDaysToKeepAudio},
-        {"max_days_to_keep_structured_logs", m_learningMaxDaysToKeepStructuredLogs},
-        {"allow_export_prepared_datasets", m_learningAllowPreparedDatasetExport},
         {"webSearchProvider", m_webSearchProvider.toStdString()},
         {"braveSearchApiKey", m_braveSearchApiKey.toStdString()},
         {"mcpEnabled", m_mcpEnabled},
@@ -527,66 +494,6 @@ void AppSettings::setMaxOutputTokens(int maxTokens)
 }
 bool AppSettings::memoryAutoWrite() const { return m_memoryAutoWrite; }
 void AppSettings::setMemoryAutoWrite(bool enabled) { m_memoryAutoWrite = enabled; emit settingsChanged(); }
-bool AppSettings::learningDataCollectionEnabled() const { return m_learningDataCollectionEnabled; }
-void AppSettings::setLearningDataCollectionEnabled(bool enabled)
-{
-    m_learningDataCollectionEnabled = enabled;
-    emit settingsChanged();
-}
-bool AppSettings::learningAudioCollectionEnabled() const { return m_learningAudioCollectionEnabled; }
-void AppSettings::setLearningAudioCollectionEnabled(bool enabled)
-{
-    m_learningAudioCollectionEnabled = enabled;
-    emit settingsChanged();
-}
-bool AppSettings::learningTranscriptCollectionEnabled() const { return m_learningTranscriptCollectionEnabled; }
-void AppSettings::setLearningTranscriptCollectionEnabled(bool enabled)
-{
-    m_learningTranscriptCollectionEnabled = enabled;
-    emit settingsChanged();
-}
-bool AppSettings::learningToolLoggingEnabled() const { return m_learningToolLoggingEnabled; }
-void AppSettings::setLearningToolLoggingEnabled(bool enabled)
-{
-    m_learningToolLoggingEnabled = enabled;
-    emit settingsChanged();
-}
-bool AppSettings::learningBehaviorLoggingEnabled() const { return m_learningBehaviorLoggingEnabled; }
-void AppSettings::setLearningBehaviorLoggingEnabled(bool enabled)
-{
-    m_learningBehaviorLoggingEnabled = enabled;
-    emit settingsChanged();
-}
-bool AppSettings::learningMemoryLoggingEnabled() const { return m_learningMemoryLoggingEnabled; }
-void AppSettings::setLearningMemoryLoggingEnabled(bool enabled)
-{
-    m_learningMemoryLoggingEnabled = enabled;
-    emit settingsChanged();
-}
-double AppSettings::learningMaxAudioStorageGb() const { return m_learningMaxAudioStorageGb; }
-void AppSettings::setLearningMaxAudioStorageGb(double valueGb)
-{
-    m_learningMaxAudioStorageGb = clampLearningMaxAudioStorageGb(valueGb);
-    emit settingsChanged();
-}
-int AppSettings::learningMaxDaysToKeepAudio() const { return m_learningMaxDaysToKeepAudio; }
-void AppSettings::setLearningMaxDaysToKeepAudio(int days)
-{
-    m_learningMaxDaysToKeepAudio = clampLearningRetentionDays(days);
-    emit settingsChanged();
-}
-int AppSettings::learningMaxDaysToKeepStructuredLogs() const { return m_learningMaxDaysToKeepStructuredLogs; }
-void AppSettings::setLearningMaxDaysToKeepStructuredLogs(int days)
-{
-    m_learningMaxDaysToKeepStructuredLogs = clampLearningRetentionDays(days);
-    emit settingsChanged();
-}
-bool AppSettings::learningAllowPreparedDatasetExport() const { return m_learningAllowPreparedDatasetExport; }
-void AppSettings::setLearningAllowPreparedDatasetExport(bool enabled)
-{
-    m_learningAllowPreparedDatasetExport = enabled;
-    emit settingsChanged();
-}
 QString AppSettings::webSearchProvider() const { return m_webSearchProvider; }
 void AppSettings::setWebSearchProvider(const QString &provider)
 {

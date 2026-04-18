@@ -318,6 +318,9 @@ set(JARVIS_SOURCES
     src/gui/BackendFacade.cpp
     src/gui/SettingsViewModel.cpp
     src/gui/TaskViewModel.cpp
+    src/learning_data/LearningDataCollector.cpp
+    src/learning_data/LearningDataSettings.cpp
+    src/learning_data/LearningDataStorage.cpp
     src/logging/LoggingService.cpp
     src/memory/MemoryManager.cpp
     src/memory/MemoryStore.cpp
@@ -454,6 +457,10 @@ set(JARVIS_HEADERS
     src/gui/AgentViewModel.h
     src/gui/BackendFacade.h
     src/gui/SettingsViewModel.h
+    src/learning_data/LearningDataCollector.h
+    src/learning_data/LearningDataSettings.h
+    src/learning_data/LearningDataStorage.h
+    src/learning_data/LearningDataTypes.h
     src/logging/LoggingService.h
     src/memory/MemoryManager.h
     src/memory/MemoryStore.h
@@ -1169,6 +1176,20 @@ if(JARVIS_BUILD_TESTS)
     add_test(NAME jarvis_behavioral_ledger_tests COMMAND jarvis_behavioral_ledger_tests)
     set_tests_properties(jarvis_behavioral_ledger_tests PROPERTIES ENVIRONMENT "PATH=${QT_BIN_DIR}${JARVIS_PATH_ENV_SEPARATOR}$ENV{PATH}")
     jarvis_copy_optional_runtime_libraries(jarvis_behavioral_ledger_tests)
+
+    qt_add_executable(jarvis_learning_data_tests
+        tests/LearningDataCollectorTests.cpp
+    )
+
+    target_link_libraries(jarvis_learning_data_tests
+        PRIVATE
+            jarvis_lib
+            Qt6::Test
+    )
+
+    add_test(NAME jarvis_learning_data_tests COMMAND jarvis_learning_data_tests)
+    set_tests_properties(jarvis_learning_data_tests PROPERTIES ENVIRONMENT "PATH=${QT_BIN_DIR}${JARVIS_PATH_ENV_SEPARATOR}$ENV{PATH}")
+    jarvis_copy_optional_runtime_libraries(jarvis_learning_data_tests)
 
     if(Python3_EXECUTABLE)
         add_test(

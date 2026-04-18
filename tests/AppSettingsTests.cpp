@@ -68,6 +68,16 @@ void AppSettingsTests::hasExpectedDefaults()
     QCOMPARE(settings.focusModeUntilEpochMs(), 0);
     QVERIFY(!settings.privateModeEnabled());
     QVERIFY(!settings.initialSetupCompleted());
+    QVERIFY(!settings.learningDataCollectionEnabled());
+    QVERIFY(!settings.learningAudioCollectionEnabled());
+    QVERIFY(!settings.learningTranscriptCollectionEnabled());
+    QVERIFY(!settings.learningToolLoggingEnabled());
+    QVERIFY(!settings.learningBehaviorLoggingEnabled());
+    QVERIFY(!settings.learningMemoryLoggingEnabled());
+    QCOMPARE(settings.learningMaxAudioStorageGb(), 4.0);
+    QCOMPARE(settings.learningMaxDaysToKeepAudio(), 30);
+    QCOMPARE(settings.learningMaxDaysToKeepStructuredLogs(), 90);
+    QVERIFY(!settings.learningAllowPreparedDatasetExport());
 }
 
 void AppSettingsTests::clampVoiceSpeedBelowMin()

@@ -70,36 +70,6 @@ public:
     bool memoryAutoWrite() const;
     void setMemoryAutoWrite(bool enabled);
 
-    bool learningDataCollectionEnabled() const;
-    void setLearningDataCollectionEnabled(bool enabled);
-
-    bool learningAudioCollectionEnabled() const;
-    void setLearningAudioCollectionEnabled(bool enabled);
-
-    bool learningTranscriptCollectionEnabled() const;
-    void setLearningTranscriptCollectionEnabled(bool enabled);
-
-    bool learningToolLoggingEnabled() const;
-    void setLearningToolLoggingEnabled(bool enabled);
-
-    bool learningBehaviorLoggingEnabled() const;
-    void setLearningBehaviorLoggingEnabled(bool enabled);
-
-    bool learningMemoryLoggingEnabled() const;
-    void setLearningMemoryLoggingEnabled(bool enabled);
-
-    double learningMaxAudioStorageGb() const;
-    void setLearningMaxAudioStorageGb(double valueGb);
-
-    int learningMaxDaysToKeepAudio() const;
-    void setLearningMaxDaysToKeepAudio(int days);
-
-    int learningMaxDaysToKeepStructuredLogs() const;
-    void setLearningMaxDaysToKeepStructuredLogs(int days);
-
-    bool learningAllowPreparedDatasetExport() const;
-    void setLearningAllowPreparedDatasetExport(bool enabled);
-
     QString webSearchProvider() const;
     void setWebSearchProvider(const QString &provider);
 
@@ -266,16 +236,6 @@ private:
     std::optional<int> m_providerTopK;
     int m_maxOutputTokens = 1024;
     bool m_memoryAutoWrite = true;
-    bool m_learningDataCollectionEnabled = false;
-    bool m_learningAudioCollectionEnabled = false;
-    bool m_learningTranscriptCollectionEnabled = false;
-    bool m_learningToolLoggingEnabled = false;
-    bool m_learningBehaviorLoggingEnabled = false;
-    bool m_learningMemoryLoggingEnabled = false;
-    double m_learningMaxAudioStorageGb = 4.0;
-    int m_learningMaxDaysToKeepAudio = 30;
-    int m_learningMaxDaysToKeepStructuredLogs = 90;
-    bool m_learningAllowPreparedDatasetExport = false;
     QString m_webSearchProvider = QStringLiteral("brave");
     QString m_braveSearchApiKey;
     bool m_mcpEnabled = false;

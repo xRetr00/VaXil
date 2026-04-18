@@ -60,3 +60,6 @@ bin/logs/
 third_party/
 Vaxil_II/
 PLAN.md
+.vscode/
+.claude/
+.cache/
