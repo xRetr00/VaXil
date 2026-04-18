@@ -2,7 +2,6 @@
     <qresource prefix="/qt/qml/VAXIL/gui">
         <file alias="qml/OverlayWindow.qml">qml/OverlayWindow.qml</file>
         <file alias="qml/OrbRenderer.qml">qml/OrbRenderer.qml</file>
-        <file alias="qml/VoiceWaveRenderer.qml">qml/VoiceWaveRenderer.qml</file>
         <file alias="qml/ToastWidget.qml">qml/ToastWidget.qml</file>
         <file alias="qml/ToastManager.qml">qml/ToastManager.qml</file>
         <file alias="qml/AnimationController.qml">qml/AnimationController.qml</file>

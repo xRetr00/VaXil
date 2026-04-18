@@ -64,6 +64,51 @@ Window {
         return (blinkOn ? "*" : " ") + " IDLE"
     }
 
+    function hasText(value) {
+        return value !== undefined && value !== null && value.toString().trim().length > 0
+    }
+
+    function installedToolCount() {
+        const statuses = settingsVm.toolStatuses || []
+        let count = 0
+        for (let i = 0; i < statuses.length; ++i) {
+            if (statuses[i].installed === true) {
+                count += 1
+            }
+        }
+        return count
+    }
+
+    function missingToolCount() {
+        const statuses = settingsVm.toolStatuses || []
+        let count = 0
+        for (let i = 0; i < statuses.length; ++i) {
+            if (statuses[i].installed !== true) {
+                count += 1
+            }
+        }
+        return count
+    }
+
+    readonly property bool providerReady: settingsVm.chatProviderKind === "openrouter"
+                                         ? hasText(settingsVm.chatProviderApiKey)
+                                         : hasText(settingsVm.lmStudioEndpoint)
+    readonly property bool modelReady: hasText(settingsVm.selectedModel)
+    readonly property bool sttReady: hasText(settingsVm.whisperExecutable) && hasText(settingsVm.whisperModelPath)
+    readonly property bool ttsReady: hasText(settingsVm.piperExecutable) && hasText(settingsVm.piperVoiceModel)
+    readonly property bool ffmpegReady: hasText(settingsVm.ffmpegExecutable)
+    readonly property bool micReady: hasText(settingsVm.selectedAudioInputDeviceId) || settingsVm.audioInputDeviceIds.length > 0
+    readonly property bool visionReady: !settingsVm.visionEnabled || hasText(settingsVm.visionEndpoint)
+    readonly property bool mcpReady: !settingsVm.mcpEnabled || hasText(settingsVm.mcpServerUrl)
+    readonly property bool toolingReady: missingToolCount() === 0
+    readonly property bool agentReady: settingsVm.agentEnabled && settingsVm.agentAvailable
+
+    readonly property string providerLabel: settingsVm.chatProviderKind === "openrouter"
+                                            ? "OpenRouter"
+                                            : settingsVm.chatProviderKind === "ollama"
+                                              ? "Ollama"
+                                              : "Local OpenAI-Compatible"
+
     onClosing: function(close) {
         close.accepted = false
         hide()
@@ -280,48 +325,167 @@ Window {
                     spacing: 16
 
                     Item {
-                        id: visualHero
+                        id: runtimeHero
                         Layout.fillWidth: true
                         Layout.fillHeight: true
                         Layout.minimumHeight: 380
                         clip: true
 
-                        readonly property real orbDiameter: Math.min(width * 0.84, height * 0.88)
+                        JarvisUi.VisionGlassPanel {
+                            anchors.fill: parent
+                            radius: 24
+                            panelColor: "#13182126"
+                            innerColor: "#1a202a31"
+                            outlineColor: "#1dffffff"
+                            highlightColor: "#10ffffff"
+                            shadowOpacity: 0.24
 
-                        Rectangle {
-                            anchors.centerIn: parent
-                            width: visualHero.orbDiameter * (1.1 + 0.05 * fullUi.slowPulse)
-                            height: width
-                            radius: width / 2
-                            color: "transparent"
-                            border.width: 1
-                            border.color: "#4affffff"
-                            opacity: 0.14 + 0.16 * fullUi.fastPulse
-                        }
+                            ColumnLayout {
+                                anchors.fill: parent
+                                anchors.margins: 16
+                                spacing: 12
 
-                        JarvisUi.OrbRenderer {
-                            anchors.centerIn: parent
-                            width: visualHero.orbDiameter
-                            height: visualHero.orbDiameter
-                            stateName: agentVm.stateName
-                            uiState: agentVm.uiState
-                            time: motion.time
-                            audioLevel: motion.inputBoost
-                            speakingLevel: motion.speakingSignal
-                            distortion: motion.distortion
-                            glow: motion.glow
-                            orbScale: motion.orbScale
-                            orbitalRotation: motion.orbitalRotation
-                            auraPulse: motion.auraPulse
-                            flicker: motion.flicker
-                            quality: fullUi.width < 1200 ? qualityMedium : qualityHigh
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 8
+
+                                    JarvisUi.VisionGlyph {
+                                        iconSize: 14
+                                        source: fullUi.iconRoot + "icons8-connect-50.png"
+                                    }
+
+                                    Text {
+                                        text: "RUNTIME STATUS"
+                                        color: "#deebff"
+                                        font.pixelSize: 12
+                                        font.letterSpacing: 1.6
+                                    }
+
+                                    Item { Layout.fillWidth: true }
+
+                                    Rectangle {
+                                        width: 9
+                                        height: 9
+                                        radius: 5
+                                        color: fullUi.agentReady ? "#1ecb6b" : "#f04d5d"
+                                    }
+
+                                    Text {
+                                        text: fullUi.agentReady ? "Agent online" : "Agent offline"
+                                        color: fullUi.agentReady ? "#98e5b0" : "#ffb8c0"
+                                        font.pixelSize: 12
+                                    }
+                                }
+
+                                JarvisUi.VisionGlassPanel {
+                                    Layout.fillWidth: true
+                                    Layout.preferredHeight: 78
+                                    radius: 16
+                                    panelColor: "#130f1520"
+                                    innerColor: "#17112028"
+                                    outlineColor: "#16ffffff"
+                                    highlightColor: "#0affffff"
+                                    shadowOpacity: 0.14
+
+                                    ColumnLayout {
+                                        anchors.fill: parent
+                                        anchors.margins: 12
+                                        spacing: 4
+
+                                        Text {
+                                            text: "AI Model: " + (settingsVm.selectedModel.length > 0 ? settingsVm.selectedModel : "Not selected")
+                                            color: "#eef5ff"
+                                            font.pixelSize: 13
+                                            elide: Text.ElideRight
+                                        }
+
+                                        Text {
+                                            text: "Provider: " + fullUi.providerLabel
+                                            color: "#bfd0e8"
+                                            font.pixelSize: 12
+                                            elide: Text.ElideRight
+                                        }
+
+                                        Text {
+                                            text: settingsVm.agentStatus.length > 0 ? settingsVm.agentStatus : "No agent status available."
+                                            color: "#9eb3cf"
+                                            font.pixelSize: 11
+                                            elide: Text.ElideRight
+                                        }
+                                    }
+                                }
+
+                                GridLayout {
+                                    Layout.fillWidth: true
+                                    columns: 2
+                                    columnSpacing: 10
+                                    rowSpacing: 8
+
+                                    RowLayout {
+                                        spacing: 6
+                                        Rectangle { width: 8; height: 8; radius: 4; color: fullUi.providerReady ? "#1ecb6b" : "#f04d5d" }
+                                        Text { text: "Provider"; color: "#dbe7fb"; font.pixelSize: 12 }
+                                    }
+
+                                    RowLayout {
+                                        spacing: 6
+                                        Rectangle { width: 8; height: 8; radius: 4; color: fullUi.modelReady ? "#1ecb6b" : "#f04d5d" }
+                                        Text { text: "Model"; color: "#dbe7fb"; font.pixelSize: 12 }
+                                    }
+
+                                    RowLayout {
+                                        spacing: 6
+                                        Rectangle { width: 8; height: 8; radius: 4; color: fullUi.sttReady ? "#1ecb6b" : "#f04d5d" }
+                                        Text { text: "Whisper STT"; color: "#dbe7fb"; font.pixelSize: 12 }
+                                    }
+
+                                    RowLayout {
+                                        spacing: 6
+                                        Rectangle { width: 8; height: 8; radius: 4; color: fullUi.ttsReady ? "#1ecb6b" : "#f04d5d" }
+                                        Text { text: "Piper TTS"; color: "#dbe7fb"; font.pixelSize: 12 }
+                                    }
+
+                                    RowLayout {
+                                        spacing: 6
+                                        Rectangle { width: 8; height: 8; radius: 4; color: fullUi.ffmpegReady ? "#1ecb6b" : "#f04d5d" }
+                                        Text { text: "FFmpeg"; color: "#dbe7fb"; font.pixelSize: 12 }
+                                    }
+
+                                    RowLayout {
+                                        spacing: 6
+                                        Rectangle { width: 8; height: 8; radius: 4; color: fullUi.micReady ? "#1ecb6b" : "#f04d5d" }
+                                        Text { text: "Microphone"; color: "#dbe7fb"; font.pixelSize: 12 }
+                                    }
+
+                                    RowLayout {
+                                        spacing: 6
+                                        Rectangle { width: 8; height: 8; radius: 4; color: fullUi.visionReady ? "#1ecb6b" : "#f04d5d" }
+                                        Text { text: "Vision"; color: "#dbe7fb"; font.pixelSize: 12 }
+                                    }
+
+                                    RowLayout {
+                                        spacing: 6
+                                        Rectangle { width: 8; height: 8; radius: 4; color: fullUi.mcpReady ? "#1ecb6b" : "#f04d5d" }
+                                        Text { text: "MCP"; color: "#dbe7fb"; font.pixelSize: 12 }
+                                    }
+                                }
+
+                                Item { Layout.fillHeight: true }
+
+                                Text {
+                                    Layout.fillWidth: true
+                                    text: "Installed tools: " + fullUi.installedToolCount() + " / " + (settingsVm.toolStatuses || []).length
+                                    color: fullUi.toolingReady ? "#93e1ab" : "#ffd09a"
+                                    font.pixelSize: 12
+                                }
+                            }
                         }
                     }
 
                     JarvisUi.VisionGlassPanel {
                         Layout.fillWidth: true
                         Layout.minimumHeight: 96
-                        Layout.preferredHeight: 110
+                        Layout.preferredHeight: 124
                         radius: 20
                         panelColor: "#151b2324"
                         innerColor: "#171d262d"
@@ -339,15 +503,73 @@ Window {
                             highlightColor: "#0affffff"
                             shadowOpacity: 0.14
 
-                            JarvisUi.VoiceWaveRenderer {
+                            ColumnLayout {
                                 anchors.fill: parent
-                                anchors.margins: 6
-                                stateName: agentVm.stateName
-                                time: motion.time
-                                audioLevel: motion.inputBoost
-                                speakingLevel: motion.speakingSignal
-                                glow: motion.glow
-                                uiState: agentVm.uiState
+                                anchors.margins: 10
+                                spacing: 6
+
+                                RowLayout {
+                                    spacing: 8
+
+                                    Text {
+                                        text: "TOOLING HEALTH"
+                                        color: "#dceaff"
+                                        font.pixelSize: 11
+                                        font.letterSpacing: 1.4
+                                    }
+
+                                    Item { Layout.fillWidth: true }
+
+                                    Rectangle {
+                                        width: 8
+                                        height: 8
+                                        radius: 4
+                                        color: fullUi.toolingReady ? "#1ecb6b" : "#f09a3e"
+                                    }
+
+                                    Text {
+                                        text: fullUi.toolingReady ? "All installed" : (fullUi.missingToolCount() + " missing")
+                                        color: fullUi.toolingReady ? "#98e5b0" : "#ffd29a"
+                                        font.pixelSize: 11
+                                    }
+                                }
+
+                                ListView {
+                                    Layout.fillWidth: true
+                                    Layout.fillHeight: true
+                                    clip: true
+                                    model: settingsVm.toolStatuses
+                                    spacing: 4
+
+                                    delegate: RowLayout {
+                                        required property var modelData
+                                        width: parent.width
+                                        spacing: 6
+
+                                        Rectangle {
+                                            width: 7
+                                            height: 7
+                                            radius: 3.5
+                                            color: modelData.installed ? "#1ecb6b" : "#f04d5d"
+                                        }
+
+                                        Text {
+                                            text: modelData.name
+                                            color: "#e6f0ff"
+                                            font.pixelSize: 11
+                                            Layout.preferredWidth: 120
+                                            elide: Text.ElideRight
+                                        }
+
+                                        Text {
+                                            text: modelData.installed ? "OK" : "Missing"
+                                            color: modelData.installed ? "#99e4b0" : "#ffb8c0"
+                                            font.pixelSize: 11
+                                            Layout.fillWidth: true
+                                            elide: Text.ElideRight
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
