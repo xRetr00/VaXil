@@ -43,7 +43,9 @@ double proposalConfidence(const RankedSuggestionProposal &proposal,
 
 double proposalNovelty(const RankedSuggestionProposal &proposal,
                        const ProactiveSuggestionPlanner::Input &input,
-                       const CompanionContextSnapshot &context)
+                       const CompanionContextSnapshot &context,
+                       const QVariantMap &plannerMetadata,
+                       QStringList *reasonCodes)
 {
     double novelty = 0.42;
     const QString currentThreadId = context.threadId.value;
@@ -61,30 +63,75 @@ double proposalNovelty(const RankedSuggestionProposal &proposal,
 
     if (meaningfulThreadShift) {
         novelty += 0.28;
+        *reasonCodes << QStringLiteral("novelty.thread_shift");
     }
     if (input.sourceKind == QStringLiteral("desktop_context")) {
         novelty += 0.12;
+        *reasonCodes << QStringLiteral("novelty.desktop_context");
     }
     if (!input.success) {
         novelty += 0.14;
+        *reasonCodes << QStringLiteral("novelty.failure");
     }
     if (!input.sourceUrls.isEmpty()) {
         novelty += 0.05;
+        *reasonCodes << QStringLiteral("novelty.source_urls");
     }
     if (!input.cooldownState.lastTopic.isEmpty() && input.cooldownState.lastTopic != context.topic) {
         novelty += 0.10;
+        *reasonCodes << QStringLiteral("novelty.topic_shift");
     }
     if (input.cooldownState.isActive(input.nowMs) && !meaningfulThreadShift) {
         novelty -= 0.16;
+        *reasonCodes << QStringLiteral("novelty.active_cooldown");
     }
     if (recentDuplicateKey) {
         novelty -= 0.22;
+        *reasonCodes << QStringLiteral("novelty.recent_duplicate");
     } else if (!keyHint.isEmpty()
                || !proposal.proposal.arguments.value(QStringLiteral("sourceLabel")).toString().trimmed().isEmpty()) {
         novelty += 0.04;
+        *reasonCodes << QStringLiteral("novelty.presentation_evidence");
     }
     if (proposal.proposal.capabilityId == QStringLiteral("failure_recovery")) {
         novelty += 0.07;
+        *reasonCodes << QStringLiteral("novelty.failure_recovery");
+    }
+
+    const QString plannerInputClass = plannerMetadata.value(QStringLiteral("plannerInputClass")).toString().trimmed();
+    const QString sourcePolicy = plannerMetadata.value(QStringLiteral("sourceSpecificPolicy")).toString().trimmed();
+    const QString freshnessBand = plannerMetadata.value(QStringLiteral("eventFreshnessBand")).toString().trimmed();
+    if (plannerInputClass == QStringLiteral("connector_change")
+        || sourcePolicy == QStringLiteral("connector_task_result")) {
+        novelty += 0.04;
+        *reasonCodes << QStringLiteral("novelty.connector_signal");
+    }
+    if (sourcePolicy == QStringLiteral("research_task_result")
+        && plannerMetadata.value(QStringLiteral("sourceUrlCount")).toInt() > 0) {
+        novelty += 0.06;
+        *reasonCodes << QStringLiteral("novelty.rich_research");
+    }
+    if (sourcePolicy == QStringLiteral("low_signal_task_result")) {
+        novelty -= 0.12;
+        *reasonCodes << QStringLiteral("novelty.low_signal_task_result");
+    }
+    if (freshnessBand == QStringLiteral("fresh")) {
+        novelty += 0.06;
+        *reasonCodes << QStringLiteral("novelty.fresh_connector_event");
+    } else if (freshnessBand == QStringLiteral("older")) {
+        novelty -= 0.06;
+        *reasonCodes << QStringLiteral("novelty.older_connector_event");
+    }
+
+    const int historySeenCount = plannerMetadata.value(QStringLiteral("historySeenCount")).toInt();
+    const int recentSeenCount = plannerMetadata.value(QStringLiteral("connectorKindRecentSeenCount")).toInt();
+    const int recentPresentedCount = plannerMetadata.value(QStringLiteral("connectorKindRecentPresentedCount")).toInt();
+    if (recentSeenCount >= 4 && recentPresentedCount >= 2) {
+        novelty -= 0.08;
+        *reasonCodes << QStringLiteral("novelty.connector_burst");
+    } else if (historySeenCount >= 3) {
+        novelty -= 0.06;
+        *reasonCodes << QStringLiteral("novelty.repeated_source");
     }
 
     return clamp01(novelty);
@@ -167,7 +214,12 @@ ProactiveSuggestionPlan ProactiveSuggestionPlanner::plan(const Input &input)
 
     plan.selectedProposal = plan.rankedProposals.first().proposal;
     plan.confidenceScore = proposalConfidence(plan.rankedProposals.first(), plan.context, input.success);
-    plan.noveltyScore = proposalNovelty(plan.rankedProposals.first(), input, plan.context);
+    QStringList noveltyReasonCodes;
+    plan.noveltyScore = proposalNovelty(plan.rankedProposals.first(),
+                                        input,
+                                        plan.context,
+                                        plannerMetadata,
+                                        &noveltyReasonCodes);
 
     CooldownEngine cooldownEngine;
     plan.cooldownDecision = cooldownEngine.evaluate({
@@ -179,6 +231,13 @@ ProactiveSuggestionPlan ProactiveSuggestionPlanner::plan(const Input &input)
         .novelty = plan.noveltyScore,
         .nowMs = input.nowMs
     });
+    plan.cooldownDecision.details.insert(QStringLiteral("noveltyReasonCodes"), noveltyReasonCodes);
+    plan.cooldownDecision.details.insert(QStringLiteral("plannerInputClass"),
+                                         plannerMetadata.value(QStringLiteral("plannerInputClass")).toString());
+    plan.cooldownDecision.details.insert(QStringLiteral("sourceSpecificPolicy"),
+                                         plannerMetadata.value(QStringLiteral("sourceSpecificPolicy")).toString());
+    plan.cooldownDecision.details.insert(QStringLiteral("eventFreshnessBand"),
+                                         plannerMetadata.value(QStringLiteral("eventFreshnessBand")).toString());
     plan.nextCooldownState = cooldownEngine.advanceState({
         .context = plan.context,
         .state = input.cooldownState,

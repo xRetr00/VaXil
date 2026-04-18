@@ -212,6 +212,36 @@ public:
     QString wakeEngineKind() const;
     void setWakeEngineKind(const QString &kind);
 
+    bool learningDataCollectionEnabled() const;
+    void setLearningDataCollectionEnabled(bool enabled);
+
+    bool learningAudioCollectionEnabled() const;
+    void setLearningAudioCollectionEnabled(bool enabled);
+
+    bool learningTranscriptCollectionEnabled() const;
+    void setLearningTranscriptCollectionEnabled(bool enabled);
+
+    bool learningToolLoggingEnabled() const;
+    void setLearningToolLoggingEnabled(bool enabled);
+
+    bool learningBehaviorLoggingEnabled() const;
+    void setLearningBehaviorLoggingEnabled(bool enabled);
+
+    bool learningMemoryLoggingEnabled() const;
+    void setLearningMemoryLoggingEnabled(bool enabled);
+
+    double learningMaxAudioStorageGb() const;
+    void setLearningMaxAudioStorageGb(double value);
+
+    int learningMaxDaysToKeepAudio() const;
+    void setLearningMaxDaysToKeepAudio(int days);
+
+    int learningMaxDaysToKeepStructuredLogs() const;
+    void setLearningMaxDaysToKeepStructuredLogs(int days);
+
+    bool learningAllowPreparedDatasetExport() const;
+    void setLearningAllowPreparedDatasetExport(bool enabled);
+
     QString storagePath() const;
 
 signals:
@@ -284,4 +314,14 @@ private:
     bool m_wakeWordEnabled = true;
     double m_wakeWordSensitivity = 0.80;
     QString m_wakeEngineKind = QStringLiteral("sherpa-onnx");
+    bool m_learningDataCollectionEnabled = false;
+    bool m_learningAudioCollectionEnabled = false;
+    bool m_learningTranscriptCollectionEnabled = false;
+    bool m_learningToolLoggingEnabled = false;
+    bool m_learningBehaviorLoggingEnabled = false;
+    bool m_learningMemoryLoggingEnabled = false;
+    double m_learningMaxAudioStorageGb = 4.0;
+    int m_learningMaxDaysToKeepAudio = 30;
+    int m_learningMaxDaysToKeepStructuredLogs = 90;
+    bool m_learningAllowPreparedDatasetExport = false;
 };

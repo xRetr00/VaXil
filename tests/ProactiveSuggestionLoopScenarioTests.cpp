@@ -9,17 +9,19 @@ class ProactiveSuggestionLoopScenarioTests : public QObject
 
 private slots:
     void connectorSuggestionPresentThenDuplicateSuppress();
+    void connectorFreshnessAffectsNovelty();
+    void connectorBurstLowersCooldownNovelty();
     void focusedDesktopWorkSuppressesNonCriticalSuggestion();
 };
 
 namespace {
-QVariantMap scheduleMetadata()
+QVariantMap scheduleMetadata(const QString &occurredAtUtc = QStringLiteral("2026-04-18T14:58:00.000Z"))
 {
     return {
         {QStringLiteral("connectorKind"), QStringLiteral("schedule")},
         {QStringLiteral("eventTitle"), QStringLiteral("Sprint planning")},
         {QStringLiteral("eventStartUtc"), QStringLiteral("2026-04-18T15:00:00.000Z")},
-        {QStringLiteral("occurredAtUtc"), QStringLiteral("2026-04-18T14:58:00.000Z")},
+        {QStringLiteral("occurredAtUtc"), occurredAtUtc},
         {QStringLiteral("taskKey"), QStringLiteral("schedule:team")}
     };
 }
@@ -85,6 +87,75 @@ void ProactiveSuggestionLoopScenarioTests::connectorSuggestionPresentThenDuplica
              QStringLiteral("proposal_rank.recent_duplicate_penalty"));
     QCOMPARE(duplicate.cooldownDecision.reasonCode, QStringLiteral("cooldown.low_novelty"));
     QVERIFY(duplicate.selectedSummary.isEmpty());
+}
+
+void ProactiveSuggestionLoopScenarioTests::connectorFreshnessAffectsNovelty()
+{
+    const qint64 nowMs = QDateTime::fromString(QStringLiteral("2026-04-18T15:00:00.000Z"),
+                                               Qt::ISODateWithMs).toMSecsSinceEpoch();
+
+    const ProactiveSuggestionPlan fresh = ProactiveSuggestionPlanner::plan({
+        .sourceKind = QStringLiteral("connector_schedule_calendar"),
+        .taskType = QStringLiteral("live_update"),
+        .resultSummary = QStringLiteral("Schedule updated: Sprint planning"),
+        .sourceUrls = {},
+        .sourceMetadata = scheduleMetadata(QStringLiteral("2026-04-18T14:58:00.000Z")),
+        .success = true,
+        .cooldownState = CooldownState{},
+        .focusMode = FocusModeState{},
+        .nowMs = nowMs
+    });
+
+    const ProactiveSuggestionPlan older = ProactiveSuggestionPlanner::plan({
+        .sourceKind = QStringLiteral("connector_schedule_calendar"),
+        .taskType = QStringLiteral("live_update"),
+        .resultSummary = QStringLiteral("Schedule updated: Sprint planning"),
+        .sourceUrls = {},
+        .sourceMetadata = scheduleMetadata(QStringLiteral("2026-04-18T08:00:00.000Z")),
+        .success = true,
+        .cooldownState = CooldownState{},
+        .focusMode = FocusModeState{},
+        .nowMs = nowMs
+    });
+
+    QVERIFY(fresh.decision.allowed);
+    QVERIFY(older.decision.allowed);
+    QVERIFY(fresh.noveltyScore > older.noveltyScore);
+    QVERIFY(fresh.cooldownDecision.details.value(QStringLiteral("noveltyReasonCodes")).toStringList()
+                .contains(QStringLiteral("novelty.fresh_connector_event")));
+    QVERIFY(older.cooldownDecision.details.value(QStringLiteral("noveltyReasonCodes")).toStringList()
+                .contains(QStringLiteral("novelty.older_connector_event")));
+}
+
+void ProactiveSuggestionLoopScenarioTests::connectorBurstLowersCooldownNovelty()
+{
+    const qint64 nowMs = QDateTime::fromString(QStringLiteral("2026-04-18T15:00:00.000Z"),
+                                               Qt::ISODateWithMs).toMSecsSinceEpoch();
+    QVariantMap metadata = scheduleMetadata();
+    metadata.insert(QStringLiteral("historySeenCount"), 5);
+    metadata.insert(QStringLiteral("connectorKindRecentSeenCount"), 5);
+    metadata.insert(QStringLiteral("connectorKindRecentPresentedCount"), 2);
+
+    const ProactiveSuggestionPlan plan = ProactiveSuggestionPlanner::plan({
+        .sourceKind = QStringLiteral("connector_schedule_calendar"),
+        .taskType = QStringLiteral("live_update"),
+        .resultSummary = QStringLiteral("Schedule updated: Sprint planning"),
+        .sourceUrls = {},
+        .sourceMetadata = metadata,
+        .success = true,
+        .cooldownState = CooldownState{
+            .threadId = QStringLiteral("connector_event_toast::live_update"),
+            .activeUntilEpochMs = nowMs + 90000
+        },
+        .focusMode = FocusModeState{},
+        .nowMs = nowMs
+    });
+
+    QVERIFY(!plan.decision.allowed);
+    QCOMPARE(plan.cooldownDecision.reasonCode, QStringLiteral("cooldown.low_novelty"));
+    QVERIFY(plan.noveltyScore < 0.50);
+    QVERIFY(plan.cooldownDecision.details.value(QStringLiteral("noveltyReasonCodes")).toStringList()
+                .contains(QStringLiteral("novelty.connector_burst")));
 }
 
 void ProactiveSuggestionLoopScenarioTests::focusedDesktopWorkSuppressesNonCriticalSuggestion()

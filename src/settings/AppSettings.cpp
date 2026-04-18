@@ -117,6 +117,16 @@ int clampFocusModeDurationMinutes(int value)
     return std::clamp(value, 0, 24 * 60);
 }
 
+double clampLearningMaxAudioStorageGb(double value)
+{
+    return std::clamp(value, 0.25, 512.0);
+}
+
+int clampLearningRetentionDays(int value)
+{
+    return std::clamp(value, 1, 3650);
+}
+
 double clampVisionConfidence(double value, double fallback)
 {
     if (std::isnan(value)) {
@@ -316,6 +326,36 @@ bool AppSettings::load()
     }
     m_wakeWordEnabled = parsed.value("wake_word_enabled", true);
     m_wakeEngineKind = QString::fromStdString(parsed.value("wakeEngineKind", m_wakeEngineKind.toStdString()));
+    m_learningDataCollectionEnabled = parsed.value(
+        "enable_learning_data_collection",
+        parsed.value("learningDataCollectionEnabled", false));
+    m_learningAudioCollectionEnabled = parsed.value(
+        "enable_audio_collection",
+        parsed.value("learningAudioCollectionEnabled", false));
+    m_learningTranscriptCollectionEnabled = parsed.value(
+        "enable_transcript_collection",
+        parsed.value("learningTranscriptCollectionEnabled", false));
+    m_learningToolLoggingEnabled = parsed.value(
+        "enable_tool_logging",
+        parsed.value("learningToolLoggingEnabled", false));
+    m_learningBehaviorLoggingEnabled = parsed.value(
+        "enable_behavior_logging",
+        parsed.value("learningBehaviorLoggingEnabled", false));
+    m_learningMemoryLoggingEnabled = parsed.value(
+        "enable_memory_logging",
+        parsed.value("learningMemoryLoggingEnabled", false));
+    m_learningMaxAudioStorageGb = clampLearningMaxAudioStorageGb(parsed.value(
+        "max_audio_storage_gb",
+        parsed.value("learningMaxAudioStorageGb", 4.0)));
+    m_learningMaxDaysToKeepAudio = clampLearningRetentionDays(parsed.value(
+        "max_days_to_keep_audio",
+        parsed.value("learningMaxDaysToKeepAudio", 30)));
+    m_learningMaxDaysToKeepStructuredLogs = clampLearningRetentionDays(parsed.value(
+        "max_days_to_keep_structured_logs",
+        parsed.value("learningMaxDaysToKeepStructuredLogs", 90)));
+    m_learningAllowPreparedDatasetExport = parsed.value(
+        "allow_export_prepared_datasets",
+        parsed.value("learningAllowPreparedDatasetExport", false));
     emit settingsChanged();
     if (hasLegacyWakeSettings) {
         (void)save();
@@ -392,7 +432,17 @@ bool AppSettings::save() const
         {"wake_word_enabled", m_wakeWordEnabled},
         {"wake_word_sensitivity", m_wakeWordSensitivity},
         {"wakeWordPhrase", m_wakeWordPhrase.toStdString()},
-        {"wakeEngineKind", m_wakeEngineKind.toStdString()}
+        {"wakeEngineKind", m_wakeEngineKind.toStdString()},
+        {"enable_learning_data_collection", m_learningDataCollectionEnabled},
+        {"enable_audio_collection", m_learningAudioCollectionEnabled},
+        {"enable_transcript_collection", m_learningTranscriptCollectionEnabled},
+        {"enable_tool_logging", m_learningToolLoggingEnabled},
+        {"enable_behavior_logging", m_learningBehaviorLoggingEnabled},
+        {"enable_memory_logging", m_learningMemoryLoggingEnabled},
+        {"max_audio_storage_gb", m_learningMaxAudioStorageGb},
+        {"max_days_to_keep_audio", m_learningMaxDaysToKeepAudio},
+        {"max_days_to_keep_structured_logs", m_learningMaxDaysToKeepStructuredLogs},
+        {"allow_export_prepared_datasets", m_learningAllowPreparedDatasetExport}
     };
 
     QFile file(settingsFilePath());
@@ -684,6 +734,66 @@ QString AppSettings::wakeEngineKind() const { return m_wakeEngineKind; }
 void AppSettings::setWakeEngineKind(const QString &kind)
 {
     m_wakeEngineKind = kind.trimmed().isEmpty() ? QStringLiteral("sherpa-onnx") : kind.trimmed();
+    emit settingsChanged();
+}
+bool AppSettings::learningDataCollectionEnabled() const { return m_learningDataCollectionEnabled; }
+void AppSettings::setLearningDataCollectionEnabled(bool enabled)
+{
+    m_learningDataCollectionEnabled = enabled;
+    emit settingsChanged();
+}
+bool AppSettings::learningAudioCollectionEnabled() const { return m_learningAudioCollectionEnabled; }
+void AppSettings::setLearningAudioCollectionEnabled(bool enabled)
+{
+    m_learningAudioCollectionEnabled = enabled;
+    emit settingsChanged();
+}
+bool AppSettings::learningTranscriptCollectionEnabled() const { return m_learningTranscriptCollectionEnabled; }
+void AppSettings::setLearningTranscriptCollectionEnabled(bool enabled)
+{
+    m_learningTranscriptCollectionEnabled = enabled;
+    emit settingsChanged();
+}
+bool AppSettings::learningToolLoggingEnabled() const { return m_learningToolLoggingEnabled; }
+void AppSettings::setLearningToolLoggingEnabled(bool enabled)
+{
+    m_learningToolLoggingEnabled = enabled;
+    emit settingsChanged();
+}
+bool AppSettings::learningBehaviorLoggingEnabled() const { return m_learningBehaviorLoggingEnabled; }
+void AppSettings::setLearningBehaviorLoggingEnabled(bool enabled)
+{
+    m_learningBehaviorLoggingEnabled = enabled;
+    emit settingsChanged();
+}
+bool AppSettings::learningMemoryLoggingEnabled() const { return m_learningMemoryLoggingEnabled; }
+void AppSettings::setLearningMemoryLoggingEnabled(bool enabled)
+{
+    m_learningMemoryLoggingEnabled = enabled;
+    emit settingsChanged();
+}
+double AppSettings::learningMaxAudioStorageGb() const { return m_learningMaxAudioStorageGb; }
+void AppSettings::setLearningMaxAudioStorageGb(double value)
+{
+    m_learningMaxAudioStorageGb = clampLearningMaxAudioStorageGb(value);
+    emit settingsChanged();
+}
+int AppSettings::learningMaxDaysToKeepAudio() const { return m_learningMaxDaysToKeepAudio; }
+void AppSettings::setLearningMaxDaysToKeepAudio(int days)
+{
+    m_learningMaxDaysToKeepAudio = clampLearningRetentionDays(days);
+    emit settingsChanged();
+}
+int AppSettings::learningMaxDaysToKeepStructuredLogs() const { return m_learningMaxDaysToKeepStructuredLogs; }
+void AppSettings::setLearningMaxDaysToKeepStructuredLogs(int days)
+{
+    m_learningMaxDaysToKeepStructuredLogs = clampLearningRetentionDays(days);
+    emit settingsChanged();
+}
+bool AppSettings::learningAllowPreparedDatasetExport() const { return m_learningAllowPreparedDatasetExport; }
+void AppSettings::setLearningAllowPreparedDatasetExport(bool enabled)
+{
+    m_learningAllowPreparedDatasetExport = enabled;
     emit settingsChanged();
 }
 QString AppSettings::storagePath() const { return settingsFilePath(); }
