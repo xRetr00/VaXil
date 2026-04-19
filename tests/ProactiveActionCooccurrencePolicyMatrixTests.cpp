@@ -17,6 +17,7 @@ private slots:
     void cooccurrenceReasonCodesRemainStable();
     void connectorNoveltyPenaltyThenDeniedActionSharesTrace();
     void breakCooldownFastPathStillRunsPermissionAndConfirmationGates();
+    void mixedPriorityConnectorBurstCrossesRankingCooldownAndActionOrdering();
 };
 
 namespace {
@@ -359,6 +360,131 @@ void ProactiveActionCooccurrencePolicyMatrixTests::breakCooldownFastPathStillRun
     QCOMPARE(events.at(1).family, QStringLiteral("permission"));
     QCOMPARE(events.last().stage, QStringLiteral("approved"));
     QCOMPARE(events.last().payload.value(QStringLiteral("executionWillContinue")).toBool(), true);
+}
+
+void ProactiveActionCooccurrencePolicyMatrixTests::mixedPriorityConnectorBurstCrossesRankingCooldownAndActionOrdering()
+{
+    if (!QSqlDatabase::drivers().contains(QStringLiteral("QSQLITE"))) {
+        QSKIP("QSQLITE driver is not available in this runtime.");
+    }
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    BehavioralEventLedger ledger(dir.path(), true);
+    QVERIFY(ledger.initialize());
+
+    const qint64 nowMs = QDateTime::fromString(QStringLiteral("2026-04-19T00:30:00.000Z"),
+                                               Qt::ISODateWithMs).toMSecsSinceEpoch();
+    const CooldownState activeCooldown{
+        .threadId = QStringLiteral("connector_event_toast::live_update"),
+        .activeUntilEpochMs = nowMs + 120000,
+        .lastTopic = QStringLiteral("deadline")
+    };
+    const QVariantMap burstMetadata{
+        {QStringLiteral("connectorKind"), QStringLiteral("schedule")},
+        {QStringLiteral("eventTitle"), QStringLiteral("Production deadline")},
+        {QStringLiteral("occurredAtUtc"), QStringLiteral("2026-04-18T06:30:00.000Z")},
+        {QStringLiteral("historySeenCount"), 6},
+        {QStringLiteral("connectorKindRecentSeenCount"), 5},
+        {QStringLiteral("connectorKindRecentPresentedCount"), 3},
+        {QStringLiteral("taskKey"), QStringLiteral("schedule:prod_deadline")}
+    };
+    const ProactiveSuggestionPlan highCandidate = ProactiveSuggestionPlanner::plan({
+        .sourceKind = QStringLiteral("connector_schedule_calendar"),
+        .taskType = QStringLiteral("live_update"),
+        .resultSummary = QStringLiteral("Connector update failed for production deadline"),
+        .sourceUrls = {},
+        .sourceMetadata = burstMetadata,
+        .success = false,
+        .desktopContext = {
+            {QStringLiteral("taskId"), QStringLiteral("editor_document")},
+            {QStringLiteral("threadId"), QStringLiteral("connector_event_toast::live_update")},
+            {QStringLiteral("documentContext"), QStringLiteral("PLAN.md")}
+        },
+        .desktopContextAtMs = nowMs - 2000,
+        .cooldownState = activeCooldown,
+        .focusMode = FocusModeState{},
+        .nowMs = nowMs
+    });
+    QVERIFY(!highCandidate.rankedProposals.isEmpty());
+    QCOMPARE(highCandidate.rankedProposals.first().proposal.priority, QStringLiteral("high"));
+    QVERIFY(!highCandidate.decision.allowed);
+    QCOMPARE(highCandidate.decision.reasonCode, QStringLiteral("cooldown.low_novelty"));
+    const QStringList noveltyReasons = highCandidate.cooldownDecision.details.value(
+        QStringLiteral("noveltyReasonCodes")).toStringList();
+    QVERIFY(noveltyReasons.contains(QStringLiteral("novelty.connector_burst")));
+
+    CooldownEngine cooldownEngine;
+    const BehaviorDecision criticalCandidate = cooldownEngine.evaluate({
+        .context = CompanionContextSnapshot{
+            .threadId = ContextThreadId{QStringLiteral("connector_event_toast::live_update")},
+            .appId = QStringLiteral("calendar"),
+            .taskId = QStringLiteral("meeting_alert"),
+            .topic = QStringLiteral("deadline"),
+            .recentIntent = QStringLiteral("notify"),
+            .confidence = 0.93
+        },
+        .state = activeCooldown,
+        .focusMode = FocusModeState{},
+        .priority = QStringLiteral("critical"),
+        .confidence = 0.92,
+        .novelty = 0.85,
+        .nowMs = nowMs + 1000
+    });
+    QVERIFY(criticalCandidate.allowed);
+    QCOMPARE(criticalCandidate.reasonCode, QStringLiteral("cooldown.break_high_novelty"));
+
+    const QVariantMap desktopContext = mixedDesktopConnectorContext();
+    const ActionRiskPermissionEvaluation pending = ActionRiskPermissionService::evaluate(
+        sideEffectingPlan(), highRiskTrust(), false, {});
+    const ActionRiskPermissionEvaluation approved = ActionRiskPermissionService::evaluate(
+        sideEffectingPlan(), highRiskTrust(), true, {});
+    ActionSession session;
+    session.id = QStringLiteral("session_mixed_priority_connector_burst");
+    session.userRequest = QStringLiteral("Proceed with critical deadline action");
+
+    BehaviorTraceEvent highSuppressed = BehaviorTraceEvent::create(
+        QStringLiteral("action_proposal"),
+        QStringLiteral("ranked"),
+        highCandidate.decision.reasonCode,
+        {{QStringLiteral("action"), highCandidate.decision.action},
+         {QStringLiteral("priority"), QStringLiteral("high")},
+         {QStringLiteral("proposalId"), highCandidate.selectedProposal.proposalId}});
+    BehaviorTraceEvent criticalAllowed = BehaviorTraceEvent::create(
+        QStringLiteral("action_proposal"),
+        QStringLiteral("gated"),
+        criticalCandidate.reasonCode,
+        {{QStringLiteral("action"), criticalCandidate.action},
+         {QStringLiteral("priority"), QStringLiteral("critical")}});
+    BehaviorTraceEvent permission = ActionRiskPermissionService::permissionEvent(
+        pending, QStringLiteral("MixedPriorityBurst"), desktopContext);
+    BehaviorTraceEvent confirmation = ActionRiskPermissionService::confirmationOutcomeEvent(
+        approved, QStringLiteral("MixedPriorityBurst"), session, QStringLiteral("approved"), QStringLiteral("yes"), desktopContext);
+
+    const QString traceId = QStringLiteral("trace_mixed_priority_connector_burst");
+    const QString threadId = desktopContext.value(QStringLiteral("threadId")).toString();
+    for (BehaviorTraceEvent *event : {&highSuppressed, &criticalAllowed, &permission, &confirmation}) {
+        event->traceId = traceId;
+        event->threadId = threadId;
+    }
+    highSuppressed.timestampUtc = QDateTime::fromMSecsSinceEpoch(nowMs, Qt::UTC);
+    criticalAllowed.timestampUtc = highSuppressed.timestampUtc.addMSecs(1);
+    permission.timestampUtc = highSuppressed.timestampUtc.addMSecs(2);
+    confirmation.timestampUtc = highSuppressed.timestampUtc.addMSecs(3);
+
+    QVERIFY(ledger.recordEvent(highSuppressed));
+    QVERIFY(ledger.recordEvent(criticalAllowed));
+    QVERIFY(ledger.recordEvent(permission));
+    QVERIFY(ledger.recordEvent(confirmation));
+
+    const QList<BehaviorTraceEvent> events = ledger.recentEvents(8);
+    QCOMPARE(events.size(), 4);
+    QCOMPARE(events.at(0).reasonCode, QStringLiteral("cooldown.low_novelty"));
+    QCOMPARE(events.at(0).payload.value(QStringLiteral("priority")).toString(), QStringLiteral("high"));
+    QCOMPARE(events.at(1).reasonCode, QStringLiteral("cooldown.break_high_novelty"));
+    QCOMPARE(events.at(1).payload.value(QStringLiteral("priority")).toString(), QStringLiteral("critical"));
+    QCOMPARE(events.at(2).family, QStringLiteral("permission"));
+    QCOMPARE(events.at(3).stage, QStringLiteral("approved"));
+    QCOMPARE(events.at(3).payload.value(QStringLiteral("executionWillContinue")).toBool(), true);
 }
 
 QTEST_APPLESS_MAIN(ProactiveActionCooccurrencePolicyMatrixTests)

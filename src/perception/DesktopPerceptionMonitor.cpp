@@ -13,6 +13,7 @@
 #include "companion/contracts/FocusModeState.h"
 #include "logging/LoggingService.h"
 #include "perception/DesktopContextThreadBuilder.h"
+#include "perception/FocusModeExpiryRuntime.h"
 #include "perception/DesktopSourceContextAdapter.h"
 #include "perception/WindowsUiAutomationProbe.h"
 #include "settings/AppSettings.h"
@@ -48,6 +49,7 @@ DesktopPerceptionMonitor::DesktopPerceptionMonitor(AppSettings *settings,
 
 void DesktopPerceptionMonitor::start()
 {
+    reconcileTimedFocusModeExpiry(QDateTime::currentMSecsSinceEpoch());
     m_windowPollTimer->start();
     pollActiveWindow();
 }
@@ -57,6 +59,7 @@ void DesktopPerceptionMonitor::recordNotification(const QString &title,
                                                   const QString &priority,
                                                   const QString &source)
 {
+    reconcileTimedFocusModeExpiry(QDateTime::currentMSecsSinceEpoch());
     if (m_loggingService == nullptr) {
         return;
     }
@@ -71,6 +74,7 @@ void DesktopPerceptionMonitor::recordNotification(const QString &title,
 
 void DesktopPerceptionMonitor::pollActiveWindow()
 {
+    reconcileTimedFocusModeExpiry(QDateTime::currentMSecsSinceEpoch());
     const ActiveWindowSnapshot snapshot = currentActiveWindow();
     if (snapshot.appId.isEmpty() || snapshot.windowTitle.isEmpty()) {
         return;
@@ -98,6 +102,7 @@ void DesktopPerceptionMonitor::pollActiveWindow()
 
 void DesktopPerceptionMonitor::handleClipboardChanged()
 {
+    reconcileTimedFocusModeExpiry(QDateTime::currentMSecsSinceEpoch());
     if (m_loggingService == nullptr || m_clipboard == nullptr) {
         return;
     }
@@ -224,6 +229,15 @@ void DesktopPerceptionMonitor::evaluateCooldown(const QString &reasonCode,
         threadEvent.capabilityId = QStringLiteral("desktop_perception");
         m_loggingService->logBehaviorEvent(threadEvent);
     }
+}
+
+void DesktopPerceptionMonitor::reconcileTimedFocusModeExpiry(qint64 nowMs)
+{
+    FocusModeExpiryRuntime::reconcile(
+        m_settings,
+        m_loggingService,
+        nowMs,
+        QStringLiteral("perception_monitor"));
 }
 
 DesktopPerceptionMonitor::ActiveWindowSnapshot DesktopPerceptionMonitor::currentActiveWindow() const

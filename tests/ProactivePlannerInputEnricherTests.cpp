@@ -16,6 +16,7 @@ private slots:
     void plannerUsesEnrichedDesktopMetadata();
     void plannerSuppressesLowSignalTaskResult();
     void plannerAllowsFailureRecoveryTaskResult();
+    void plannerEmitsUrgencyAndBurstEvidenceForConnectorBurstInputs();
 };
 
 void ProactivePlannerInputEnricherTests::enrichesDesktopEventMetadata()
@@ -189,6 +190,47 @@ void ProactivePlannerInputEnricherTests::plannerAllowsFailureRecoveryTaskResult(
     QCOMPARE(plan.decision.details.value(QStringLiteral("sourceSpecificPolicy")).toString(),
              QStringLiteral("failure_recovery"));
     QVERIFY(!plan.selectedSummary.isEmpty());
+}
+
+void ProactivePlannerInputEnricherTests::plannerEmitsUrgencyAndBurstEvidenceForConnectorBurstInputs()
+{
+    const qint64 nowMs = QDateTime::fromString(QStringLiteral("2026-04-19T00:50:00.000Z"),
+                                               Qt::ISODateWithMs).toMSecsSinceEpoch();
+    const ProactiveSuggestionPlan plan = ProactiveSuggestionPlanner::plan({
+        .sourceKind = QStringLiteral("connector_schedule_calendar"),
+        .taskType = QStringLiteral("live_update"),
+        .resultSummary = QStringLiteral("Connector update failed for production deadline"),
+        .sourceUrls = {},
+        .sourceMetadata = {
+            {QStringLiteral("connectorKind"), QStringLiteral("schedule")},
+            {QStringLiteral("eventTitle"), QStringLiteral("Production deadline")},
+            {QStringLiteral("occurredAtUtc"), QStringLiteral("2026-04-18T06:30:00.000Z")},
+            {QStringLiteral("historySeenCount"), 6},
+            {QStringLiteral("connectorKindRecentSeenCount"), 5},
+            {QStringLiteral("connectorKindRecentPresentedCount"), 3},
+            {QStringLiteral("taskKey"), QStringLiteral("schedule:prod_deadline")}
+        },
+        .success = false,
+        .cooldownState = CooldownState{
+            .threadId = QStringLiteral("connector_event_toast::live_update"),
+            .activeUntilEpochMs = nowMs + 120000
+        },
+        .focusMode = FocusModeState{},
+        .nowMs = nowMs
+    });
+
+    QVERIFY(!plan.selectedProposal.proposalId.isEmpty());
+    QCOMPARE(plan.selectedProposal.priority, QStringLiteral("high"));
+    QCOMPARE(plan.selectedProposal.arguments.value(QStringLiteral("urgencyBand")).toString(),
+             QStringLiteral("high"));
+    QCOMPARE(plan.selectedProposal.arguments.value(QStringLiteral("burstPressureBand")).toString(),
+             QStringLiteral("burst"));
+    QCOMPARE(plan.cooldownDecision.details.value(QStringLiteral("urgencyBand")).toString(),
+             QStringLiteral("high"));
+    QCOMPARE(plan.cooldownDecision.details.value(QStringLiteral("burstPressureBand")).toString(),
+             QStringLiteral("burst"));
+    QCOMPARE(plan.cooldownDecision.details.value(QStringLiteral("connectorKindRecentSeenCount")).toInt(), 5);
+    QCOMPARE(plan.cooldownDecision.details.value(QStringLiteral("connectorKindRecentPresentedCount")).toInt(), 3);
 }
 
 QTEST_APPLESS_MAIN(ProactivePlannerInputEnricherTests)

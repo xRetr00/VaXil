@@ -291,7 +291,7 @@ JarvisUi.VisionGlassPanel {
             return text
         }
         if (family === "action_proposal") {
-            return proposalFormatter.summaryText(entry)
+            return proposalFormatter.summaryText(entry, behaviorEntries)
         }
         if (family === "connector_event") {
             const connectorKind = (entry.connectorKind || "").toString()
@@ -314,9 +314,20 @@ JarvisUi.VisionGlassPanel {
             const action = (entry.action || "").toString()
             const surfaceKind = (entry.surfaceKind || "").toString()
             const reasonCode = (entry.reasonCode || "").toString()
+            const urgencyBand = (entry.urgencyBand || "").toString()
+            const burstPressureBand = (entry.burstPressureBand || "").toString()
             let text = "UI presentation " + (action || "decision") + (taskType ? " for " + taskType : "")
             if (surfaceKind.length > 0) {
                 text += " [" + surfaceKind + "]"
+            }
+            if (urgencyBand.length > 0 || burstPressureBand.length > 0) {
+                text += " |"
+                if (urgencyBand.length > 0) {
+                    text += " urgency " + urgencyBand
+                }
+                if (burstPressureBand.length > 0) {
+                    text += (urgencyBand.length > 0 ? " |" : "") + " burst " + burstPressureBand
+                }
             }
             if (reasonCode.length > 0) {
                 text += " because " + reasonCode

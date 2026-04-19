@@ -137,6 +137,35 @@ double proposalNovelty(const RankedSuggestionProposal &proposal,
     return clamp01(novelty);
 }
 
+QString urgencyBandForPriority(const QString &priority)
+{
+    const QString normalized = priority.trimmed().toLower();
+    if (normalized == QStringLiteral("critical")) {
+        return QStringLiteral("critical");
+    }
+    if (normalized == QStringLiteral("high")) {
+        return QStringLiteral("high");
+    }
+    if (normalized == QStringLiteral("medium")) {
+        return QStringLiteral("medium");
+    }
+    return QStringLiteral("low");
+}
+
+QString burstPressureBandFromMetadata(const QVariantMap &plannerMetadata)
+{
+    const int recentSeenCount = plannerMetadata.value(QStringLiteral("connectorKindRecentSeenCount")).toInt();
+    const int recentPresentedCount = plannerMetadata.value(QStringLiteral("connectorKindRecentPresentedCount")).toInt();
+    const int historySeenCount = plannerMetadata.value(QStringLiteral("historySeenCount")).toInt();
+    if (recentSeenCount >= 4 && recentPresentedCount >= 2) {
+        return QStringLiteral("burst");
+    }
+    if (historySeenCount >= 3) {
+        return QStringLiteral("elevated");
+    }
+    return QStringLiteral("normal");
+}
+
 BehaviorDecision combineDecisions(const BehaviorDecision &cooldownDecision,
                                   const BehaviorDecision &gateDecision)
 {
@@ -220,6 +249,10 @@ ProactiveSuggestionPlan ProactiveSuggestionPlanner::plan(const Input &input)
                                         plan.context,
                                         plannerMetadata,
                                         &noveltyReasonCodes);
+    const QString urgencyBand = urgencyBandForPriority(plan.selectedProposal.priority);
+    const QString burstPressureBand = burstPressureBandFromMetadata(plannerMetadata);
+    plan.selectedProposal.arguments.insert(QStringLiteral("urgencyBand"), urgencyBand);
+    plan.selectedProposal.arguments.insert(QStringLiteral("burstPressureBand"), burstPressureBand);
 
     CooldownEngine cooldownEngine;
     plan.cooldownDecision = cooldownEngine.evaluate({
@@ -238,6 +271,14 @@ ProactiveSuggestionPlan ProactiveSuggestionPlanner::plan(const Input &input)
                                          plannerMetadata.value(QStringLiteral("sourceSpecificPolicy")).toString());
     plan.cooldownDecision.details.insert(QStringLiteral("eventFreshnessBand"),
                                          plannerMetadata.value(QStringLiteral("eventFreshnessBand")).toString());
+    plan.cooldownDecision.details.insert(QStringLiteral("urgencyBand"), urgencyBand);
+    plan.cooldownDecision.details.insert(QStringLiteral("burstPressureBand"), burstPressureBand);
+    plan.cooldownDecision.details.insert(QStringLiteral("historySeenCount"),
+                                         plannerMetadata.value(QStringLiteral("historySeenCount")));
+    plan.cooldownDecision.details.insert(QStringLiteral("connectorKindRecentSeenCount"),
+                                         plannerMetadata.value(QStringLiteral("connectorKindRecentSeenCount")));
+    plan.cooldownDecision.details.insert(QStringLiteral("connectorKindRecentPresentedCount"),
+                                         plannerMetadata.value(QStringLiteral("connectorKindRecentPresentedCount")));
     plan.nextCooldownState = cooldownEngine.advanceState({
         .context = plan.context,
         .state = input.cooldownState,

@@ -17,6 +17,7 @@ private slots:
     void policyRegressionKeepsBreakAndNoveltyReasonCodesStable();
     void focusModeCompetesWithConnectorUrgencyInSameTrace();
     void reasonCodesStayStableUnderDesktopContextVariations();
+    void timedFocusModeExpiryTransitionsFromSuppressedToAllowedInOneTrace();
 };
 
 namespace {
@@ -352,6 +353,124 @@ void ProactiveActionFocusModePolicyRegressionTests::reasonCodesStayStableUnderDe
         QCOMPARE(plan.decision.reasonCode, QStringLiteral("proposal.focused_context_suppressed"));
         QCOMPARE(plan.decision.action, QStringLiteral("suppress_proposal"));
     }
+}
+
+void ProactiveActionFocusModePolicyRegressionTests::timedFocusModeExpiryTransitionsFromSuppressedToAllowedInOneTrace()
+{
+    if (!QSqlDatabase::drivers().contains(QStringLiteral("QSQLITE"))) {
+        QSKIP("QSQLITE driver is not available in this runtime.");
+    }
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    BehavioralEventLedger ledger(dir.path(), true);
+    QVERIFY(ledger.initialize());
+
+    const qint64 nowMs = QDateTime::fromString(QStringLiteral("2026-04-19T00:05:00.000Z"),
+                                               Qt::ISODateWithMs).toMSecsSinceEpoch();
+    const QVariantMap desktopContext = mixedDesktopConnectorContext();
+    const CooldownState activeCooldown{
+        .threadId = QStringLiteral("connector_event_toast::live_update"),
+        .activeUntilEpochMs = nowMs + 180000
+    };
+    const CompanionContextSnapshot context{
+        .threadId = ContextThreadId{QStringLiteral("connector_event_toast::live_update")},
+        .appId = QStringLiteral("calendar"),
+        .taskId = QStringLiteral("meeting_alert"),
+        .topic = QStringLiteral("deadline"),
+        .recentIntent = QStringLiteral("notify"),
+        .confidence = 0.91
+    };
+    CooldownEngine cooldownEngine;
+    const FocusModeState focusTimedActive{
+        .enabled = true,
+        .allowCriticalAlerts = true,
+        .durationMinutes = 60,
+        .untilEpochMs = nowMs + 45000,
+        .source = QStringLiteral("manual")
+    };
+    const BehaviorDecision beforeExpiry = cooldownEngine.evaluate({
+        .context = context,
+        .state = activeCooldown,
+        .focusMode = focusTimedActive,
+        .priority = QStringLiteral("medium"),
+        .confidence = 0.90,
+        .novelty = 0.83,
+        .nowMs = nowMs
+    });
+    QVERIFY(!beforeExpiry.allowed);
+    QCOMPARE(beforeExpiry.reasonCode, QStringLiteral("focus_mode.suppressed"));
+
+    const BehaviorDecision afterExpiry = cooldownEngine.evaluate({
+        .context = context,
+        .state = activeCooldown,
+        .focusMode = FocusModeState{},
+        .priority = QStringLiteral("high"),
+        .confidence = 0.88,
+        .novelty = 0.82,
+        .nowMs = focusTimedActive.untilEpochMs + 1000
+    });
+    QVERIFY(afterExpiry.allowed);
+    QCOMPARE(afterExpiry.reasonCode, QStringLiteral("cooldown.break_high_novelty"));
+
+    const ActionRiskPermissionEvaluation pending = ActionRiskPermissionService::evaluate(
+        sideEffectingPlan(), highRiskTrust(), false, {});
+    const ActionRiskPermissionEvaluation approved = ActionRiskPermissionService::evaluate(
+        sideEffectingPlan(), highRiskTrust(), true, {});
+    ActionSession session;
+    session.id = QStringLiteral("session_focus_timed_expiry_transition");
+    session.userRequest = QStringLiteral("Proceed after focus timer expires");
+
+    BehaviorTraceEvent suppressedEvent = BehaviorTraceEvent::create(
+        QStringLiteral("action_proposal"),
+        QStringLiteral("gated"),
+        beforeExpiry.reasonCode,
+        {{QStringLiteral("action"), beforeExpiry.action},
+         {QStringLiteral("priority"), QStringLiteral("medium")},
+         {QStringLiteral("focusModeUntilEpochMs"), focusTimedActive.untilEpochMs}});
+    BehaviorTraceEvent focusExpired = BehaviorTraceEvent::create(
+        QStringLiteral("focus_mode"),
+        QStringLiteral("expired"),
+        QStringLiteral("focus_mode.timed_expired"),
+        {{QStringLiteral("enabledBefore"), true},
+         {QStringLiteral("durationMinutes"), focusTimedActive.durationMinutes},
+         {QStringLiteral("untilEpochMs"), focusTimedActive.untilEpochMs}});
+    BehaviorTraceEvent allowedEvent = BehaviorTraceEvent::create(
+        QStringLiteral("action_proposal"),
+        QStringLiteral("gated"),
+        afterExpiry.reasonCode,
+        {{QStringLiteral("action"), afterExpiry.action}, {QStringLiteral("priority"), QStringLiteral("high")}});
+    BehaviorTraceEvent permission = ActionRiskPermissionService::permissionEvent(
+        pending, QStringLiteral("FocusModeTimedExpiry"), desktopContext);
+    BehaviorTraceEvent confirmation = ActionRiskPermissionService::confirmationOutcomeEvent(
+        approved, QStringLiteral("FocusModeTimedExpiry"), session, QStringLiteral("approved"), QStringLiteral("yes"), desktopContext);
+
+    const QString traceId = QStringLiteral("trace_focus_timed_expiry_transition");
+    const QString threadId = desktopContext.value(QStringLiteral("threadId")).toString();
+    for (BehaviorTraceEvent *event : {&suppressedEvent, &focusExpired, &allowedEvent, &permission, &confirmation}) {
+        event->traceId = traceId;
+        event->threadId = threadId;
+    }
+    suppressedEvent.timestampUtc = QDateTime::fromMSecsSinceEpoch(nowMs, Qt::UTC);
+    focusExpired.timestampUtc = suppressedEvent.timestampUtc.addMSecs(1);
+    allowedEvent.timestampUtc = suppressedEvent.timestampUtc.addMSecs(2);
+    permission.timestampUtc = suppressedEvent.timestampUtc.addMSecs(3);
+    confirmation.timestampUtc = suppressedEvent.timestampUtc.addMSecs(4);
+
+    QVERIFY(ledger.recordEvent(suppressedEvent));
+    QVERIFY(ledger.recordEvent(focusExpired));
+    QVERIFY(ledger.recordEvent(allowedEvent));
+    QVERIFY(ledger.recordEvent(permission));
+    QVERIFY(ledger.recordEvent(confirmation));
+
+    const QList<BehaviorTraceEvent> events = ledger.recentEvents(8);
+    QCOMPARE(events.size(), 5);
+    QCOMPARE(events.at(0).reasonCode, QStringLiteral("focus_mode.suppressed"));
+    QCOMPARE(events.at(1).family, QStringLiteral("focus_mode"));
+    QCOMPARE(events.at(1).stage, QStringLiteral("expired"));
+    QCOMPARE(events.at(2).reasonCode, QStringLiteral("cooldown.break_high_novelty"));
+    QCOMPARE(events.at(3).family, QStringLiteral("permission"));
+    QCOMPARE(events.at(4).stage, QStringLiteral("approved"));
+    QCOMPARE(events.at(4).payload.value(QStringLiteral("executionWillContinue")).toBool(), true);
 }
 
 QTEST_APPLESS_MAIN(ProactiveActionFocusModePolicyRegressionTests)

@@ -58,6 +58,7 @@ private:
                           double confidence,
                           double novelty,
                           const CompanionContextSnapshot &context);
+    void reconcileTimedFocusModeExpiry(qint64 nowMs);
     [[nodiscard]] bool shouldIgnoreClipboardPreview(const QString &preview) const;
     [[nodiscard]] ActiveWindowSnapshot currentActiveWindow() const;
     [[nodiscard]] ActiveWindowSnapshot privateModeActiveWindow(const QString &appId) const;

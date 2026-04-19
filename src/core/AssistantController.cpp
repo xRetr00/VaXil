@@ -4069,6 +4069,10 @@ void AssistantController::logPlannedSuggestion(const ProactiveSuggestionPlan &pl
         payload.insert(QStringLiteral("taskType"), taskType);
         payload.insert(QStringLiteral("rankedTitles"), rankedTitles);
         payload.insert(QStringLiteral("rankedScores"), rankedScores);
+        payload.insert(QStringLiteral("urgencyBand"),
+                       plan.cooldownDecision.details.value(QStringLiteral("urgencyBand")).toString());
+        payload.insert(QStringLiteral("burstPressureBand"),
+                       plan.cooldownDecision.details.value(QStringLiteral("burstPressureBand")).toString());
         payload.insert(QStringLiteral("desktopSummary"), m_latestDesktopContextSummary);
         BehaviorTraceEvent event = BehaviorTraceEvent::create(
             QStringLiteral("action_proposal"),

@@ -330,6 +330,7 @@ set(JARVIS_SOURCES
     src/memory/MemoryStoreTuningEpisodes.cpp
     src/overlay/OverlayController.cpp
     src/perception/DesktopContextThreadBuilder.cpp
+    src/perception/FocusModeExpiryRuntime.cpp
     src/perception/DesktopPerceptionMonitor.cpp
     src/perception/DesktopSourceContextAdapter.cpp
     src/perception/WindowsUiAutomationProbe.cpp
@@ -468,6 +469,7 @@ set(JARVIS_HEADERS
     src/gui/TaskViewModel.h
     src/overlay/OverlayController.h
     src/perception/DesktopContextThreadBuilder.h
+    src/perception/FocusModeExpiryRuntime.h
     src/perception/DesktopPerceptionMonitor.h
     src/perception/DesktopSourceContextAdapter.h
     src/perception/WindowsUiAutomationProbe.h
@@ -1533,6 +1535,28 @@ if(JARVIS_BUILD_TESTS)
     add_test(NAME jarvis_planner_input_enricher_tests COMMAND jarvis_planner_input_enricher_tests)
     set_tests_properties(jarvis_planner_input_enricher_tests PROPERTIES ENVIRONMENT "PATH=${QT_BIN_DIR}${JARVIS_PATH_ENV_SEPARATOR}$ENV{PATH}")
     jarvis_copy_optional_runtime_libraries(jarvis_planner_input_enricher_tests)
+
+    qt_add_executable(jarvis_focus_mode_expiry_runtime_tests
+        tests/FocusModeExpiryRuntimeTests.cpp
+        src/perception/FocusModeExpiryRuntime.cpp
+        src/logging/LoggingService.cpp
+        src/telemetry/BehavioralEventLedger.cpp
+        src/settings/AppSettings.cpp
+    )
+
+    target_include_directories(jarvis_focus_mode_expiry_runtime_tests PRIVATE src)
+    target_link_libraries(jarvis_focus_mode_expiry_runtime_tests
+        PRIVATE
+            Qt6::Core
+            Qt6::Sql
+            Qt6::Test
+            spdlog::spdlog
+            nlohmann_json::nlohmann_json
+    )
+
+    add_test(NAME jarvis_focus_mode_expiry_runtime_tests COMMAND jarvis_focus_mode_expiry_runtime_tests)
+    set_tests_properties(jarvis_focus_mode_expiry_runtime_tests PROPERTIES ENVIRONMENT "PATH=${QT_BIN_DIR}${JARVIS_PATH_ENV_SEPARATOR}$ENV{PATH}")
+    jarvis_copy_optional_runtime_libraries(jarvis_focus_mode_expiry_runtime_tests)
 
     qt_add_executable(jarvis_proactive_loop_scenario_tests
         tests/ProactiveSuggestionLoopScenarioTests.cpp
