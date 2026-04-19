@@ -46,9 +46,14 @@ QHash<QString, QStringList> defaultResponses()
              QStringLiteral("I can't reach the AI core at the moment.")
          }},
         {QStringLiteral("error_timeout"), {
-             QStringLiteral("The AI core did not answer in time."),
-             QStringLiteral("That took too long to complete."),
-             QStringLiteral("The request timed out.")
+             QStringLiteral("The AI provider did not answer before the timeout. The task is still resumable if you want me to retry."),
+             QStringLiteral("That timed out before the provider returned an answer. I can retry or use local context if it applies."),
+             QStringLiteral("The request hit the timeout before I had enough evidence to answer.")
+         }},
+        {QStringLiteral("error_rate_limit"), {
+             QStringLiteral("The AI provider rate limit was hit. I cannot continue that provider request until the limit clears."),
+             QStringLiteral("The provider returned a rate-limit error. I can retry later or use a local source if one is available."),
+             QStringLiteral("The request stopped because the AI provider rate limit was reached.")
          }},
         {QStringLiteral("error_auth"), {
              QStringLiteral("The AI provider rejected the request credentials."),

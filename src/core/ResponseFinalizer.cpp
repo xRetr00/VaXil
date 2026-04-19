@@ -61,6 +61,21 @@ bool shouldAppendHint(const ActionSession &session, const QString &text)
         || session.responseMode == ResponseMode::Confirm
         || session.responseMode == ResponseMode::Recover;
 }
+
+TtsUtteranceContext ttsContextForSession(const QString &source,
+                                        const ActionSession &session)
+{
+    TtsUtteranceContext context;
+    context.utteranceClass = QStringLiteral("assistant_reply");
+    context.source = source.trimmed();
+    context.turnId = session.id.trimmed();
+    if (!session.goal.trimmed().isEmpty()) {
+        context.semanticTarget = session.goal.trimmed();
+    } else {
+        context.semanticTarget = session.userRequest.trimmed();
+    }
+    return context;
+}
 }
 
 ResponseFinalizer::ResponseFinalizer(MemoryStore *memoryStore,
@@ -142,7 +157,7 @@ bool ResponseFinalizer::finalizeResponse(const QString &source,
         if (refreshConversationSession) {
             refreshConversationSession();
         }
-        m_ttsEngine->speakText(finalizedReply.spokenText);
+        m_ttsEngine->speakText(finalizedReply.spokenText, ttsContextForSession(source, session));
         return true;
     }
     return false;

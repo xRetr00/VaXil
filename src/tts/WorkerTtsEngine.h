@@ -11,7 +11,7 @@ class WorkerTtsEngine : public TtsEngine
 public:
     explicit WorkerTtsEngine(VoicePipelineRuntime *runtime, QObject *parent = nullptr);
 
-    void speakText(const QString &text) override;
+    void speakText(const QString &text, const TtsUtteranceContext &context = {}) override;
     void clear() override;
     bool isSpeaking() const override;
 

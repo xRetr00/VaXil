@@ -64,12 +64,31 @@ void DesktopPerceptionMonitor::recordNotification(const QString &title,
         return;
     }
 
+    const DesktopContextFilterDecision filterDecision = DesktopContextFilter::evaluate({
+        .sourceKind = QStringLiteral("notification"),
+        .appId = source.trimmed().isEmpty() ? QStringLiteral("tray") : source.trimmed(),
+        .notificationTitle = title,
+        .notificationMessage = message
+    });
+    if (!filterDecision.accepted) {
+        recordFilteredContext(filterDecision.reasonCode, {
+            {QStringLiteral("source"), source.trimmed().isEmpty() ? QStringLiteral("tray") : source.trimmed()},
+            {QStringLiteral("title"), title.simplified()},
+            {QStringLiteral("message"), message.simplified()},
+            {QStringLiteral("priority"), priority.trimmed().toLower()}
+        });
+        return;
+    }
+
     const CompanionContextSnapshot context = DesktopContextThreadBuilder::fromNotification(title, message, priority);
     QVariantMap payload = context.toVariantMap();
     payload.insert(QStringLiteral("source"), source.trimmed().isEmpty() ? QStringLiteral("tray") : source.trimmed());
     recordPerception(QStringLiteral("perception.notification"), priority, context.confidence, 0.82, payload, context);
     evaluateCooldown(QStringLiteral("perception.notification"), priority, context.confidence, 0.82, context);
-    emit desktopContextUpdated(DesktopContextThreadBuilder::describeContext(context), context.toVariantMap());
+    const QString summary = DesktopContextThreadBuilder::describeContext(context);
+    const QVariantMap contextMap = context.toVariantMap();
+    rememberAcceptedExternalContext(summary, contextMap);
+    emit desktopContextUpdated(summary, contextMap);
 }
 
 void DesktopPerceptionMonitor::pollActiveWindow()
@@ -86,6 +105,25 @@ void DesktopPerceptionMonitor::pollActiveWindow()
     }
     m_lastWindowFingerprint = fingerprint;
 
+    const DesktopContextFilterDecision filterDecision = DesktopContextFilter::evaluate({
+        .sourceKind = QStringLiteral("active_window"),
+        .appId = snapshot.appId,
+        .windowTitle = snapshot.windowTitle,
+        .metadata = snapshot.metadata
+    });
+    if (!filterDecision.accepted) {
+        recordFilteredContext(filterDecision.reasonCode, {
+            {QStringLiteral("appId"), snapshot.appId},
+            {QStringLiteral("windowTitle"), snapshot.windowTitle},
+            {QStringLiteral("windowMetadata"), snapshot.metadata},
+            {QStringLiteral("previousExternalContextAgeMs"),
+             m_lastAcceptedExternalContextAtMs > 0
+                 ? QDateTime::currentMSecsSinceEpoch() - m_lastAcceptedExternalContextAtMs
+                 : -1}
+        });
+        return;
+    }
+
     const CompanionContextSnapshot context = DesktopContextThreadBuilder::fromActiveWindow(
         snapshot.appId,
         snapshot.windowTitle,
@@ -97,7 +135,10 @@ void DesktopPerceptionMonitor::pollActiveWindow()
     const double novelty = context.threadId.value == m_cooldownState.threadId ? 0.38 : 0.92;
     recordPerception(QStringLiteral("perception.active_window.changed"), QStringLiteral("low"), context.confidence, novelty, payload, context);
     evaluateCooldown(QStringLiteral("perception.active_window.changed"), QStringLiteral("low"), context.confidence, novelty, context);
-    emit desktopContextUpdated(DesktopContextThreadBuilder::describeContext(context), context.toVariantMap());
+    const QString summary = DesktopContextThreadBuilder::describeContext(context);
+    const QVariantMap contextMap = context.toVariantMap();
+    rememberAcceptedExternalContext(summary, contextMap);
+    emit desktopContextUpdated(summary, contextMap);
 }
 
 void DesktopPerceptionMonitor::handleClipboardChanged()
@@ -126,7 +167,10 @@ void DesktopPerceptionMonitor::handleClipboardChanged()
     payload.insert(QStringLiteral("formats"), m_clipboard->mimeData()->formats());
     recordPerception(QStringLiteral("perception.clipboard.changed"), QStringLiteral("medium"), context.confidence, 0.76, payload, context);
     evaluateCooldown(QStringLiteral("perception.clipboard.changed"), QStringLiteral("medium"), context.confidence, 0.76, context);
-    emit desktopContextUpdated(DesktopContextThreadBuilder::describeContext(context), context.toVariantMap());
+    const QString summary = DesktopContextThreadBuilder::describeContext(context);
+    const QVariantMap contextMap = context.toVariantMap();
+    rememberAcceptedExternalContext(summary, contextMap);
+    emit desktopContextUpdated(summary, contextMap);
 }
 
 bool DesktopPerceptionMonitor::shouldIgnoreClipboardPreview(const QString &preview) const
@@ -232,6 +276,42 @@ void DesktopPerceptionMonitor::evaluateCooldown(const QString &reasonCode,
         const bool recorded = m_loggingService->logBehaviorEvent(threadEvent);
         (void)recorded;
     }
+}
+
+void DesktopPerceptionMonitor::recordFilteredContext(const QString &reasonCode,
+                                                     const QVariantMap &payload) const
+{
+    if (m_loggingService == nullptr) {
+        return;
+    }
+
+    QVariantMap diagnosticPayload = basePayload(payload);
+    diagnosticPayload.insert(QStringLiteral("diagnosticOnly"), true);
+    diagnosticPayload.insert(QStringLiteral("previousExternalContextPreserved"),
+                             m_lastAcceptedExternalContextAtMs > 0
+                                 && (QDateTime::currentMSecsSinceEpoch() - m_lastAcceptedExternalContextAtMs) <= 90000);
+    if (!m_lastAcceptedExternalSummary.trimmed().isEmpty()) {
+        diagnosticPayload.insert(QStringLiteral("previousExternalSummary"), m_lastAcceptedExternalSummary);
+    }
+
+    BehaviorTraceEvent event = BehaviorTraceEvent::create(
+        QStringLiteral("perception"),
+        QStringLiteral("filtered"),
+        reasonCode,
+        diagnosticPayload,
+        QStringLiteral("system"));
+    event.sessionId = m_sessionId;
+    event.traceId = currentTraceId();
+    event.capabilityId = QStringLiteral("desktop_context_filter");
+    const bool recordedEvent = m_loggingService->logBehaviorEvent(event);
+    (void)recordedEvent;
+}
+
+void DesktopPerceptionMonitor::rememberAcceptedExternalContext(const QString &summary, const QVariantMap &context)
+{
+    m_lastAcceptedExternalSummary = summary;
+    m_lastAcceptedExternalContext = context;
+    m_lastAcceptedExternalContextAtMs = QDateTime::currentMSecsSinceEpoch();
 }
 
 void DesktopPerceptionMonitor::reconcileTimedFocusModeExpiry(qint64 nowMs)

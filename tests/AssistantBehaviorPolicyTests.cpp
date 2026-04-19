@@ -35,6 +35,7 @@ private slots:
     void rejectsFreshActionWithPronounAgainstRecentActionThread();
     void selectionPolicyClarifiesAmbiguousRecentThreads();
     void selectionPolicyRetriesFailedAndAuditsCanceledThreads();
+    void selectionPolicyTreatsWhatHappenedAsRecentTaskAudit();
     void selectionPolicyBlocksPrivateReferentialContext();
     void narrowsExplicitCreateAndBrowserToolsForGeneralChat();
     void routesDesktopContextRecallAsConversation();
@@ -585,6 +586,35 @@ void AssistantBehaviorPolicyTests::selectionPolicyRetriesFailedAndAuditsCanceled
     QCOMPARE(audit.kind, ActionThreadSelectionKind::AuditOnlyCanceled);
     QVERIFY(audit.thread.has_value());
     QCOMPARE(audit.thread->id, QStringLiteral("canceled-thread"));
+}
+
+void AssistantBehaviorPolicyTests::selectionPolicyTreatsWhatHappenedAsRecentTaskAudit()
+{
+    const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
+    InputRouteDecision decision;
+    decision.kind = InputRouteKind::BackgroundTasks;
+
+    ActionThread blocked;
+    blocked.id = QStringLiteral("blocked-thread");
+    blocked.taskType = QStringLiteral("browser_fetch_text");
+    blocked.userGoal = QStringLiteral("Read the search result page");
+    blocked.resultSummary = QStringLiteral("Browser text empty.");
+    blocked.state = ActionThreadState::Failed;
+    blocked.valid = true;
+    blocked.updatedAtMs = nowMs;
+    blocked.expiresAtMs = nowMs + 60000;
+
+    ActionThreadSelectionInput input;
+    input.userInput = QStringLiteral("What happened?");
+    input.routeDecision = decision;
+    input.recentThreads = {blocked};
+    input.nowMs = nowMs;
+
+    const ActionThreadSelectionResult result = ActionThreadSelectionPolicy::select(input);
+    QCOMPARE(result.kind, ActionThreadSelectionKind::Attach);
+    QVERIFY(result.thread.has_value());
+    QCOMPARE(result.thread->id, QStringLiteral("blocked-thread"));
+    QCOMPARE(result.reasonCode, QStringLiteral("action_thread.audit_recent"));
 }
 
 void AssistantBehaviorPolicyTests::selectionPolicyBlocksPrivateReferentialContext()

@@ -37,10 +37,10 @@ void SpeechIoWorker::transcribe(quint64 generationId, const QByteArray &pcmData,
     m_whisper->transcribePcm(pcmData, initialPrompt, suppressNonSpeechTokens);
 }
 
-void SpeechIoWorker::speak(quint64 generationId, const QString &text)
+void SpeechIoWorker::speak(quint64 generationId, const QString &text, const TtsUtteranceContext &context)
 {
     m_activePlaybackGeneration = generationId;
-    m_tts->speakText(text);
+    m_tts->speakText(text, context);
 }
 
 void SpeechIoWorker::cancel()

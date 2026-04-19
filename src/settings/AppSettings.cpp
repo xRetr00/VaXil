@@ -67,6 +67,11 @@ double clampVoicePitch(double value)
     return std::clamp(value, kMinVoicePitch, kMaxVoicePitch);
 }
 
+int clampTtsDedupeWindowMs(int value)
+{
+    return std::clamp(value, 1000, 60000);
+}
+
 double clampWakeTriggerThreshold(double value)
 {
     return std::clamp(value, 0.50, 1.0);
@@ -310,6 +315,7 @@ bool AppSettings::load()
     m_wakeTriggerCooldownMs = clampWakeTriggerCooldownMs(wakeTriggerCooldownMs);
     m_ffmpegExecutable = QString::fromStdString(parsed.value("ffmpegExecutable", std::string{}));
     m_ttsEngineKind = QString::fromStdString(parsed.value("ttsEngineKind", m_ttsEngineKind.toStdString()));
+    m_ttsDedupeWindowMs = clampTtsDedupeWindowMs(parsed.value("ttsDedupeWindowMs", m_ttsDedupeWindowMs));
     m_voiceSpeed = clampVoiceSpeed(parsed.value("voiceSpeed", kDefaultVoiceSpeed));
     m_voicePitch = clampVoicePitch(parsed.value("voicePitch", kDefaultVoicePitch));
     m_micSensitivity = parsed.value("micSensitivity", 0.02);
@@ -438,6 +444,7 @@ bool AppSettings::save() const
         {"wakeTriggerCooldownMs", m_wakeTriggerCooldownMs},
         {"ffmpegExecutable", m_ffmpegExecutable.toStdString()},
         {"ttsEngineKind", m_ttsEngineKind.toStdString()},
+        {"ttsDedupeWindowMs", m_ttsDedupeWindowMs},
         {"voiceSpeed", m_voiceSpeed},
         {"voicePitch", m_voicePitch},
         {"micSensitivity", m_micSensitivity},
@@ -713,6 +720,12 @@ QString AppSettings::ttsEngineKind() const { return m_ttsEngineKind; }
 void AppSettings::setTtsEngineKind(const QString &kind)
 {
     m_ttsEngineKind = kind.trimmed().isEmpty() ? QStringLiteral("piper") : kind.trimmed();
+    emit settingsChanged();
+}
+int AppSettings::ttsDedupeWindowMs() const { return m_ttsDedupeWindowMs; }
+void AppSettings::setTtsDedupeWindowMs(int dedupeWindowMs)
+{
+    m_ttsDedupeWindowMs = clampTtsDedupeWindowMs(dedupeWindowMs);
     emit settingsChanged();
 }
 double AppSettings::voiceSpeed() const { return m_voiceSpeed; }

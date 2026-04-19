@@ -44,6 +44,7 @@ bool isReferential(const QString &text)
         QStringLiteral(" results"),
         QStringLiteral("from the result"),
         QStringLiteral("what did you see"),
+        QStringLiteral("what happened"),
         QStringLiteral("what have you done"),
         QStringLiteral("what were you doing"),
         QStringLiteral("what did you do"),
@@ -74,6 +75,7 @@ bool isAuditQuestion(const QString &text)
         QStringLiteral("what were you doing"),
         QStringLiteral("what have you done"),
         QStringLiteral("what did you do"),
+        QStringLiteral("what happened"),
         QStringLiteral("what were we doing"),
         QStringLiteral("what was the task")
     });

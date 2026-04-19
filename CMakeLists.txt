@@ -255,11 +255,13 @@ set(JARVIS_SOURCES
     src/core/ActionThreadTracker.cpp
     src/core/ActionThreadSelectionPolicy.cpp
     src/core/ActionRiskPermissionService.cpp
+    src/core/AssistantRequestLifecyclePolicy.cpp
     src/core/AiRequestCoordinator.cpp
     src/core/AssistantBehaviorPolicy.cpp
     src/core/AssistantController.cpp
     src/core/SpeechTranscriptGuard.cpp
     src/core/StartupReadinessPolicy.cpp
+    src/core/CurrentContextReferentResolver.cpp
     src/core/DesktopActionContextPolicy.cpp
     src/core/ExecutionNarrator.cpp
     src/core/InputRouter.cpp
@@ -341,6 +343,7 @@ set(JARVIS_SOURCES
     src/memory/MemoryStoreTuningEpisodes.cpp
     src/overlay/OverlayController.cpp
     src/perception/DesktopContextThreadBuilder.cpp
+    src/perception/DesktopContextFilter.cpp
     src/perception/FocusModeExpiryRuntime.cpp
     src/perception/DesktopPerceptionMonitor.cpp
     src/perception/DesktopSourceContextAdapter.cpp
@@ -354,6 +357,11 @@ set(JARVIS_SOURCES
     src/stt/RuntimeSpeechRecognizer.cpp
     src/tools/ToolManager.cpp
     src/tts/PiperTtsEngine.cpp
+    src/tts/SpeechPunctuationShaper.cpp
+    src/tts/SpeechPreparationPipeline.cpp
+    src/tts/SpeechTextNormalizer.cpp
+    src/tts/TechnicalTokenSpeechFormatter.cpp
+    src/tts/UtteranceDedupeGuard.cpp
     src/tts/WorkerTtsEngine.cpp
     src/telemetry/BehavioralEventLedger.cpp
     src/telemetry/SelectionTelemetryBuilder.cpp
@@ -390,6 +398,7 @@ set(JARVIS_HEADERS
     src/core/agent/IntentDetector.h
     src/core/agent/IntentEngine.h
     src/core/ActionRiskPermissionService.h
+    src/core/AssistantRequestLifecyclePolicy.h
     src/core/AiRequestCoordinator.h
     src/core/AssistantBehaviorPolicy.h
     src/core/AssistantController.h
@@ -397,6 +406,7 @@ set(JARVIS_HEADERS
     src/core/SpeechTranscriptGuard.h
     src/core/AssistantTypes.h
     src/core/StartupReadinessPolicy.h
+    src/core/CurrentContextReferentResolver.h
     src/core/DesktopActionContextPolicy.h
     src/core/ComputerControl.h
     src/core/ExecutionNarrator.h
@@ -449,6 +459,7 @@ set(JARVIS_HEADERS
     src/core/tasks/ToolWorker.h
     src/core/tools/ToolExecutionService.h
     src/core/tools/ToolResultEvidencePolicy.h
+    src/perception/DesktopContextFilter.h
     src/companion/contracts/ActionOutcome.h
     src/companion/contracts/ActionProposal.h
     src/companion/contracts/BehaviorDecision.h
@@ -510,6 +521,11 @@ set(JARVIS_HEADERS
     src/tools/ToolManager.h
     src/tts/TtsEngine.h
     src/tts/PiperTtsEngine.h
+    src/tts/SpeechPunctuationShaper.h
+    src/tts/SpeechPreparationPipeline.h
+    src/tts/SpeechTextNormalizer.h
+    src/tts/TechnicalTokenSpeechFormatter.h
+    src/tts/UtteranceDedupeGuard.h
     src/tts/WorkerTtsEngine.h
     src/vision/VisionIngestService.h
     src/vision/GestureInterpreter.h
@@ -916,6 +932,20 @@ if(JARVIS_BUILD_TESTS)
     set_tests_properties(jarvis_ai_services_tests PROPERTIES ENVIRONMENT "PATH=${QT_BIN_DIR}${JARVIS_PATH_ENV_SEPARATOR}$ENV{PATH}")
     jarvis_copy_optional_runtime_libraries(jarvis_ai_services_tests)
 
+    qt_add_executable(jarvis_tts_speech_preparation_tests
+        tests/TtsSpeechPreparationTests.cpp
+    )
+
+    target_link_libraries(jarvis_tts_speech_preparation_tests
+        PRIVATE
+            jarvis_lib
+            Qt6::Test
+    )
+
+    add_test(NAME jarvis_tts_speech_preparation_tests COMMAND jarvis_tts_speech_preparation_tests)
+    set_tests_properties(jarvis_tts_speech_preparation_tests PROPERTIES ENVIRONMENT "PATH=${QT_BIN_DIR}${JARVIS_PATH_ENV_SEPARATOR}$ENV{PATH}")
+    jarvis_copy_optional_runtime_libraries(jarvis_tts_speech_preparation_tests)
+
     qt_add_executable(jarvis_behavior_policy_tests
         tests/AssistantBehaviorPolicyTests.cpp
     )
@@ -929,6 +959,18 @@ if(JARVIS_BUILD_TESTS)
     add_test(NAME jarvis_behavior_policy_tests COMMAND jarvis_behavior_policy_tests)
     set_tests_properties(jarvis_behavior_policy_tests PROPERTIES ENVIRONMENT "PATH=${QT_BIN_DIR}${JARVIS_PATH_ENV_SEPARATOR}$ENV{PATH}")
     jarvis_copy_optional_runtime_libraries(jarvis_behavior_policy_tests)
+
+    qt_add_executable(jarvis_current_context_referent_tests
+        tests/CurrentContextReferentResolverTests.cpp
+        src/core/CurrentContextReferentResolver.cpp
+    )
+
+    target_include_directories(jarvis_current_context_referent_tests PRIVATE src)
+    target_link_libraries(jarvis_current_context_referent_tests PRIVATE Qt6::Core Qt6::Test nlohmann_json::nlohmann_json)
+
+    add_test(NAME jarvis_current_context_referent_tests COMMAND jarvis_current_context_referent_tests)
+    set_tests_properties(jarvis_current_context_referent_tests PROPERTIES ENVIRONMENT "PATH=${QT_BIN_DIR}${JARVIS_PATH_ENV_SEPARATOR}$ENV{PATH}")
+    jarvis_copy_optional_runtime_libraries(jarvis_current_context_referent_tests)
 
     qt_add_executable(jarvis_turn_orchestration_runtime_tests
         tests/TurnOrchestrationRuntimeTests.cpp
@@ -1429,6 +1471,7 @@ if(JARVIS_BUILD_TESTS)
     qt_add_executable(jarvis_desktop_context_tests
         tests/DesktopContextThreadBuilderTests.cpp
         src/perception/DesktopContextThreadBuilder.cpp
+        src/perception/DesktopContextFilter.cpp
     )
 
     target_include_directories(jarvis_desktop_context_tests PRIVATE src)

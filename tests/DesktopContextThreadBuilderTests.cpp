@@ -1,6 +1,7 @@
 #include <QtTest>
 
 #include "perception/DesktopContextThreadBuilder.h"
+#include "perception/DesktopContextFilter.h"
 
 class DesktopContextThreadBuilderTests : public QObject
 {
@@ -15,6 +16,9 @@ private slots:
     void marksPrivateModeContextAsRedacted();
     void buildsClipboardContext();
     void buildsNotificationContext();
+    void filtersVaxilCommandDeckAsDiagnosticOnly();
+    void filtersVaxilNotificationAsDiagnosticOnly();
+    void doesNotFilterExternalVaxilDocumentTitle();
 };
 
 void DesktopContextThreadBuilderTests::buildsActiveWindowContext()
@@ -143,6 +147,47 @@ void DesktopContextThreadBuilderTests::buildsNotificationContext()
     QCOMPARE(snapshot.taskId, QStringLiteral("notification"));
     QCOMPARE(snapshot.topic, QStringLiteral("startup_blocked"));
     QVERIFY(snapshot.confidence > 0.8);
+}
+
+void DesktopContextThreadBuilderTests::filtersVaxilCommandDeckAsDiagnosticOnly()
+{
+    const DesktopContextFilterDecision decision = DesktopContextFilter::evaluate({
+        .sourceKind = QStringLiteral("active_window"),
+        .appId = QStringLiteral("D:/Vaxil/bin/vaxil.exe"),
+        .windowTitle = QStringLiteral("Vaxil Command Deck"),
+        .metadata = {{QStringLiteral("documentContext"), QStringLiteral("Vaxil Command Deck")}}
+    });
+
+    QVERIFY(!decision.accepted);
+    QVERIFY(decision.diagnosticOnly);
+    QCOMPARE(decision.reasonCode, QStringLiteral("desktop_context.filtered_self_window"));
+}
+
+void DesktopContextThreadBuilderTests::filtersVaxilNotificationAsDiagnosticOnly()
+{
+    const DesktopContextFilterDecision decision = DesktopContextFilter::evaluate({
+        .sourceKind = QStringLiteral("notification"),
+        .appId = QStringLiteral("vaxil"),
+        .notificationTitle = QStringLiteral("Vaxil"),
+        .notificationMessage = QStringLiteral("Task finished")
+    });
+
+    QVERIFY(!decision.accepted);
+    QVERIFY(decision.diagnosticOnly);
+    QCOMPARE(decision.reasonCode, QStringLiteral("desktop_context.filtered_self_notification"));
+}
+
+void DesktopContextThreadBuilderTests::doesNotFilterExternalVaxilDocumentTitle()
+{
+    const DesktopContextFilterDecision decision = DesktopContextFilter::evaluate({
+        .sourceKind = QStringLiteral("active_window"),
+        .appId = QStringLiteral("C:/Program Files/Microsoft VS Code/Code.exe"),
+        .windowTitle = QStringLiteral("Vaxil behavior spec - Visual Studio Code"),
+        .metadata = {{QStringLiteral("documentContext"), QStringLiteral("Vaxil behavior spec")}}
+    });
+
+    QVERIFY(decision.accepted);
+    QVERIFY(!decision.diagnosticOnly);
 }
 
 QTEST_APPLESS_MAIN(DesktopContextThreadBuilderTests)

@@ -5,6 +5,7 @@
 
 #include "audio/AudioProcessingTypes.h"
 #include "core/AssistantTypes.h"
+#include "tts/TtsEngine.h"
 
 class AppSettings;
 class LoggingService;
@@ -36,7 +37,7 @@ public slots:
     void startWakeCapture(quint64 generationId, const QString &preferredDeviceId);
     void stopWakeCapture();
     void transcribe(quint64 generationId, const QByteArray &pcmData, const QString &initialPrompt, bool suppressNonSpeechTokens = true);
-    void speak(quint64 generationId, const QString &text);
+    void speak(quint64 generationId, const QString &text, const TtsUtteranceContext &context = {});
     void cancelSpeechIo();
     void setBackendEndpoint(const QString &endpoint);
     void setBackendProviderConfig(const QString &providerKind, const QString &apiKey);

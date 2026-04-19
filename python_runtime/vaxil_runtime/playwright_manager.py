@@ -67,11 +67,59 @@ class PlaywrightBrowserManager:
     def fetch_text(self, url: str, *, timeout_ms: int = 30000) -> dict[str, Any]:
         page = self._ensure_page(headless=True)
         page.goto(url, wait_until="domcontentloaded", timeout=timeout_ms)
-        text = page.locator("body").inner_text(timeout=timeout_ms)
+        extraction_method = "body.inner_text"
+        text = ""
+        try:
+            text = page.locator("body").inner_text(timeout=timeout_ms)
+        except Exception:
+            text = ""
+        if not str(text or "").strip():
+            try:
+                extraction_method = "dom_visible_text"
+                text = page.evaluate(
+                    """() => {
+                        const walker = document.createTreeWalker(document.body || document.documentElement, NodeFilter.SHOW_TEXT);
+                        const parts = [];
+                        while (walker.nextNode()) {
+                            const node = walker.currentNode;
+                            const parent = node.parentElement;
+                            if (!parent) continue;
+                            const style = window.getComputedStyle(parent);
+                            if (style && style.visibility !== 'hidden' && style.display !== 'none') {
+                                const value = (node.textContent || '').trim();
+                                if (value) parts.push(value);
+                            }
+                            if (parts.join('\\n').length > 24000) break;
+                        }
+                        return parts.join('\\n');
+                    }"""
+                )
+            except Exception:
+                text = ""
+        if not str(text or "").strip():
+            try:
+                extraction_method = "accessibility_snapshot"
+                snapshot = page.accessibility.snapshot()
+                parts: list[str] = []
+
+                def collect(node: Any) -> None:
+                    if not isinstance(node, dict):
+                        return
+                    name = str(node.get("name") or "").strip()
+                    if name:
+                        parts.append(name)
+                    for child in node.get("children") or []:
+                        collect(child)
+
+                collect(snapshot)
+                text = "\n".join(parts)
+            except Exception:
+                text = ""
         return {
             "url": page.url,
             "title": page.title(),
             "text": text,
+            "extraction_method": extraction_method,
         }
 
     def close(self) -> None:

@@ -6,6 +6,7 @@
 #include "cognition/CooldownEngine.h"
 #include "companion/contracts/CompanionContextSnapshot.h"
 #include "companion/contracts/CooldownState.h"
+#include "perception/DesktopContextFilter.h"
 
 class AppSettings;
 class LoggingService;
@@ -58,6 +59,9 @@ private:
                           double confidence,
                           double novelty,
                           const CompanionContextSnapshot &context);
+    void recordFilteredContext(const QString &reasonCode,
+                               const QVariantMap &payload) const;
+    void rememberAcceptedExternalContext(const QString &summary, const QVariantMap &context);
     void reconcileTimedFocusModeExpiry(qint64 nowMs);
     [[nodiscard]] bool shouldIgnoreClipboardPreview(const QString &preview) const;
     [[nodiscard]] ActiveWindowSnapshot currentActiveWindow() const;
@@ -75,4 +79,7 @@ private:
     QString m_sessionId;
     QString m_lastWindowFingerprint;
     QString m_lastClipboardFingerprint;
+    QString m_lastAcceptedExternalSummary;
+    QVariantMap m_lastAcceptedExternalContext;
+    qint64 m_lastAcceptedExternalContextAtMs = 0;
 };

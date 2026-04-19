@@ -3,6 +3,7 @@
 #include "ai/AiBackendClient.h"
 #include "ai/PromptAdapter.h"
 #include "ai/ReasoningRouter.h"
+#include "core/AssistantRequestLifecyclePolicy.h"
 #include "companion/contracts/BehaviorTraceEvent.h"
 #include "logging/LoggingService.h"
 #include "settings/AppSettings.h"
@@ -201,6 +202,9 @@ QString AiRequestCoordinator::capabilityErrorText(const AgentCapabilitySet &capa
 QString AiRequestCoordinator::errorGroupFor(const QString &errorText) const
 {
     const QString lowered = errorText.toLower();
+    if (AssistantRequestLifecyclePolicy::isProviderRateLimitError(errorText)) {
+        return QStringLiteral("error_rate_limit");
+    }
     if (lowered.contains(QStringLiteral("timed out"))) {
         return QStringLiteral("error_timeout");
     }

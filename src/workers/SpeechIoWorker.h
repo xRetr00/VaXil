@@ -4,6 +4,7 @@
 
 #include "audio/AudioProcessingTypes.h"
 #include "core/AssistantTypes.h"
+#include "tts/TtsEngine.h"
 
 class AppSettings;
 class LoggingService;
@@ -19,7 +20,7 @@ public:
 
 public slots:
     void transcribe(quint64 generationId, const QByteArray &pcmData, const QString &initialPrompt, bool suppressNonSpeechTokens = true);
-    void speak(quint64 generationId, const QString &text);
+    void speak(quint64 generationId, const QString &text, const TtsUtteranceContext &context = {});
     void cancel();
 
 signals:

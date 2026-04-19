@@ -26,5 +26,10 @@ def run(service, args, _context):
         payload["text"] = text[:12000] + "\n...[truncated]"
     if not str(payload.get("text") or "").strip():
         payload["lowSignalReason"] = "tool_result.empty_browser_text"
-        return failure("Browser text empty", f"No readable text was extracted from {payload.get('url') or url} with Playwright.", **payload)
-    return success("Browser text fetched", f"Fetched and extracted text from {payload['url']} with Playwright.", **payload)
+        return failure(
+            "Browser text empty",
+            f"No readable text was extracted from {payload.get('url') or url} with Playwright rendered-text, DOM, or accessibility fallbacks.",
+            **payload,
+        )
+    method = str(payload.get("extraction_method") or "rendered_text")
+    return success("Browser text fetched", f"Fetched page text from {payload['url']} with Playwright using {method}.", **payload)

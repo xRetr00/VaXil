@@ -15,6 +15,7 @@ private slots:
     void suppressesCompletionFollowUpDuringFocusMode();
     void suppressesCompletionFollowUpDuringActiveCooldown();
     void allowsUserRequestedCompletionDuringActiveCooldown();
+    void allowsUserRequestedCompletionDuringFocusedDesktopWork();
     void allowsFailureFollowUpEvenInFocusMode();
 };
 
@@ -137,6 +138,20 @@ void ProactiveSurfaceGateTests::allowsUserRequestedCompletionDuringActiveCooldow
     input.nowMs = 1500;
 
     const BehaviorDecision decision = ProactiveSurfaceGate::evaluateCompletionFollowUp(input, true, true);
+    QVERIFY(decision.allowed);
+    QCOMPARE(decision.reasonCode, QStringLiteral("surface.user_requested_completion_allow"));
+}
+
+void ProactiveSurfaceGateTests::allowsUserRequestedCompletionDuringFocusedDesktopWork()
+{
+    ProactiveSurfaceGate::Input input;
+    input.result.type = QStringLiteral("browser_fetch_text");
+    input.result.success = true;
+    input.desktopContext.insert(QStringLiteral("taskId"), QStringLiteral("browser_tab"));
+    input.desktopContextAtMs = 1000;
+    input.nowMs = 1200;
+
+    const BehaviorDecision decision = ProactiveSurfaceGate::evaluateCompletionFollowUp(input, false, true);
     QVERIFY(decision.allowed);
     QCOMPARE(decision.reasonCode, QStringLiteral("surface.user_requested_completion_allow"));
 }

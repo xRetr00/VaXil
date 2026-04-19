@@ -22,6 +22,7 @@
 
 #include "logging/LoggingService.h"
 #include "settings/AppSettings.h"
+#include "tts/SpeechPreparationPipeline.h"
 
 namespace {
 struct VoicePipelineTrace
@@ -610,45 +611,73 @@ PiperTtsEngine::PiperTtsEngine(AppSettings *settings,
             m_lastFarEndOffset += bytesPerFrame;
         }
     });
+
+    const int dedupeWindowMs = m_settings != nullptr ? m_settings->ttsDedupeWindowMs() : 7000;
+    m_speechPreparationPipeline = std::make_unique<SpeechPreparationPipeline>(dedupeWindowMs);
 }
 
-void PiperTtsEngine::speakText(const QString &text)
+PiperTtsEngine::~PiperTtsEngine() = default;
+
+void PiperTtsEngine::speakText(const QString &text, const TtsUtteranceContext &context)
 {
-    const VoicePipelineTrace trace = analyzeVoicePipeline(text);
-    const QString prepared = trace.normalized;
+    if (m_speechPreparationPipeline == nullptr) {
+        m_speechPreparationPipeline = std::make_unique<SpeechPreparationPipeline>(7000);
+    }
+    if (m_settings != nullptr) {
+        m_speechPreparationPipeline->setDedupeWindowMs(m_settings->ttsDedupeWindowMs());
+    }
+
+    const SpeechPreparationTrace trace = m_speechPreparationPipeline->prepare(text, context);
+    const QString prepared = trace.finalSpokenText;
+
     if (m_loggingService) {
         m_loggingService->infoFor(
             QStringLiteral("tts"),
-            QStringLiteral("[tts_pipeline] rawChars=%1 styledChars=%2 pausedChars=%3 normalizedChars=%4 decimalTokens=%5 normalizedPointPhrases=%6 normalizedDotWords=%7")
-                .arg(QString::number(text.size()),
-                     QString::number(trace.styled.size()),
-                     QString::number(trace.paused.size()),
+            QStringLiteral("[tts_pipeline] rawChars=%1 normalizedChars=%2 shapedChars=%3 finalChars=%4 class=%5 source=%6 turn=%7 target=%8")
+                .arg(QString::number(trace.rawInputText.size()),
+                     QString::number(trace.normalizedText.size()),
+                     QString::number(trace.punctuationShapedText.size()),
                      QString::number(prepared.size()),
-                     QString::number(trace.decimalTokens.size()),
-                     QString::number(trace.normalizedPointCount),
-                     QString::number(trace.normalizedDotWordCount)));
+                     context.utteranceClass,
+                     context.source,
+                     context.turnId,
+                     context.semanticTarget));
         m_loggingService->infoFor(
             QStringLiteral("tts"),
-            QStringLiteral("[tts_text_raw] %1").arg(clipForTtsLog(text)));
+            QStringLiteral("[tts_text_raw] %1").arg(clipForTtsLog(trace.rawInputText)));
         m_loggingService->infoFor(
             QStringLiteral("tts"),
-            QStringLiteral("[tts_text_spoken] %1").arg(clipForTtsLog(prepared)));
-        if (!trace.decimalTokens.isEmpty()) {
-            m_loggingService->infoFor(
-                QStringLiteral("tts"),
-                QStringLiteral("[tts_decimal_tokens] %1").arg(trace.decimalTokens.join(QStringLiteral(", "))));
-        }
+            QStringLiteral("[tts_text_normalized] %1").arg(clipForTtsLog(trace.normalizedText)));
         m_loggingService->infoFor(
             QStringLiteral("tts"),
-            QStringLiteral("[tts_pause_hints] %1").arg(summarizePauseHints(prepared)));
+            QStringLiteral("[tts_text_shaped] %1").arg(clipForTtsLog(trace.punctuationShapedText)));
+        m_loggingService->infoFor(
+            QStringLiteral("tts"),
+            QStringLiteral("[tts_pause_hints] %1").arg(trace.pauseHintSummary));
+        m_loggingService->infoFor(
+            QStringLiteral("tts"),
+            QStringLiteral("[tts_dedupe] admitted=%1 reason=%2 windowMs=%3 exact=%4 near=%5 fields=%6")
+                .arg(trace.dedupeDecision.admitted ? QStringLiteral("true") : QStringLiteral("false"),
+                     trace.dedupeDecision.reason,
+                     QString::number(trace.dedupeDecision.windowMs),
+                     trace.dedupeDecision.exactFingerprint,
+                     trace.dedupeDecision.nearFingerprint,
+                     trace.dedupeDecision.keyFields));
     }
 
-    if (prepared.isEmpty() || isStatusOnlyUtterance(prepared)) {
+    if (trace.emptyAfterPreparation || trace.statusOnly || !trace.dedupeDecision.admitted) {
         if (m_loggingService) {
+            QString reason = trace.dedupeDecision.reason;
+            if (trace.emptyAfterPreparation) {
+                reason = QStringLiteral("empty_after_preparation");
+            } else if (trace.statusOnly) {
+                reason = QStringLiteral("status_only_utterance");
+            }
+
             m_loggingService->infoFor(
                 QStringLiteral("tts"),
                 QStringLiteral("[tts_pipeline_skipped] reason=%1")
-                    .arg(prepared.isEmpty() ? QStringLiteral("empty_after_normalization") : QStringLiteral("status_only_utterance")));
+                    .arg(reason));
         }
         emit playbackFinished();
         return;
@@ -658,8 +687,8 @@ void PiperTtsEngine::speakText(const QString &text)
     if (m_loggingService) {
         m_loggingService->infoFor(
             QStringLiteral("tts"),
-            QStringLiteral("[tts_queue] enqueued=true queueSize=%1")
-                .arg(QString::number(m_pendingTexts.size())));
+            QStringLiteral("[tts_queue] enqueued=true queueSize=%1 finalText=%2")
+                .arg(QString::number(m_pendingTexts.size()), clipForTtsLog(prepared)));
     }
     if (!m_processing) {
         processNext();

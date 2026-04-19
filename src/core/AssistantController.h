@@ -41,6 +41,7 @@ class TaskDispatcher;
 class SpeechRecognizer;
 class TtsEngine;
 class ToolWorker;
+class QTimer;
 class VisionIngestService;
 class WakeWordEngine;
 class WakeWordDataCapture;
@@ -281,6 +282,9 @@ private:
     void startAgentConversationRequest(const QString &input, IntentType expectedIntent);
     void continueAgentConversation(const QList<AgentToolResult> &results);
     QList<AgentToolResult> executeAgentToolCalls(const QList<AgentToolCall> &toolCalls);
+    void startRequestProgressHeartbeat(RequestKind kind, quint64 requestId);
+    void stopRequestProgressHeartbeat();
+    void handleRequestProgressHeartbeat();
     void startCommandRequest(const QString &input);
     void handleVisionSnapshot(const VisionSnapshot &snapshot);
     QString buildDirectVisionResponse(const QString &input) const;
@@ -302,6 +306,8 @@ private:
     void dispatchBackgroundTasks(const QList<AgentTask> &tasks);
     void recordConnectorEvent(const ConnectorEvent &event);
     void recordTaskResult(const QJsonObject &resultObject);
+    void scheduleDeferredTaskResultDrain(int delayMs = 500);
+    void drainDeferredTaskResults();
     void setSurfaceError(const QString &source, const QString &primary, const QString &secondary = QString());
     void clearSurfaceError(const QString &source = QString());
     void startActionThreadCompletionRequest(const ActionThread &thread);
@@ -448,6 +454,10 @@ private:
     QString m_lastAgentInput;
     IntentType m_lastAgentIntent = IntentType::GENERAL_CHAT;
     ReasoningMode m_activeReasoningMode = ReasoningMode::Balanced;
+    QTimer *m_requestProgressHeartbeatTimer = nullptr;
+    RequestKind m_progressHeartbeatRequestKind = RequestKind::Conversation;
+    quint64 m_progressHeartbeatRequestId = 0;
+    int m_progressHeartbeatIndex = 0;
     bool m_activeAgentUsesResponses = false;
     ActionSession m_activeActionSession;
     bool m_hasPendingConfirmation = false;
@@ -516,6 +526,9 @@ private:
     QHash<QString, QStringList> m_lastPromptContextKeysByPurpose;
     QHash<QString, qint64> m_lastPromptContextChangedAtMsByPurpose;
     QHash<QString, int> m_promptContextStableCyclesByPurpose;
+    QList<QJsonObject> m_deferredTaskResultObjects;
+    bool m_deferredTaskResultDrainScheduled = false;
+    bool m_drainingDeferredTaskResult = false;
     std::unique_ptr<ResponseFinalizer> m_responseFinalizer;
     QThread m_toolWorkerThread;
     QThread m_gestureActionRouterThread;

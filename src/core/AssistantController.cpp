@@ -36,6 +36,8 @@
 #include "core/ActionThreadSelectionPolicy.h"
 #include "core/AiRequestCoordinator.h"
 #include "core/AssistantBehaviorPolicy.h"
+#include "core/AssistantRequestLifecyclePolicy.h"
+#include "core/CurrentContextReferentResolver.h"
 #include "core/DesktopActionContextPolicy.h"
 #include "core/ExecutionNarrator.h"
 #include "core/InputRouter.h"
@@ -1321,9 +1323,24 @@ QString groundedToolInventoryText(const QList<AgentToolSpec> &tools, const AppSe
         .arg(names.join(QStringLiteral(", ")), runtimeToolStatusSummary(settings));
 }
 
-int effectiveRequestTimeoutMs(const AppSettings *settings)
+int effectiveRequestTimeoutMs(const AppSettings *settings, RequestKind kind)
 {
-    return std::max(30000, settings != nullptr ? settings->requestTimeoutMs() : 30000);
+    return AssistantRequestLifecyclePolicy::timeoutMs(
+        kind,
+        settings != nullptr ? settings->requestTimeoutMs() : 0);
+}
+
+QString requestKindToString(RequestKind kind)
+{
+    switch (kind) {
+    case RequestKind::CommandExtraction:
+        return QStringLiteral("command_extraction");
+    case RequestKind::AgentConversation:
+        return QStringLiteral("agent_conversation");
+    case RequestKind::Conversation:
+    default:
+        return QStringLiteral("conversation");
+    }
 }
 
 IntentType expectedAgentIntentForQuery(const QString &input)
@@ -1359,6 +1376,12 @@ AssistantController::AssistantController(
     m_reasoningRouter = new ReasoningRouter(this);
     m_promptAdapter = new PromptAdapter(this);
     m_streamAssembler = new StreamAssembler(this);
+    m_requestProgressHeartbeatTimer = new QTimer(this);
+    m_requestProgressHeartbeatTimer->setSingleShot(true);
+    connect(m_requestProgressHeartbeatTimer,
+            &QTimer::timeout,
+            this,
+            &AssistantController::handleRequestProgressHeartbeat);
     m_memoryStore = new MemoryStore(QString(), this);
     m_assistantBehaviorPolicy = std::make_unique<AssistantBehaviorPolicy>();
     m_inputRouter = std::make_unique<InputRouter>(m_assistantBehaviorPolicy.get());
@@ -2045,6 +2068,7 @@ void AssistantController::initialize()
                      m_settings->chatBackendEndpoint().trimmed()));
         }
 
+        stopRequestProgressHeartbeat();
         if (m_activeRequestKind == RequestKind::CommandExtraction) {
             handleCommandFinished(fullText);
         } else if (m_activeRequestKind == RequestKind::AgentConversation) {
@@ -2057,10 +2081,12 @@ void AssistantController::initialize()
         if (requestId != m_activeRequestId) {
             return;
         }
+        stopRequestProgressHeartbeat();
         handleAgentResponse(response);
     });
     connect(m_aiBackendClient, &AiBackendClient::requestFailed, this, [this](quint64 requestId, const QString &errorText) {
         if (requestId == m_activeRequestId) {
+            stopRequestProgressHeartbeat();
             if (m_loggingService) {
                 m_loggingService->error(QStringLiteral("Local AI backend request failed. requestId=%1 provider=%2 endpoint=%3 error=\"%4\"")
                     .arg(QString::number(requestId),
@@ -2071,6 +2097,30 @@ void AssistantController::initialize()
             const QString errorGroup = m_aiRequestCoordinator->errorGroupFor(errorText);
             refreshConversationSession();
             setSurfaceError(QStringLiteral("assistant"), compactSurfaceText(errorText));
+            if (errorGroup == QStringLiteral("error_timeout")) {
+                const CurrentContextResolution recovery = CurrentContextReferentResolver::resolve({
+                    .userInput = m_lastPromptForAiLog,
+                    .desktopContext = m_latestDesktopContext,
+                    .desktopContextAtMs = m_latestDesktopContextAtMs,
+                    .nowMs = QDateTime::currentMSecsSinceEpoch(),
+                    .workspaceRoot = runtimeWorkspaceRoot()
+                });
+                if (recovery.kind == CurrentContextResolutionKind::Task) {
+                    if (m_loggingService) {
+                        m_loggingService->infoFor(
+                            QStringLiteral("ai"),
+                            QStringLiteral("[timeout_recovery] route=current_referent reason=%1")
+                                .arg(recovery.reasonCode));
+                    }
+                    executeRouteDecision(
+                        recovery.decision,
+                        m_lastPromptForAiLog,
+                        LocalIntent::Unknown,
+                        false,
+                        QDateTime::currentMSecsSinceEpoch());
+                    return;
+                }
+            }
             deliverLocalResponse(
                 m_localResponseEngine->respondToError(
                     errorGroup,
@@ -2686,6 +2736,35 @@ void AssistantController::submitText(const QString &text)
                      decision.status.simplified(),
                      QString::number(decision.tasks.size())));
     }
+
+    const CurrentContextResolution currentReferent = CurrentContextReferentResolver::resolve({
+        .userInput = effectiveInput,
+        .desktopContext = m_latestDesktopContext,
+        .desktopContextAtMs = m_latestDesktopContextAtMs,
+        .nowMs = nowMs,
+        .workspaceRoot = runtimeWorkspaceRoot()
+    });
+    if (currentReferent.kind != CurrentContextResolutionKind::None) {
+        if (m_loggingService) {
+            m_loggingService->infoFor(
+                QStringLiteral("route_audit"),
+                QStringLiteral("[current_referent] kind=%1 reason=%2 taskCount=%3")
+                    .arg(currentReferent.kind == CurrentContextResolutionKind::Task
+                             ? QStringLiteral("task")
+                             : currentReferent.kind == CurrentContextResolutionKind::Clarify
+                                 ? QStringLiteral("clarify")
+                                 : QStringLiteral("blocked"),
+                         currentReferent.reasonCode,
+                         QString::number(currentReferent.decision.tasks.size())));
+        }
+        if (currentReferent.kind == CurrentContextResolutionKind::Task) {
+            executeRouteDecision(currentReferent.decision, effectiveInput, intent, false, nowMs);
+        } else {
+            deliverLocalResponse(currentReferent.message, currentReferent.status, true);
+        }
+        return;
+    }
+
     const ActionThreadSelectionResult actionThreadSelection =
         selectActionThreadContinuation(effectiveInput, decision, nowMs);
     if (actionThreadSelection.kind == ActionThreadSelectionKind::PrivateContextBlocked) {
@@ -4871,13 +4950,14 @@ void AssistantController::startConversationRequest(const QString &input)
         .promptContext = m_turnOrchestrationRuntime ? std::optional<PromptTurnContext>(turnPlan.promptContext) : std::nullopt,
         .sampling = samplingProfile(),
         .streaming = m_settings->streamingEnabled(),
-        .timeoutMs = effectiveRequestTimeoutMs(m_settings)
+        .timeoutMs = effectiveRequestTimeoutMs(m_settings, RequestKind::Conversation)
     };
     m_activeRequestId = m_aiRequestCoordinator->startConversationRequest(
         m_aiBackendClient,
         m_promptAdapter,
         requestContext,
         mode);
+    startRequestProgressHeartbeat(RequestKind::Conversation, m_activeRequestId);
 }
 
 void AssistantController::startAgentConversationRequest(const QString &input, IntentType expectedIntent)
@@ -5071,7 +5151,7 @@ void AssistantController::startAgentConversationRequest(const QString &input, In
         .sampling = samplingProfile(),
         .mode = mode,
         .memoryAutoWrite = m_settings->memoryAutoWrite(),
-        .timeoutMs = effectiveRequestTimeoutMs(m_settings)
+        .timeoutMs = effectiveRequestTimeoutMs(m_settings, RequestKind::AgentConversation)
     };
     const AgentStartRequestResult startResult = m_aiRequestCoordinator->startAgentRequest(
         m_aiBackendClient,
@@ -5080,6 +5160,7 @@ void AssistantController::startAgentConversationRequest(const QString &input, In
         requestContext);
     m_activeAgentUsesResponses = startResult.transportMode == AgentTransportMode::Responses;
     m_activeRequestId = startResult.requestId;
+    startRequestProgressHeartbeat(RequestKind::AgentConversation, m_activeRequestId);
 }
 
 void AssistantController::continueAgentConversation(const QList<AgentToolResult> &results)
@@ -5236,13 +5317,14 @@ void AssistantController::continueAgentConversation(const QList<AgentToolResult>
         .sampling = samplingProfile(),
         .mode = m_activeReasoningMode,
         .memoryAutoWrite = m_settings->memoryAutoWrite(),
-        .timeoutMs = effectiveRequestTimeoutMs(m_settings)
+        .timeoutMs = effectiveRequestTimeoutMs(m_settings, RequestKind::AgentConversation)
     };
     m_activeRequestId = m_aiRequestCoordinator->continueAgentRequest(
         m_aiBackendClient,
         m_promptAdapter,
         m_activeAgentUsesResponses,
         requestContext);
+    startRequestProgressHeartbeat(RequestKind::AgentConversation, m_activeRequestId);
 }
 
 QList<AgentToolResult> AssistantController::executeAgentToolCalls(const QList<AgentToolCall> &toolCalls)
@@ -5257,6 +5339,55 @@ QList<AgentToolResult> AssistantController::executeAgentToolCalls(const QList<Ag
         [this](const QString &kind, const QString &title, const QString &detail, bool success) {
             appendAgentTrace(kind, title, detail, success);
         });
+}
+
+void AssistantController::startRequestProgressHeartbeat(RequestKind kind, quint64 requestId)
+{
+    if (m_requestProgressHeartbeatTimer == nullptr || requestId == 0 || !m_lastInputFromVoice) {
+        return;
+    }
+    m_progressHeartbeatRequestKind = kind;
+    m_progressHeartbeatRequestId = requestId;
+    m_progressHeartbeatIndex = 0;
+    const int delayMs = AssistantRequestLifecyclePolicy::heartbeatDelayMs(m_progressHeartbeatIndex);
+    if (delayMs > 0) {
+        m_requestProgressHeartbeatTimer->start(delayMs);
+    }
+}
+
+void AssistantController::stopRequestProgressHeartbeat()
+{
+    if (m_requestProgressHeartbeatTimer != nullptr) {
+        m_requestProgressHeartbeatTimer->stop();
+    }
+    m_progressHeartbeatRequestId = 0;
+    m_progressHeartbeatIndex = 0;
+}
+
+void AssistantController::handleRequestProgressHeartbeat()
+{
+    if (m_progressHeartbeatRequestId == 0 || m_progressHeartbeatRequestId != m_activeRequestId) {
+        return;
+    }
+    if (m_ttsEngine == nullptr || !m_ttsEngine->isSpeaking()) {
+        const QString message = AssistantRequestLifecyclePolicy::heartbeatMessage(
+            m_progressHeartbeatRequestKind,
+            m_progressHeartbeatIndex);
+        if (m_loggingService) {
+            m_loggingService->infoFor(
+                QStringLiteral("ai"),
+                QStringLiteral("[request_progress_heartbeat] requestId=%1 index=%2 kind=%3")
+                    .arg(QString::number(m_progressHeartbeatRequestId),
+                         QString::number(m_progressHeartbeatIndex),
+                         requestKindToString(m_progressHeartbeatRequestKind)));
+        }
+        deliverLocalResponse(message, QStringLiteral("Still working"), true);
+    }
+    ++m_progressHeartbeatIndex;
+    const int delayMs = AssistantRequestLifecyclePolicy::heartbeatDelayMs(m_progressHeartbeatIndex);
+    if (delayMs > 0 && m_requestProgressHeartbeatTimer != nullptr) {
+        m_requestProgressHeartbeatTimer->start(delayMs);
+    }
 }
 
 void AssistantController::handleVisionSnapshot(const VisionSnapshot &snapshot)
@@ -5671,12 +5802,13 @@ void AssistantController::startCommandRequest(const QString &input)
             .userProfile = m_identityProfileService->userProfile(),
             .responseMode = m_activeActionSession.responseMode,
             .sessionGoal = m_activeActionSession.goal,
-            .timeoutMs = effectiveRequestTimeoutMs(m_settings),
+            .timeoutMs = effectiveRequestTimeoutMs(m_settings, RequestKind::CommandExtraction),
             .temperature = m_settings->toolUseTemperature(),
             .topP = m_settings->conversationTopP(),
             .providerTopK = m_settings->providerTopK(),
             .maxTokens = m_settings->maxOutputTokens()
         });
+    startRequestProgressHeartbeat(RequestKind::CommandExtraction, m_activeRequestId);
 }
 
 void AssistantController::handleConversationFinished(const QString &text)
@@ -5905,6 +6037,22 @@ void AssistantController::recordTaskResult(const QJsonObject &resultObject)
         return;
     }
 
+    if (!m_drainingDeferredTaskResult
+        && (m_currentState == AssistantState::Processing
+            || (m_ttsEngine != nullptr && m_ttsEngine->isSpeaking()))) {
+        m_deferredTaskResultObjects.push_back(resultObject);
+        if (m_loggingService) {
+            m_loggingService->infoFor(
+                QStringLiteral("follow_up_audit"),
+                QStringLiteral("[task_result_deferred] pending=%1 state=%2 speaking=%3")
+                    .arg(QString::number(m_deferredTaskResultObjects.size()),
+                         stateToString(m_currentState),
+                         (m_ttsEngine != nullptr && m_ttsEngine->isSpeaking()) ? QStringLiteral("true") : QStringLiteral("false")));
+        }
+        scheduleDeferredTaskResultDrain();
+        return;
+    }
+
     const ToolResultHandling handling = m_toolCoordinator->handleTaskResult(resultObject, m_backgroundPanelVisible);
     if (handling.ignored) {
         return;
@@ -6022,10 +6170,6 @@ void AssistantController::recordTaskResult(const QJsonObject &resultObject)
         },
         .nowMs = nowMs
     };
-
-    if (m_currentState == AssistantState::Processing) {
-        return;
-    }
 
     const std::optional<ActionThread> &currentActionThread = m_actionThreadTracker->current();
 
@@ -6168,6 +6312,36 @@ void AssistantController::recordTaskResult(const QJsonObject &resultObject)
         considerConnectorEvent(*handling.connectorEvent);
     } else {
         considerTaskResultSuggestion(*handling.completedResult);
+    }
+}
+
+void AssistantController::scheduleDeferredTaskResultDrain(int delayMs)
+{
+    if (m_deferredTaskResultDrainScheduled) {
+        return;
+    }
+    m_deferredTaskResultDrainScheduled = true;
+    QTimer::singleShot(std::max(100, delayMs), this, &AssistantController::drainDeferredTaskResults);
+}
+
+void AssistantController::drainDeferredTaskResults()
+{
+    m_deferredTaskResultDrainScheduled = false;
+    if (m_deferredTaskResultObjects.isEmpty()) {
+        return;
+    }
+    if (m_currentState == AssistantState::Processing
+        || (m_ttsEngine != nullptr && m_ttsEngine->isSpeaking())) {
+        scheduleDeferredTaskResultDrain(750);
+        return;
+    }
+
+    const QJsonObject next = m_deferredTaskResultObjects.takeFirst();
+    m_drainingDeferredTaskResult = true;
+    recordTaskResult(next);
+    m_drainingDeferredTaskResult = false;
+    if (!m_deferredTaskResultObjects.isEmpty()) {
+        scheduleDeferredTaskResultDrain(250);
     }
 }
 
@@ -6361,6 +6535,47 @@ bool AssistantController::handlePendingConfirmationInput(const QString &input)
         return false;
     }
 
+    const QString lowered = input.simplified().toLower();
+    const bool rejectedPendingAction = m_assistantBehaviorPolicy->isRejectionReply(input);
+    const bool containsFreshInstruction =
+        lowered.contains(QStringLiteral("i want"))
+        || lowered.contains(QStringLiteral("please "))
+        || lowered.contains(QStringLiteral("can you "))
+        || lowered.contains(QStringLiteral("could you "))
+        || lowered.contains(QStringLiteral("open "))
+        || lowered.contains(QStringLiteral("create "))
+        || lowered.contains(QStringLiteral("make "))
+        || lowered.contains(QStringLiteral("read "))
+        || lowered.contains(QStringLiteral("search "))
+        || lowered.contains(QStringLiteral("tell me "));
+    if (rejectedPendingAction && containsFreshInstruction) {
+        const ActionRiskPermissionEvaluation evaluation = ActionRiskPermissionService::evaluate(
+            m_pendingActionSession.toolPlan,
+            m_pendingActionSession.trust,
+            false,
+            PermissionOverrideSettings::rulesFromSettings(m_settings));
+        if (m_loggingService) {
+            m_loggingService->infoFor(
+                QStringLiteral("safety_audit"),
+                QStringLiteral("[confirmation_reply] canceled_pending_rerouting_fresh input=%1")
+                    .arg(userFacingPromptForLogging(input).left(240)));
+            m_loggingService->logBehaviorEvent(ActionRiskPermissionService::confirmationOutcomeEvent(
+                evaluation,
+                routeKindToString(m_pendingRouteDecision.kind),
+                m_pendingActionSession,
+                QStringLiteral("rejected_then_fresh"),
+                userFacingPromptForLogging(input),
+                m_latestDesktopContext));
+        }
+        recordFeedbackSignalForLearning(
+            QStringLiteral("explicit_negative"),
+            QStringLiteral("confirmation=rejected_then_fresh"),
+            {},
+            QStringLiteral("normal"));
+        clearPendingConfirmation();
+        return false;
+    }
+
     if (m_assistantBehaviorPolicy->isConfirmationReply(input, m_pendingActionSession)) {
         const ActionRiskPermissionEvaluation evaluation = ActionRiskPermissionService::evaluate(
             m_pendingActionSession.toolPlan,
@@ -6393,7 +6608,7 @@ bool AssistantController::handlePendingConfirmationInput(const QString &input)
         return true;
     }
 
-    if (m_assistantBehaviorPolicy->isRejectionReply(input)) {
+    if (rejectedPendingAction) {
         const ActionRiskPermissionEvaluation evaluation = ActionRiskPermissionService::evaluate(
             m_pendingActionSession.toolPlan,
             m_pendingActionSession.trust,

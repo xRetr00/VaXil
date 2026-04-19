@@ -4,6 +4,7 @@
 #include <QAudioFormat>
 #include <QFutureWatcher>
 #include <QMetaObject>
+#include <memory>
 #include <QPointer>
 #include <QQueue>
 #include <QString>
@@ -21,6 +22,7 @@ class AppSettings;
 class LoggingService;
 class QAudioSink;
 class QTimer;
+class SpeechPreparationPipeline;
 
 class PiperTtsEngine : public TtsEngine
 {
@@ -30,8 +32,9 @@ public:
     explicit PiperTtsEngine(AppSettings *settings,
                             LoggingService *loggingService,
                             QObject *parent = nullptr);
+    ~PiperTtsEngine() override;
 
-    void speakText(const QString &text) override;
+    void speakText(const QString &text, const TtsUtteranceContext &context = {}) override;
     void clear() override;
     bool isSpeaking() const override;
 
@@ -56,4 +59,5 @@ private:
     qint64 m_lastFarEndOffset = 0;
     quint64 m_generationCounter = 0;
     quint64 m_activeGeneration = 0;
+    std::unique_ptr<SpeechPreparationPipeline> m_speechPreparationPipeline;
 };

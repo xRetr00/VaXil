@@ -204,12 +204,12 @@ void VoicePipelineRuntime::transcribe(quint64 generationId, const QByteArray &pc
         Qt::QueuedConnection);
 }
 
-void VoicePipelineRuntime::speak(quint64 generationId, const QString &text)
+void VoicePipelineRuntime::speak(quint64 generationId, const QString &text, const TtsUtteranceContext &context)
 {
     QMetaObject::invokeMethod(
         m_ioWorker,
-        [worker = m_ioWorker, generationId, text]() {
-            worker->speak(generationId, text);
+        [worker = m_ioWorker, generationId, text, context]() {
+            worker->speak(generationId, text, context);
         },
         Qt::QueuedConnection);
 }

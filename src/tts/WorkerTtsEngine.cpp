@@ -34,7 +34,7 @@ WorkerTtsEngine::WorkerTtsEngine(VoicePipelineRuntime *runtime, QObject *parent)
     });
 }
 
-void WorkerTtsEngine::speakText(const QString &text)
+void WorkerTtsEngine::speakText(const QString &text, const TtsUtteranceContext &context)
 {
     if (text.trimmed().isEmpty()) {
         return;
@@ -42,7 +42,7 @@ void WorkerTtsEngine::speakText(const QString &text)
 
     m_activeGeneration = ++m_generationCounter;
     m_speaking = true;
-    m_runtime->speak(m_activeGeneration, text);
+    m_runtime->speak(m_activeGeneration, text, context);
 }
 
 void WorkerTtsEngine::clear()

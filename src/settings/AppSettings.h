@@ -178,6 +178,9 @@ public:
     QString ttsEngineKind() const;
     void setTtsEngineKind(const QString &kind);
 
+    int ttsDedupeWindowMs() const;
+    void setTtsDedupeWindowMs(int dedupeWindowMs);
+
     double voiceSpeed() const;
     void setVoiceSpeed(double speed);
 
@@ -320,6 +323,7 @@ private:
     int m_wakeTriggerCooldownMs = 450;
     QString m_ffmpegExecutable;
     QString m_ttsEngineKind = QStringLiteral("piper");
+    int m_ttsDedupeWindowMs = 7000;
     double m_voiceSpeed = 0.89;
     double m_voicePitch = 0.93;
     double m_micSensitivity = 0.02;

@@ -97,6 +97,12 @@ BehaviorDecision ProactiveSurfaceGate::evaluateCompletionFollowUp(const Input &i
         return decision;
     }
 
+    if (userRequested) {
+        decision.reasonCode = QStringLiteral("surface.user_requested_completion_allow");
+        decision.score = 0.9;
+        return decision;
+    }
+
     if (input.focusMode.enabled) {
         decision.allowed = false;
         decision.action = QStringLiteral("suppress_follow_up");
@@ -110,12 +116,6 @@ BehaviorDecision ProactiveSurfaceGate::evaluateCompletionFollowUp(const Input &i
         decision.action = QStringLiteral("suppress_follow_up");
         decision.reasonCode = QStringLiteral("surface.follow_up_focused_context_suppressed");
         decision.score = 0.89;
-        return decision;
-    }
-
-    if (userRequested) {
-        decision.reasonCode = QStringLiteral("surface.user_requested_completion_allow");
-        decision.score = 0.9;
         return decision;
     }
 
