@@ -15,6 +15,9 @@ JarvisUi.VisionGlassPanel {
     JarvisUi.BehaviorTimelineProposalFormatter {
         id: proposalFormatter
     }
+    JarvisUi.BehaviorTimelineContextDeltaFormatter {
+        id: contextDeltaFormatter
+    }
 
     width: parent ? parent.width : implicitWidth
     implicitHeight: timelineColumn.implicitHeight + 44
@@ -174,7 +177,9 @@ JarvisUi.VisionGlassPanel {
                 const activeKeys = entry.activeCommitmentKeys || []
                 const profileKeys = entry.profileKeys || []
                 const episodicKeys = entry.episodicKeys || []
-                return "Memory context built: active [" + activeKeys.join(", ") + "] profile [" + profileKeys.join(", ") + "] episodic [" + episodicKeys.join(", ") + "]"
+                let text = "Memory context built: active [" + activeKeys.join(", ") + "] profile [" + profileKeys.join(", ") + "] episodic [" + episodicKeys.join(", ") + "]"
+                text += contextDeltaFormatter.selectionDeltaText(entry, behaviorEntries)
+                return text
             }
             if (stage === "prompt_context") {
                 const promptKeys = entry.promptContextKeys || []
@@ -194,6 +199,7 @@ JarvisUi.VisionGlassPanel {
                 if (Number(stablePromptCycles) > 0) {
                     text += " | stable cycles " + Number(stablePromptCycles)
                 }
+                text += contextDeltaFormatter.selectionDeltaText(entry, behaviorEntries)
                 return text
             }
             if (stage === "compiled_context_delta") {
@@ -209,6 +215,7 @@ JarvisUi.VisionGlassPanel {
                 if (!!entry.summaryChanged) {
                     text += " summary changed"
                 }
+                text += contextDeltaFormatter.selectionDeltaText(entry, behaviorEntries)
                 return text
             }
             if (stage === "compiled_context_stability") {
@@ -237,7 +244,9 @@ JarvisUi.VisionGlassPanel {
             }
             const taskId = (entry.desktopTaskId || "").toString()
             const topic = (entry.desktopTopic || "").toString()
-            return "Desktop context affected selection" + (taskId ? " for " + taskId : "") + (topic ? " (" + topic + ")" : "")
+            let text = "Desktop context affected selection" + (taskId ? " for " + taskId : "") + (topic ? " (" + topic + ")" : "")
+            text += contextDeltaFormatter.selectionDeltaText(entry, behaviorEntries)
+            return text
         }
         if (family === "risk_check") {
             const level = (entry.level || "").toString()
@@ -349,6 +358,7 @@ JarvisUi.VisionGlassPanel {
             if (!!entry.metadataRedacted) {
                 text += redactionReason.length > 0 ? " redacted: " + redactionReason : " redacted"
             }
+            text += contextDeltaFormatter.contextConfidenceDeltaText(entry, behaviorEntries)
             return text
         }
         if (family === "perception") {
@@ -368,6 +378,7 @@ JarvisUi.VisionGlassPanel {
                 const redactionReason = (entry.redactionReason || "").toString()
                 text += redactionReason.length > 0 ? " redacted: " + redactionReason : " redacted"
             }
+            text += contextDeltaFormatter.contextConfidenceDeltaText(entry, behaviorEntries)
             return text
         }
         return JSON.stringify(entry)

@@ -1,11 +1,9 @@
 import QtQml
-
 QtObject {
     function finiteNumberOrNull(value) {
         const numberValue = Number(value)
         return Number.isFinite(numberValue) ? numberValue : null
     }
-
     function scoreDeltaText(label, previousValue, currentValue) {
         const current = finiteNumberOrNull(currentValue)
         const previous = finiteNumberOrNull(previousValue)
@@ -20,7 +18,6 @@ QtObject {
         const signedDelta = (delta > 0 ? "+" : "") + delta.toFixed(2)
         return label + " " + previous.toFixed(2) + " -> " + current.toFixed(2) + " (" + direction + " " + signedDelta + ")"
     }
-
     function noveltySetDeltaText(previousEntry, currentEntry) {
         const previousTags = noveltyReasonTags(previousEntry)
         const currentTags = noveltyReasonTags(currentEntry)
@@ -47,7 +44,188 @@ QtObject {
         }
         return parts.join(" ; ")
     }
-
+    function burstCountDeltaText(previousEntry, currentEntry) {
+        const previousSeen = Number(cooldownDetail(previousEntry, "connectorKindRecentSeenCount") || 0)
+        const previousPresented = Number(cooldownDetail(previousEntry, "connectorKindRecentPresentedCount") || 0)
+        const previousHistory = Number(cooldownDetail(previousEntry, "historySeenCount") || 0)
+        const currentSeen = Number(cooldownDetail(currentEntry, "connectorKindRecentSeenCount") || 0)
+        const currentPresented = Number(cooldownDetail(currentEntry, "connectorKindRecentPresentedCount") || 0)
+        const currentHistory = Number(cooldownDetail(currentEntry, "historySeenCount") || 0)
+        const parts = []
+        if (previousSeen !== currentSeen) {
+            parts.push("burst seen " + previousSeen + " -> " + currentSeen)
+        }
+        if (previousPresented !== currentPresented) {
+            parts.push("burst presented " + previousPresented + " -> " + currentPresented)
+        }
+        if (previousHistory !== currentHistory) {
+            parts.push("history seen " + previousHistory + " -> " + currentHistory)
+        }
+        return parts.join(" ; ")
+    }
+    function urgencyBurstBandDeltaText(previousEntry, currentEntry) {
+        const previousUrgency = (cooldownDetail(previousEntry, "urgencyBand") || "").toString().trim()
+        const previousBurstBand = (cooldownDetail(previousEntry, "burstPressureBand") || "").toString().trim()
+        const currentUrgency = (cooldownDetail(currentEntry, "urgencyBand") || "").toString().trim()
+        const currentBurstBand = (cooldownDetail(currentEntry, "burstPressureBand") || "").toString().trim()
+        const parts = []
+        if (previousUrgency.length > 0 && currentUrgency.length > 0 && previousUrgency !== currentUrgency) {
+            parts.push("urgency band " + previousUrgency + " -> " + currentUrgency)
+        }
+        if (previousBurstBand.length > 0 && currentBurstBand.length > 0 && previousBurstBand !== currentBurstBand) {
+            parts.push("burst band " + previousBurstBand + " -> " + currentBurstBand)
+        }
+        return parts.join(" ; ")
+    }
+    function proposalEvidenceDeltaText(previousEntry, currentEntry) {
+        const previousSource = (previousEntry.sourceLabel || "").toString().trim()
+        const currentSource = (currentEntry.sourceLabel || "").toString().trim()
+        const previousKey = (previousEntry.presentationKeyHint || "").toString().trim()
+        const currentKey = (currentEntry.presentationKeyHint || "").toString().trim()
+        const previousProposalReason = (previousEntry.proposalReasonCode || "").toString().trim()
+        const currentProposalReason = (currentEntry.proposalReasonCode || "").toString().trim()
+        const parts = []
+        if (previousSource.length > 0 && currentSource.length > 0 && previousSource !== currentSource) {
+            parts.push("source " + previousSource + " -> " + currentSource)
+        }
+        if (previousKey.length > 0 && currentKey.length > 0 && previousKey !== currentKey) {
+            parts.push("key " + previousKey + " -> " + currentKey)
+        }
+        if (previousProposalReason.length > 0
+                && currentProposalReason.length > 0
+                && previousProposalReason !== currentProposalReason) {
+            parts.push("proposal reason " + previousProposalReason + " -> " + currentProposalReason)
+        }
+        return parts.join(" ; ")
+    }
+    function rankedTitles(entry) {
+        return toStringList(entry.rankedTitles)
+    }
+    function rankedOrderPreview(titles) {
+        if (!titles || titles.length === 0) {
+            return ""
+        }
+        const head = titles.slice(0, 3).join(" > ")
+        return titles.length > 3 ? head + " ..." : head
+    }
+    function rankedOrderingDeltaText(entry, behaviorEntries) {
+        if ((entry.stage || "").toString() !== "ranked") {
+            return ""
+        }
+        const rows = behaviorEntries || []
+        const index = eventIndex(entry, rows)
+        if (index < 0) {
+            return ""
+        }
+        const threadId = (entry.threadId || "").toString().trim()
+        if (threadId.length === 0) {
+            return ""
+        }
+        const currentRankedTitles = rankedTitles(entry)
+        for (let i = index + 1; i < rows.length; ++i) {
+            const previous = rows[i] || {}
+            if ((previous.family || "").toString() !== "action_proposal"
+                    || (previous.stage || "").toString() !== "ranked"
+                    || (previous.threadId || "").toString().trim() !== threadId) {
+                continue
+            }
+            const previousRankedTitles = rankedTitles(previous)
+            if (previousRankedTitles.length === 0 || currentRankedTitles.length === 0) {
+                return ""
+            }
+            if (previousRankedTitles.join("|") === currentRankedTitles.join("|")) {
+                return ""
+            }
+            const previousTop = previousRankedTitles[0]
+            const currentTop = currentRankedTitles[0]
+            const parts = []
+            if (previousTop && currentTop && previousTop !== currentTop) {
+                parts.push("top " + previousTop + " -> " + currentTop)
+            }
+            parts.push("order " + rankedOrderPreview(previousRankedTitles) + " -> " + rankedOrderPreview(currentRankedTitles))
+            return " | delta " + parts.join(" ; ")
+        }
+        return ""
+    }
+    function rankedScores(entry) {
+        const rows = entry.rankedScores || []
+        const scores = []
+        for (let i = 0; i < rows.length; ++i) {
+            const value = finiteNumberOrNull(rows[i])
+            if (value !== null) scores.push(value)
+        }
+        return scores
+    }
+    function rankedScorePreview(scores) {
+        if (!scores || scores.length === 0) return ""
+        const values = []
+        for (let i = 0; i < Math.min(scores.length, 3); ++i) values.push(scores[i].toFixed(2))
+        const head = values.join(" > ")
+        return scores.length > 3 ? head + " ..." : head
+    }
+    function rankedScoreDeltaText(entry, behaviorEntries) {
+        if ((entry.stage || "").toString() !== "ranked") return ""
+        const rows = behaviorEntries || []
+        const index = eventIndex(entry, rows)
+        if (index < 0) return ""
+        const threadId = (entry.threadId || "").toString().trim()
+        if (threadId.length === 0) return ""
+        const currentScores = rankedScores(entry)
+        for (let i = index + 1; i < rows.length; ++i) {
+            const previous = rows[i] || {}
+            if ((previous.family || "").toString() !== "action_proposal"
+                    || (previous.stage || "").toString() !== "ranked"
+                    || (previous.threadId || "").toString().trim() !== threadId) {
+                continue
+            }
+            const previousScores = rankedScores(previous)
+            if (previousScores.length === 0 || currentScores.length === 0) return ""
+            const previousJoined = previousScores.map((v) => v.toFixed(2)).join("|")
+            const currentJoined = currentScores.map((v) => v.toFixed(2)).join("|")
+            if (previousJoined === currentJoined) return ""
+            const parts = []
+            const topDelta = scoreDeltaText("top score", previousScores[0], currentScores[0])
+            if (topDelta.length > 0) parts.push(topDelta)
+            const previousSpread = previousScores.length > 1 ? previousScores[0] - previousScores[1] : null
+            const currentSpread = currentScores.length > 1 ? currentScores[0] - currentScores[1] : null
+            const spreadDelta = scoreDeltaText("top gap", previousSpread, currentSpread)
+            if (spreadDelta.length > 0) parts.push(spreadDelta)
+            parts.push("scores " + rankedScorePreview(previousScores) + " -> " + rankedScorePreview(currentScores))
+            return " | delta " + parts.join(" ; ")
+        }
+        return ""
+    }
+    function generatedProposalDeltaText(entry, behaviorEntries) {
+        if ((entry.stage || "").toString() !== "generated") return ""
+        const rows = behaviorEntries || []
+        const index = eventIndex(entry, rows)
+        if (index < 0) return ""
+        const threadId = (entry.threadId || "").toString().trim()
+        if (threadId.length === 0) return ""
+        const currentCount = Number(entry.proposalCount || 0)
+        const currentTitles = toStringList(entry.proposalTitles)
+        for (let i = index + 1; i < rows.length; ++i) {
+            const previous = rows[i] || {}
+            if ((previous.family || "").toString() !== "action_proposal"
+                    || (previous.stage || "").toString() !== "generated"
+                    || (previous.threadId || "").toString().trim() !== threadId) {
+                continue
+            }
+            const previousCount = Number(previous.proposalCount || 0)
+            const previousTitles = toStringList(previous.proposalTitles)
+            const parts = []
+            if (previousCount !== currentCount) {
+                parts.push("count " + previousCount + " -> " + currentCount)
+            }
+            if (previousTitles.join("|") !== currentTitles.join("|")) {
+                const prevPreview = previousTitles.slice(0, 3).join(", ")
+                const currPreview = currentTitles.slice(0, 3).join(", ")
+                parts.push("titles [" + prevPreview + "] -> [" + currPreview + "]")
+            }
+            return parts.length > 0 ? " | delta " + parts.join(" ; ") : ""
+        }
+        return ""
+    }
     function toStringList(value) {
         const rows = value || []
         const parts = []
@@ -59,7 +237,6 @@ QtObject {
         }
         return parts
     }
-
     function cooldownDetail(entry, key) {
         const cooldownDecision = entry.cooldownDecision || {}
         const directValue = entry[key]
@@ -68,7 +245,6 @@ QtObject {
         }
         return cooldownDecision[key]
     }
-
     function noveltyReasonTags(entry) {
         const directTags = toStringList(cooldownDetail(entry, "noveltyReasonCodes"))
         const tags = []
@@ -80,7 +256,6 @@ QtObject {
         }
         return tags
     }
-
     function burstCountEvidence(entry) {
         const recentSeenCount = Number(cooldownDetail(entry, "connectorKindRecentSeenCount") || 0)
         const recentPresentedCount = Number(cooldownDetail(entry, "connectorKindRecentPresentedCount") || 0)
@@ -94,7 +269,6 @@ QtObject {
         }
         return parts.join(" | ")
     }
-
     function urgencyBurstEvidence(entry) {
         const urgencyBand = (cooldownDetail(entry, "urgencyBand") || "").toString()
         const burstPressureBand = (cooldownDetail(entry, "burstPressureBand") || "").toString()
@@ -107,7 +281,6 @@ QtObject {
         }
         return parts.join(" | ")
     }
-
     function proposalEvidence(entry) {
         const sourceLabel = (entry.sourceLabel || "").toString()
         const keyHint = (entry.presentationKeyHint || "").toString()
@@ -136,7 +309,6 @@ QtObject {
         }
         return parts.join(" | ")
     }
-
     function eventIndex(entry, behaviorEntries) {
         const rows = behaviorEntries || []
         const eventId = (entry.eventId || "").toString()
@@ -148,7 +320,6 @@ QtObject {
                 }
             }
         }
-
         const timestampUtc = (entry.timestampUtc || "").toString()
         const threadId = (entry.threadId || "").toString()
         for (let i = 0; i < rows.length; ++i) {
@@ -162,7 +333,6 @@ QtObject {
         }
         return -1
     }
-
     function proposalGateDeltaText(entry, behaviorEntries) {
         if ((entry.stage || "").toString() !== "gated") {
             return ""
@@ -172,12 +342,10 @@ QtObject {
         if (index < 0) {
             return ""
         }
-
         const threadId = (entry.threadId || "").toString().trim()
         if (threadId.length === 0) {
             return ""
         }
-
         const currentAction = (entry.action || "").toString().trim()
         const currentReason = (entry.reasonCode || "").toString().trim()
         const currentConfidence = finiteNumberOrNull(entry.confidenceScore)
@@ -189,7 +357,6 @@ QtObject {
                     || (previous.threadId || "").toString().trim() !== threadId) {
                 continue
             }
-
             const previousAction = (previous.action || "").toString().trim()
             const previousReason = (previous.reasonCode || "").toString().trim()
             const parts = []
@@ -211,15 +378,25 @@ QtObject {
             if (noveltySetDelta.length > 0) {
                 parts.push(noveltySetDelta)
             }
+            const burstCountDelta = burstCountDeltaText(previous, entry)
+            if (burstCountDelta.length > 0) {
+                parts.push(burstCountDelta)
+            }
+            const urgencyBurstBandDelta = urgencyBurstBandDeltaText(previous, entry)
+            if (urgencyBurstBandDelta.length > 0) {
+                parts.push(urgencyBurstBandDelta)
+            }
+            const proposalEvidenceDelta = proposalEvidenceDeltaText(previous, entry)
+            if (proposalEvidenceDelta.length > 0) {
+                parts.push(proposalEvidenceDelta)
+            }
             if (parts.length > 0) {
                 return " | delta " + parts.join(" ; ")
             }
             return ""
         }
-
         return ""
     }
-
     function summaryText(entry, behaviorEntries) {
         const stage = (entry.stage || "").toString()
         const title = (entry.title || "").toString()
@@ -227,14 +404,19 @@ QtObject {
         const priority = (entry.priority || "").toString()
         const reasonCode = (entry.reasonCode || "").toString()
         const evidence = proposalEvidence(entry)
-        const deltaText = proposalGateDeltaText(entry, behaviorEntries)
-
+        const gateDeltaText = proposalGateDeltaText(entry, behaviorEntries)
+        const rankedDeltaText = rankedOrderingDeltaText(entry, behaviorEntries)
+        const rankedScoreDelta = rankedScoreDeltaText(entry, behaviorEntries)
         if (stage === "generated") {
             const proposalCount = entry.proposalCount || 0
             const proposalTitles = entry.proposalTitles || []
-            return "Generated " + proposalCount + " suggestion proposals: " + proposalTitles.join(", ")
+            let text = "Generated " + proposalCount + " suggestion proposals: " + proposalTitles.join(", ")
+            const generatedDelta = generatedProposalDeltaText(entry, behaviorEntries)
+            if (generatedDelta.length > 0) {
+                text += generatedDelta
+            }
+            return text
         }
-
         if (stage === "ranked") {
             const rankedTitles = entry.rankedTitles || []
             let text = "Ranked suggestion proposals"
@@ -247,12 +429,14 @@ QtObject {
             if (reasonCode.length > 0) {
                 text += " because " + reasonCode
             }
-            if (deltaText.length > 0) {
-                text += deltaText
+            if (rankedDeltaText.length > 0) {
+                text += rankedDeltaText
+            }
+            if (rankedScoreDelta.length > 0) {
+                text += rankedScoreDelta
             }
             return text
         }
-
         if (stage === "gated") {
             const confidenceScore = entry.confidenceScore
             const noveltyScore = entry.noveltyScore
@@ -275,9 +459,11 @@ QtObject {
             if (reasonCode.length > 0) {
                 text += " because " + reasonCode
             }
+            if (gateDeltaText.length > 0) {
+                text += gateDeltaText
+            }
             return text
         }
-
         let text = "Proposal " + (action.length > 0 ? action : "decision")
         if (title.length > 0) {
             text += ": " + title
@@ -291,8 +477,8 @@ QtObject {
         if (reasonCode.length > 0) {
             text += " because " + reasonCode
         }
-        if (deltaText.length > 0) {
-            text += deltaText
+        if (gateDeltaText.length > 0) {
+            text += gateDeltaText
         }
         return text
     }

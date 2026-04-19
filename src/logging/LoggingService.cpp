@@ -149,7 +149,10 @@ bool LoggingService::initialize()
         m_followUpAuditLogger = makeFileLogger(QStringLiteral("vaxil_follow_up_audit"), QStringLiteral("follow_up_audit.log"));
         m_behavioralLedger = std::make_unique<BehavioralEventLedger>(root + QStringLiteral("/behavior"));
         if (m_behavioralLedger) {
-            m_behavioralLedger->initialize();
+            const bool ledgerInitialized = m_behavioralLedger->initialize();
+            if (!ledgerInitialized) {
+                return false;
+            }
         }
         return true;
     } catch (...) {

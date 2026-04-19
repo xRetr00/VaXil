@@ -175,7 +175,8 @@ void DesktopPerceptionMonitor::recordPerception(const QString &reasonCode,
     event.payload.insert(QStringLiteral("priority"), priority);
     event.payload.insert(QStringLiteral("confidence"), confidence);
     event.payload.insert(QStringLiteral("novelty"), novelty);
-    m_loggingService->logBehaviorEvent(event);
+    const bool recordedEvent = m_loggingService->logBehaviorEvent(event);
+    (void)recordedEvent;
 }
 
 void DesktopPerceptionMonitor::evaluateCooldown(const QString &reasonCode,
@@ -214,7 +215,8 @@ void DesktopPerceptionMonitor::evaluateCooldown(const QString &reasonCode,
     event.payload.insert(QStringLiteral("triggerReason"), reasonCode);
     event.payload.insert(QStringLiteral("context"), context.toVariantMap());
     event.payload.insert(QStringLiteral("state"), m_cooldownState.toVariantMap());
-    m_loggingService->logBehaviorEvent(event);
+    const bool recordedEvent = m_loggingService->logBehaviorEvent(event);
+    (void)recordedEvent;
 
     if (previousThreadId != context.threadId.value) {
         BehaviorTraceEvent threadEvent = BehaviorTraceEvent::create(
@@ -227,17 +229,19 @@ void DesktopPerceptionMonitor::evaluateCooldown(const QString &reasonCode,
         threadEvent.traceId = currentTraceId();
         threadEvent.threadId = context.threadId.value;
         threadEvent.capabilityId = QStringLiteral("desktop_perception");
-        m_loggingService->logBehaviorEvent(threadEvent);
+        const bool recorded = m_loggingService->logBehaviorEvent(threadEvent);
+        (void)recorded;
     }
 }
 
 void DesktopPerceptionMonitor::reconcileTimedFocusModeExpiry(qint64 nowMs)
 {
-    FocusModeExpiryRuntime::reconcile(
+    const bool didExpire = FocusModeExpiryRuntime::reconcile(
         m_settings,
         m_loggingService,
         nowMs,
         QStringLiteral("perception_monitor"));
+    (void)didExpire;
 }
 
 DesktopPerceptionMonitor::ActiveWindowSnapshot DesktopPerceptionMonitor::currentActiveWindow() const

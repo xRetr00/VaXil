@@ -1539,6 +1539,8 @@ if(JARVIS_BUILD_TESTS)
     qt_add_executable(jarvis_focus_mode_expiry_runtime_tests
         tests/FocusModeExpiryRuntimeTests.cpp
         src/perception/FocusModeExpiryRuntime.cpp
+        src/core/PermissionOverrideSettings.cpp
+        src/core/ToolPermissionRegistry.cpp
         src/logging/LoggingService.cpp
         src/telemetry/BehavioralEventLedger.cpp
         src/settings/AppSettings.cpp
