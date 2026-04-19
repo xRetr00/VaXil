@@ -94,6 +94,8 @@
 #include "wakeword/SherpaWakeWordEngine.h"
 #include "wakeword/WakeWordEngine.h"
 #include "workers/VoicePipelineRuntime.h"
+#include "diagnostics/CrashDiagnosticsService.h"
+#include "diagnostics/StartupMilestones.h"
 
 namespace {
 QString isoNowUtc()
@@ -1518,6 +1520,14 @@ AssistantController::~AssistantController()
 void AssistantController::initialize()
 {
     m_statusText = QStringLiteral("Loading services...");
+    if (m_loggingService) {
+        m_loggingService->breadcrumb(QStringLiteral("startup"),
+                                     StartupMilestones::startupTtsBegin(),
+                                     QStringLiteral("assistant.initialize.begin"));
+    }
+    CrashDiagnosticsService::instance().markStartupMilestone(StartupMilestones::startupTtsBegin(),
+                                                             QStringLiteral("assistant.initialize.begin"),
+                                                             true);
     if (!m_toolWorkerThread.isRunning()) {
         m_toolWorkerThread.start();
     }
@@ -1547,6 +1557,14 @@ void AssistantController::initialize()
         m_learningDataCollector->initialize();
     }
     m_voicePipelineRuntime->start();
+    if (m_loggingService) {
+        m_loggingService->breadcrumb(QStringLiteral("startup"),
+                                     StartupMilestones::startupTtsOk(),
+                                     QStringLiteral("voice pipeline started"));
+    }
+    CrashDiagnosticsService::instance().markStartupMilestone(StartupMilestones::startupTtsOk(),
+                                                             QStringLiteral("voice pipeline started"),
+                                                             true);
     if (m_loggingService) {
         m_loggingService->infoFor(
             QStringLiteral("route_audit"),
@@ -2007,6 +2025,9 @@ void AssistantController::initialize()
     });
 
     if (m_settings->initialSetupCompleted()) {
+        CrashDiagnosticsService::instance().markStartupMilestone(StartupMilestones::startupWakeBegin(),
+                                                                 QStringLiteral("startWakeMonitor requested"),
+                                                                 true);
         startWakeMonitor();
     }
     updateStartupState();
@@ -2203,6 +2224,21 @@ bool AssistantController::executeRouteDecision(const InputRouteDecision &decisio
                                                bool confirmationGranted,
                                                qint64 nowMs)
 {
+    if (m_loggingService) {
+        m_loggingService->setRuntimeContext(
+            QStringLiteral("route"),
+            routeKindToString(decision.kind),
+            QString(),
+            QString(),
+            QString(),
+            QString());
+        m_loggingService->breadcrumb(
+            QStringLiteral("route"),
+            QStringLiteral("route.decision.begin"),
+            QStringLiteral("kind=%1 intent=%2")
+                .arg(routeKindToString(decision.kind), intentTypeToString(decision.intent)));
+    }
+
     if (m_loggingService) {
         m_loggingService->infoFor(
             QStringLiteral("route_audit"),
@@ -3048,6 +3084,14 @@ void AssistantController::bindWakeWordEngineSignals()
     connect(m_wakeWordEngine, &WakeWordEngine::engineReady, this, [this]() {
         m_wakeEngineReady = true;
         m_lastWakeError.clear();
+        if (m_loggingService) {
+            m_loggingService->breadcrumb(QStringLiteral("startup"),
+                                         StartupMilestones::startupWakeOk(),
+                                         QStringLiteral("wake engine ready"));
+        }
+        CrashDiagnosticsService::instance().markStartupMilestone(StartupMilestones::startupWakeOk(),
+                                                                 QStringLiteral("wake engine ready"),
+                                                                 true);
         clearSurfaceError(QStringLiteral("assistant"));
         updateStartupState();
     });
@@ -3103,6 +3147,14 @@ void AssistantController::bindWakeWordEngineSignals()
     connect(m_wakeWordEngine, &WakeWordEngine::errorOccurred, this, [this](const QString &message) {
         m_wakeEngineReady = false;
         m_lastWakeError = message;
+        if (m_loggingService) {
+            m_loggingService->breadcrumb(QStringLiteral("startup"),
+                                         StartupMilestones::startupWakeFail(),
+                                         message);
+        }
+        CrashDiagnosticsService::instance().markStartupMilestone(StartupMilestones::startupWakeFail(),
+                                                                 message,
+                                                                 false);
         updateStartupState();
         if (m_loggingService) {
             m_loggingService->errorFor(QStringLiteral("wake_engine"), QStringLiteral("%1 wake engine error: %2").arg(wakeEngineDisplayName(), message));
@@ -3670,6 +3722,20 @@ ProactiveSuggestionPlan AssistantController::planNextStepSuggestion(const QStrin
         plannerMetadata.insert(it.key(), it.value());
     }
 
+    if (m_loggingService != nullptr) {
+        m_loggingService->setRuntimeContext(
+            QStringLiteral("planner"),
+            QStringLiteral("plan_next_step"),
+            QString(),
+            QString(),
+            QString(),
+            QString());
+        m_loggingService->breadcrumb(
+            QStringLiteral("planner"),
+            QStringLiteral("planner.decision.begin"),
+            QStringLiteral("sourceKind=%1 taskType=%2").arg(sourceKind, taskType));
+    }
+
     const ProactiveSuggestionPlan plan = ProactiveSuggestionPlanner::plan({
         .sourceKind = sourceKind,
         .taskType = taskType,
@@ -3686,6 +3752,14 @@ ProactiveSuggestionPlan AssistantController::planNextStepSuggestion(const QStrin
         .focusMode = currentFocusModeState(),
         .nowMs = QDateTime::currentMSecsSinceEpoch()
     });
+    if (m_loggingService != nullptr) {
+        m_loggingService->breadcrumb(
+            QStringLiteral("planner"),
+            QStringLiteral("planner.decision.end"),
+            QStringLiteral("selected=%1 generated=%2")
+                .arg(plan.hasSelectedProposal() ? QStringLiteral("true") : QStringLiteral("false"),
+                     QString::number(plan.generatedProposals.size())));
+    }
     logPlannedSuggestion(plan, sourceKind, taskType);
     return plan;
 }
@@ -4091,6 +4165,20 @@ QString AssistantController::gateNextStepHint(const QString &hint,
         return {};
     }
 
+    if (m_loggingService != nullptr) {
+        m_loggingService->setRuntimeContext(
+            QStringLiteral("gate"),
+            QStringLiteral("next_step_hint"),
+            QString(),
+            QString(),
+            QString(),
+            QString());
+        m_loggingService->breadcrumb(
+            QStringLiteral("gate"),
+            QStringLiteral("gate.decision.begin"),
+            QStringLiteral("sourceKind=%1 taskType=%2").arg(sourceKind, taskType));
+    }
+
     const ActionProposal proposal = buildNextStepProposal(trimmedHint, sourceKind, taskType, success);
     const BehaviorDecision decision = ProactiveSuggestionGate::evaluate({
         .proposal = proposal,
@@ -4120,6 +4208,12 @@ QString AssistantController::gateNextStepHint(const QString &hint,
         event.capabilityId = QStringLiteral("proactive_suggestion_gate");
         event.threadId = m_latestDesktopContext.value(QStringLiteral("threadId")).toString();
         m_loggingService->logBehaviorEvent(event);
+        m_loggingService->breadcrumb(
+            QStringLiteral("gate"),
+            QStringLiteral("gate.decision.end"),
+            QStringLiteral("allowed=%1 reason=%2")
+                .arg(decision.allowed ? QStringLiteral("true") : QStringLiteral("false"),
+                     decision.reasonCode));
     }
 
     return decision.allowed ? trimmedHint : QString{};

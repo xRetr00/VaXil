@@ -20,6 +20,9 @@
 #include <QWindow>
 #include <functional>
 
+#include "diagnostics/CrashDiagnosticsService.h"
+#include "diagnostics/StartupMilestones.h"
+#include "diagnostics/VaxilErrorCodes.h"
 #include "audio/AudioProcessingTypes.h"
 #include "core/AssistantController.h"
 #include "core/AssistantTypes.h"
@@ -132,7 +135,12 @@ JarvisApplication::JarvisApplication(QObject *parent)
 {
 }
 
-JarvisApplication::~JarvisApplication() = default;
+JarvisApplication::~JarvisApplication()
+{
+    CrashDiagnosticsService::instance().markStartupMilestone(StartupMilestones::shutdownCompleted(),
+                                                             QStringLiteral("JarvisApplication destroyed"),
+                                                             true);
+}
 
 bool JarvisApplication::eventFilter(QObject *watched, QEvent *event)
 {
@@ -205,8 +213,18 @@ bool JarvisApplication::initialize()
     m_loggingService = std::make_unique<LoggingService>();
     if (!m_loggingService->initialize()) {
         qCritical() << "Failed to initialize logging";
+        CrashDiagnosticsService::instance().markStartupMilestone(
+            StartupMilestones::startupLoggingReady(),
+            QStringLiteral("logging.initialize=false"),
+            false);
         return false;
     }
+    CrashDiagnosticsService::instance().markStartupMilestone(StartupMilestones::startupLoggingReady(),
+                                                             QStringLiteral("logging.initialize=true"),
+                                                             true);
+    m_loggingService->breadcrumb(QStringLiteral("startup"),
+                                 StartupMilestones::startupLoggingReady(),
+                                 QStringLiteral("Logging service initialized"));
     qInfo() << "Application log file:" << m_loggingService->logFilePath();
 
     qInfo() << "Building core services";
@@ -257,6 +275,12 @@ bool JarvisApplication::initialize()
     m_engine->rootContext()->setContextProperty(QStringLiteral("agentVm"), m_agentViewModel.get());
     m_engine->rootContext()->setContextProperty(QStringLiteral("settingsVm"), m_settingsViewModel.get());
     m_engine->rootContext()->setContextProperty(QStringLiteral("taskVm"), m_taskViewModel.get());
+    CrashDiagnosticsService::instance().markStartupMilestone(StartupMilestones::startupOverlayBegin(),
+                                                             QStringLiteral("Loading QML windows"),
+                                                             true);
+    m_loggingService->breadcrumb(QStringLiteral("startup"),
+                                 StartupMilestones::startupOverlayBegin(),
+                                 QStringLiteral("qml.load.begin"));
     qInfo() << "Loading QML windows";
     m_engine->load(QUrl(QStringLiteral("qrc:/qt/qml/VAXIL/gui/qml/OverlayWindow.qml")));
     m_engine->load(QUrl(QStringLiteral("qrc:/qt/qml/VAXIL/gui/qml/SettingsWindow.qml")));
@@ -264,9 +288,23 @@ bool JarvisApplication::initialize()
     m_engine->load(QUrl(QStringLiteral("qrc:/qt/qml/VAXIL/gui/qml/ToolsHubWindow.qml")));
     m_engine->load(QUrl(QStringLiteral("qrc:/qt/qml/VAXIL/gui/qml/FullUiWindow.qml")));
     if (m_engine->rootObjects().isEmpty()) {
+        CrashDiagnosticsService::instance().markStartupMilestone(StartupMilestones::startupOverlayFail(),
+                                                                 QStringLiteral("No root objects created"),
+                                                                 false);
+        if (m_loggingService) {
+            m_loggingService->errorFor(QStringLiteral("orb_render"),
+                                       QStringLiteral("[%1] startup overlay load failed: no root objects")
+                                           .arg(VaxilErrorCodes::forKey(VaxilErrorCodes::Key::StartupInitializationFailed)));
+        }
         qCritical() << "QML load failed: no root objects were created";
         return false;
     }
+    CrashDiagnosticsService::instance().markStartupMilestone(StartupMilestones::startupOverlayOk(),
+                                                             QStringLiteral("QML windows loaded"),
+                                                             true);
+    m_loggingService->breadcrumb(QStringLiteral("startup"),
+                                 StartupMilestones::startupOverlayOk(),
+                                 QStringLiteral("qml.load.ok"));
 
     const auto registerWindowDiagnostics = [this](QQuickWindow *window, const QString &windowName) {
         if (window == nullptr || m_loggingService == nullptr) {

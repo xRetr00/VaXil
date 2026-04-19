@@ -2,6 +2,8 @@
 
 #include <QMetaObject>
 
+#include "diagnostics/CrashDiagnosticsService.h"
+#include "diagnostics/StartupMilestones.h"
 #include "logging/LoggingService.h"
 #include "settings/AppSettings.h"
 #include "workers/AiBackendWorker.h"
@@ -71,10 +73,28 @@ void VoicePipelineRuntime::start()
         return;
     }
 
+    if (m_loggingService) {
+        m_loggingService->breadcrumb(QStringLiteral("startup"),
+                                     StartupMilestones::startupTtsBegin(),
+                                     QStringLiteral("voice threads starting"));
+    }
+    CrashDiagnosticsService::instance().markStartupMilestone(StartupMilestones::startupTtsBegin(),
+                                                             QStringLiteral("voice threads starting"),
+                                                             true);
+
     m_inputThread.start();
     m_ioThread.start();
     m_backendThread.start();
     m_started = true;
+
+    if (m_loggingService) {
+        m_loggingService->breadcrumb(QStringLiteral("startup"),
+                                     StartupMilestones::startupTtsOk(),
+                                     QStringLiteral("voice threads started"));
+    }
+    CrashDiagnosticsService::instance().markStartupMilestone(StartupMilestones::startupTtsOk(),
+                                                             QStringLiteral("voice threads started"),
+                                                             true);
 }
 
 void VoicePipelineRuntime::shutdown()
@@ -91,6 +111,12 @@ void VoicePipelineRuntime::shutdown()
     m_ioThread.wait();
     m_backendThread.wait();
     m_started = false;
+
+    if (m_loggingService) {
+        m_loggingService->breadcrumb(QStringLiteral("shutdown"),
+                                     StartupMilestones::shutdownCompleted(),
+                                     QStringLiteral("voice threads stopped"));
+    }
 }
 
 SpeechInputWorker *VoicePipelineRuntime::speechInputWorker() const

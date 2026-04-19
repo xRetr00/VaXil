@@ -29,9 +29,25 @@ public:
     void info(const QString &message) const;
     void warn(const QString &message) const;
     void error(const QString &message) const;
+    void fatal(const QString &message, const QString &errorCode = QString()) const;
+    void crash(const QString &message, const QString &errorCode = QString()) const;
     void infoFor(const QString &channel, const QString &message) const;
     void warnFor(const QString &channel, const QString &message) const;
     void errorFor(const QString &channel, const QString &message) const;
+    void fatalFor(const QString &channel, const QString &message, const QString &errorCode = QString()) const;
+    void crashFor(const QString &channel, const QString &message, const QString &errorCode = QString()) const;
+    void flushAll() const;
+    void breadcrumb(const QString &module,
+                    const QString &event,
+                    const QString &detail = QString(),
+                    const QString &traceId = QString(),
+                    const QString &sessionId = QString()) const;
+    void setRuntimeContext(const QString &module,
+                           const QString &route,
+                           const QString &tool,
+                           const QString &traceId = QString(),
+                           const QString &sessionId = QString(),
+                           const QString &threadId = QString()) const;
     void logVisionSnapshot(const VisionSnapshot &snapshot, const QString &source = QStringLiteral("vision_ingest")) const;
     void logVisionStatus(const QString &message,
                          const QString &rateLimitKey = QStringLiteral("vision_status"),
@@ -58,6 +74,11 @@ public:
     QString logFilePath() const;
 
 private:
+    void logWithSeverity(const QString &channel,
+                         const QString &message,
+                         const QString &severity,
+                         const QString &errorCode,
+                         bool flushImmediately) const;
     bool shouldLogRateLimited(const QString &key, int intervalMs) const;
     std::shared_ptr<spdlog::logger> loggerForChannel(const QString &channel) const;
 
@@ -68,6 +89,7 @@ private:
     std::shared_ptr<spdlog::logger> m_wakeLogger;
     std::shared_ptr<spdlog::logger> m_ttsLogger;
     std::shared_ptr<spdlog::logger> m_sttLogger;
+    std::shared_ptr<spdlog::logger> m_crashLogger;
     std::shared_ptr<spdlog::logger> m_orbLogger;
     std::shared_ptr<spdlog::logger> m_promptAuditLogger;
     std::shared_ptr<spdlog::logger> m_routeAuditLogger;

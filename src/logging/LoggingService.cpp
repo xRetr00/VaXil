@@ -1,5 +1,7 @@
 #include "logging/LoggingService.h"
 
+#include "diagnostics/CrashDiagnosticsService.h"
+#include "diagnostics/VaxilErrorCodes.h"
 #include "telemetry/BehavioralEventLedger.h"
 
 #include <QCoreApplication>
@@ -17,6 +19,22 @@
 #include <spdlog/spdlog.h>
 
 namespace {
+QString formatSeverityMessage(const QString &severity,
+                              const QString &errorCode,
+                              const QString &message)
+{
+    if (severity.trimmed().isEmpty()) {
+        return message;
+    }
+
+    if (errorCode.trimmed().isEmpty()) {
+        return QStringLiteral("[%1] %2").arg(severity.trimmed().toUpper(), message);
+    }
+
+    return QStringLiteral("[%1][%2] %3")
+        .arg(severity.trimmed().toUpper(), errorCode.trimmed(), message);
+}
+
 QString normalizeChannel(QString channel)
 {
     channel = channel.trimmed().toLower();
@@ -140,6 +158,7 @@ bool LoggingService::initialize()
         m_wakeLogger = makeFileLogger(QStringLiteral("vaxil_wake"), QStringLiteral("wake_engine.log"));
         m_ttsLogger = makeFileLogger(QStringLiteral("vaxil_tts"), QStringLiteral("tts.log"));
         m_sttLogger = makeFileLogger(QStringLiteral("vaxil_stt"), QStringLiteral("stt.log"));
+        m_crashLogger = makeFileLogger(QStringLiteral("vaxil_crash"), QStringLiteral("crash.log"));
         m_orbLogger = makeFileLogger(QStringLiteral("vaxil_orb"), QStringLiteral("orb_render.log"));
         m_promptAuditLogger = makeFileLogger(QStringLiteral("vaxil_ai_prompt"), QStringLiteral("ai_prompt.log"));
         m_routeAuditLogger = makeFileLogger(QStringLiteral("vaxil_route_audit"), QStringLiteral("route_audit.log"));
@@ -151,11 +170,46 @@ bool LoggingService::initialize()
         if (m_behavioralLedger) {
             const bool ledgerInitialized = m_behavioralLedger->initialize();
             if (!ledgerInitialized) {
+                CrashDiagnosticsService::instance().captureHandledException(
+                    QStringLiteral("logging"),
+                    VaxilErrorCodes::forKey(VaxilErrorCodes::Key::LogInitializationFailed),
+                    QStringLiteral("Behavioral event ledger initialization failed."));
                 return false;
             }
         }
+
+        CrashDiagnosticsService::instance().setLogCallback(
+            [this](const QString &severity,
+                   const QString &channel,
+                   const QString &message,
+                   const QString &errorCode) {
+                if (severity.compare(QStringLiteral("CRASH"), Qt::CaseInsensitive) == 0) {
+                    crashFor(channel, message, errorCode);
+                    return;
+                }
+                if (severity.compare(QStringLiteral("FATAL"), Qt::CaseInsensitive) == 0) {
+                    fatalFor(channel, message, errorCode);
+                    return;
+                }
+                if (severity.compare(QStringLiteral("ERROR"), Qt::CaseInsensitive) == 0) {
+                    errorFor(channel, formatSeverityMessage(severity, errorCode, message));
+                    return;
+                }
+                if (severity.compare(QStringLiteral("WARN"), Qt::CaseInsensitive) == 0) {
+                    warnFor(channel, formatSeverityMessage(severity, errorCode, message));
+                    return;
+                }
+                infoFor(channel, formatSeverityMessage(severity, errorCode, message));
+            });
+        CrashDiagnosticsService::instance().setFlushCallback([this]() {
+            flushAll();
+        });
         return true;
     } catch (...) {
+        CrashDiagnosticsService::instance().captureHandledException(
+            QStringLiteral("logging"),
+            VaxilErrorCodes::forKey(VaxilErrorCodes::Key::LogInitializationFailed),
+            QStringLiteral("Logging service threw during initialization."));
         return false;
     }
 }
@@ -173,6 +227,16 @@ void LoggingService::warn(const QString &message) const
 void LoggingService::error(const QString &message) const
 {
     errorFor(detectChannelFromMessage(message), message);
+}
+
+void LoggingService::fatal(const QString &message, const QString &errorCode) const
+{
+    fatalFor(QString(), message, errorCode);
+}
+
+void LoggingService::crash(const QString &message, const QString &errorCode) const
+{
+    crashFor(QString(), message, errorCode);
 }
 
 void LoggingService::infoFor(const QString &channel, const QString &message) const
@@ -208,6 +272,91 @@ void LoggingService::errorFor(const QString &channel, const QString &message) co
     }
 }
 
+void LoggingService::fatalFor(const QString &channel,
+                              const QString &message,
+                              const QString &errorCode) const
+{
+    logWithSeverity(channel, message, QStringLiteral("FATAL"), errorCode, true);
+}
+
+void LoggingService::crashFor(const QString &channel,
+                              const QString &message,
+                              const QString &errorCode) const
+{
+    logWithSeverity(channel, message, QStringLiteral("CRASH"), errorCode, true);
+}
+
+void LoggingService::flushAll() const
+{
+    const QList<std::shared_ptr<spdlog::logger>> loggers{
+        m_logger,
+        m_aiLogger,
+        m_toolsMcpLogger,
+        m_visionLogger,
+        m_wakeLogger,
+        m_ttsLogger,
+        m_sttLogger,
+        m_crashLogger,
+        m_orbLogger,
+        m_promptAuditLogger,
+        m_routeAuditLogger,
+        m_safetyAuditLogger,
+        m_memoryAuditLogger,
+        m_toolAuditLogger,
+        m_followUpAuditLogger,
+    };
+
+    for (const auto &logger : loggers) {
+        if (logger) {
+            logger->flush();
+        }
+    }
+}
+
+void LoggingService::breadcrumb(const QString &module,
+                                const QString &event,
+                                const QString &detail,
+                                const QString &traceId,
+                                const QString &sessionId) const
+{
+    CrashDiagnosticsService::instance().recordBreadcrumb(module, event, detail, traceId, sessionId);
+}
+
+void LoggingService::setRuntimeContext(const QString &module,
+                                       const QString &route,
+                                       const QString &tool,
+                                       const QString &traceId,
+                                       const QString &sessionId,
+                                       const QString &threadId) const
+{
+    CrashDiagnosticsService::instance().updateRuntimeContext(module, route, tool, traceId, sessionId, threadId);
+}
+
+void LoggingService::logWithSeverity(const QString &channel,
+                                     const QString &message,
+                                     const QString &severity,
+                                     const QString &errorCode,
+                                     bool flushImmediately) const
+{
+    const QString formatted = formatSeverityMessage(severity, errorCode, message);
+
+    if (m_logger) {
+        m_logger->critical(formatted.toStdString());
+    }
+
+    if (const auto logger = loggerForChannel(channel); logger) {
+        logger->critical(formatted.toStdString());
+    }
+
+    if (m_crashLogger) {
+        m_crashLogger->critical(formatted.toStdString());
+    }
+
+    if (flushImmediately) {
+        flushAll();
+    }
+}
+
 std::shared_ptr<spdlog::logger> LoggingService::loggerForChannel(const QString &channel) const
 {
     const QString normalized = normalizeChannel(channel);
@@ -228,6 +377,9 @@ std::shared_ptr<spdlog::logger> LoggingService::loggerForChannel(const QString &
     }
     if (normalized == QStringLiteral("stt")) {
         return m_sttLogger;
+    }
+    if (normalized == QStringLiteral("crash")) {
+        return m_crashLogger;
     }
     if (normalized == QStringLiteral("orb_render")) {
         return m_orbLogger;

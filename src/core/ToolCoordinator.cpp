@@ -266,6 +266,19 @@ QList<AgentToolResult> ToolCoordinator::executeAgentToolCalls(
     for (const AgentToolCall &toolCall : toolCalls) {
         const qint64 startedAtMs = QDateTime::currentMSecsSinceEpoch();
         if (m_loggingService) {
+            m_loggingService->setRuntimeContext(
+                QStringLiteral("tool"),
+                QString(),
+                toolCall.name,
+                toolCall.id,
+                QString(),
+                QString());
+            m_loggingService->breadcrumb(
+                QStringLiteral("tool"),
+                QStringLiteral("tool.call.begin"),
+                QStringLiteral("id=%1 name=%2").arg(toolCall.id, toolCall.name),
+                toolCall.id,
+                QString());
             m_loggingService->infoFor(
                 QStringLiteral("tool_audit"),
                 QStringLiteral("[tool_call] id=%1 name=%2 args=%3")
@@ -277,6 +290,16 @@ QList<AgentToolResult> ToolCoordinator::executeAgentToolCalls(
         const AgentToolResult result = agentToolbox->execute(toolCall);
         const qint64 finishedAtMs = QDateTime::currentMSecsSinceEpoch();
         if (m_loggingService) {
+            m_loggingService->breadcrumb(
+                QStringLiteral("tool"),
+                QStringLiteral("tool.call.end"),
+                QStringLiteral("id=%1 name=%2 success=%3 latencyMs=%4")
+                    .arg(result.callId,
+                         result.toolName,
+                         result.success ? QStringLiteral("true") : QStringLiteral("false"),
+                         QString::number(std::max<qint64>(0, finishedAtMs - startedAtMs))),
+                toolCall.id,
+                QString());
             m_loggingService->infoFor(
                 QStringLiteral("tool_audit"),
                 QStringLiteral("[tool_result] id=%1 name=%2 success=%3 errorKind=%4 summary=%5 output=%6")

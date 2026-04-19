@@ -321,6 +321,11 @@ set(JARVIS_SOURCES
     src/gui/BackendFacade.cpp
     src/gui/SettingsViewModel.cpp
     src/gui/TaskViewModel.cpp
+    src/diagnostics/CrashBreadcrumbTrail.cpp
+    src/diagnostics/CrashDiagnosticsService.cpp
+    src/diagnostics/CrashReportWriter.cpp
+    src/diagnostics/StartupMilestones.cpp
+    src/diagnostics/VaxilErrorCodes.cpp
     src/learning_data/LearningDataCollector.cpp
     src/learning_data/LearningDataSettings.cpp
     src/learning_data/LearningDataStorage.cpp
@@ -464,6 +469,11 @@ set(JARVIS_HEADERS
     src/gui/AgentViewModel.h
     src/gui/BackendFacade.h
     src/gui/SettingsViewModel.h
+    src/diagnostics/CrashBreadcrumbTrail.h
+    src/diagnostics/CrashDiagnosticsService.h
+    src/diagnostics/CrashReportWriter.h
+    src/diagnostics/StartupMilestones.h
+    src/diagnostics/VaxilErrorCodes.h
     src/learning_data/LearningDataCollector.h
     src/learning_data/LearningDataSettings.h
     src/learning_data/LearningDataStorage.h
@@ -689,7 +699,7 @@ if(TARGET rnnoise)
 endif()
 
 if(WIN32)
-    target_link_libraries(jarvis_lib PUBLIC Ole32 OleAut32 Uiautomationcore)
+    target_link_libraries(jarvis_lib PUBLIC Ole32 OleAut32 Uiautomationcore Dbghelp)
 endif()
 
 if(Python3_EXECUTABLE)
@@ -736,13 +746,29 @@ qt_add_executable(jarvis_sherpa_wake_helper
     src/wakeword/SherpaWakeHelperMain.cpp
     src/wakeword/WakeWordDetector.cpp
     src/wakeword/WakeWordDetector.h
+    src/diagnostics/CrashBreadcrumbTrail.cpp
+    src/diagnostics/CrashDiagnosticsService.cpp
+    src/diagnostics/CrashReportWriter.cpp
+    src/diagnostics/StartupMilestones.cpp
+    src/diagnostics/VaxilErrorCodes.cpp
+    src/diagnostics/CrashBreadcrumbTrail.h
+    src/diagnostics/CrashDiagnosticsService.h
+    src/diagnostics/CrashReportWriter.h
+    src/diagnostics/StartupMilestones.h
+    src/diagnostics/VaxilErrorCodes.h
 )
+
+target_include_directories(jarvis_sherpa_wake_helper PRIVATE src)
 
 target_link_libraries(jarvis_sherpa_wake_helper
     PRIVATE
         Qt6::Core
         Qt6::Multimedia
 )
+
+if(WIN32)
+    target_link_libraries(jarvis_sherpa_wake_helper PRIVATE Dbghelp)
+endif()
 
 target_compile_definitions(jarvis_sherpa_wake_helper PRIVATE JARVIS_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
 set(JARVIS_WAKE_HELPER_HAS_SHERPA_ONNX 0)
@@ -926,6 +952,84 @@ if(JARVIS_BUILD_TESTS)
     add_test(NAME jarvis_startup_readiness_policy_tests COMMAND jarvis_startup_readiness_policy_tests)
     set_tests_properties(jarvis_startup_readiness_policy_tests PROPERTIES ENVIRONMENT "PATH=${QT_BIN_DIR}${JARVIS_PATH_ENV_SEPARATOR}$ENV{PATH}")
     jarvis_copy_optional_runtime_libraries(jarvis_startup_readiness_policy_tests)
+
+    qt_add_executable(jarvis_vaxil_error_codes_tests
+        tests/VaxilErrorCodesTests.cpp
+        src/diagnostics/VaxilErrorCodes.cpp
+    )
+
+    target_include_directories(jarvis_vaxil_error_codes_tests PRIVATE src)
+    target_link_libraries(jarvis_vaxil_error_codes_tests
+        PRIVATE
+            Qt6::Core
+            Qt6::Test
+    )
+
+    add_test(NAME jarvis_vaxil_error_codes_tests COMMAND jarvis_vaxil_error_codes_tests)
+    set_tests_properties(jarvis_vaxil_error_codes_tests PROPERTIES ENVIRONMENT "PATH=${QT_BIN_DIR}${JARVIS_PATH_ENV_SEPARATOR}$ENV{PATH}")
+    jarvis_copy_optional_runtime_libraries(jarvis_vaxil_error_codes_tests)
+
+    qt_add_executable(jarvis_crash_breadcrumb_trail_tests
+        tests/CrashBreadcrumbTrailTests.cpp
+        src/diagnostics/CrashBreadcrumbTrail.cpp
+    )
+
+    target_include_directories(jarvis_crash_breadcrumb_trail_tests PRIVATE src)
+    target_link_libraries(jarvis_crash_breadcrumb_trail_tests
+        PRIVATE
+            Qt6::Core
+            Qt6::Test
+    )
+
+    add_test(NAME jarvis_crash_breadcrumb_trail_tests COMMAND jarvis_crash_breadcrumb_trail_tests)
+    set_tests_properties(jarvis_crash_breadcrumb_trail_tests PROPERTIES ENVIRONMENT "PATH=${QT_BIN_DIR}${JARVIS_PATH_ENV_SEPARATOR}$ENV{PATH}")
+    jarvis_copy_optional_runtime_libraries(jarvis_crash_breadcrumb_trail_tests)
+
+    qt_add_executable(jarvis_crash_report_writer_tests
+        tests/CrashReportWriterTests.cpp
+        src/diagnostics/CrashReportWriter.cpp
+    )
+
+    target_include_directories(jarvis_crash_report_writer_tests PRIVATE src)
+    target_link_libraries(jarvis_crash_report_writer_tests
+        PRIVATE
+            Qt6::Core
+            Qt6::Test
+    )
+
+    add_test(NAME jarvis_crash_report_writer_tests COMMAND jarvis_crash_report_writer_tests)
+    set_tests_properties(jarvis_crash_report_writer_tests PROPERTIES ENVIRONMENT "PATH=${QT_BIN_DIR}${JARVIS_PATH_ENV_SEPARATOR}$ENV{PATH}")
+    jarvis_copy_optional_runtime_libraries(jarvis_crash_report_writer_tests)
+
+    qt_add_executable(jarvis_logging_fatal_flush_tests
+        tests/LoggingFatalFlushTests.cpp
+    )
+
+    target_link_libraries(jarvis_logging_fatal_flush_tests
+        PRIVATE
+            jarvis_lib
+            Qt6::Test
+    )
+
+    add_test(NAME jarvis_logging_fatal_flush_tests COMMAND jarvis_logging_fatal_flush_tests)
+    set_tests_properties(jarvis_logging_fatal_flush_tests PROPERTIES ENVIRONMENT "PATH=${QT_BIN_DIR}${JARVIS_PATH_ENV_SEPARATOR}$ENV{PATH}")
+    jarvis_copy_optional_runtime_libraries(jarvis_logging_fatal_flush_tests)
+
+    qt_add_executable(jarvis_startup_milestones_tests
+        tests/StartupMilestonesTests.cpp
+        src/diagnostics/StartupMilestones.cpp
+    )
+
+    target_include_directories(jarvis_startup_milestones_tests PRIVATE src)
+    target_link_libraries(jarvis_startup_milestones_tests
+        PRIVATE
+            Qt6::Core
+            Qt6::Test
+    )
+
+    add_test(NAME jarvis_startup_milestones_tests COMMAND jarvis_startup_milestones_tests)
+    set_tests_properties(jarvis_startup_milestones_tests PROPERTIES ENVIRONMENT "PATH=${QT_BIN_DIR}${JARVIS_PATH_ENV_SEPARATOR}$ENV{PATH}")
+    jarvis_copy_optional_runtime_libraries(jarvis_startup_milestones_tests)
 
     qt_add_executable(jarvis_speech_transcript_guard_tests
         tests/SpeechTranscriptGuardTests.cpp
@@ -1594,6 +1698,10 @@ if(JARVIS_BUILD_TESTS)
         src/core/PermissionOverrideSettings.cpp
         src/core/ToolPermissionRegistry.cpp
         src/logging/LoggingService.cpp
+        src/diagnostics/CrashBreadcrumbTrail.cpp
+        src/diagnostics/CrashDiagnosticsService.cpp
+        src/diagnostics/CrashReportWriter.cpp
+        src/diagnostics/VaxilErrorCodes.cpp
         src/telemetry/BehavioralEventLedger.cpp
         src/settings/AppSettings.cpp
     )
@@ -1607,6 +1715,10 @@ if(JARVIS_BUILD_TESTS)
             spdlog::spdlog
             nlohmann_json::nlohmann_json
     )
+
+    if(WIN32)
+        target_link_libraries(jarvis_focus_mode_expiry_runtime_tests PRIVATE Dbghelp)
+    endif()
 
     add_test(NAME jarvis_focus_mode_expiry_runtime_tests COMMAND jarvis_focus_mode_expiry_runtime_tests)
     set_tests_properties(jarvis_focus_mode_expiry_runtime_tests PROPERTIES ENVIRONMENT "PATH=${QT_BIN_DIR}${JARVIS_PATH_ENV_SEPARATOR}$ENV{PATH}")

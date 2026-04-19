@@ -11,6 +11,10 @@
 #include <QThread>
 #include <QTextStream>
 
+#include "diagnostics/CrashDiagnosticsService.h"
+#include "diagnostics/StartupMilestones.h"
+#include "diagnostics/VaxilErrorCodes.h"
+
 #if JARVIS_HAS_SHERPA_ONNX
 #include <sherpa-onnx/c-api/c-api.h>
 #endif
@@ -215,6 +219,18 @@ int main(int argc, char *argv[])
 {
     QCoreApplication app(argc, argv);
 
+    CrashDiagnosticsConfig diagnosticsConfig;
+    diagnosticsConfig.applicationName = QStringLiteral("vaxil_wake_helper");
+    diagnosticsConfig.applicationVersion = QStringLiteral("dev");
+    diagnosticsConfig.buildInfo = QStringLiteral("wake_helper");
+    diagnosticsConfig.logsRootPath = QCoreApplication::applicationDirPath() + QStringLiteral("/logs");
+    diagnosticsConfig.breadcrumbCapacity = 120;
+    CrashDiagnosticsService::instance().initialize(diagnosticsConfig);
+    CrashDiagnosticsService::instance().installHandlers();
+    CrashDiagnosticsService::instance().markStartupMilestone(StartupMilestones::startupBegin(),
+                                                             QStringLiteral("wake helper bootstrap"),
+                                                             true);
+
     QCommandLineParser parser;
     parser.setApplicationDescription(QStringLiteral("Vaxil sherpa wake helper"));
     parser.addHelpOption();
@@ -267,8 +283,16 @@ int main(int argc, char *argv[])
     });
     const int startCode = helper.start();
     if (startCode != 0) {
+        CrashDiagnosticsService::instance().captureHandledException(
+            QStringLiteral("wake_helper"),
+            VaxilErrorCodes::forKey(VaxilErrorCodes::Key::CrashWakeHelperException),
+            QStringLiteral("wake helper failed to start with code %1").arg(startCode));
         return startCode;
     }
+
+    CrashDiagnosticsService::instance().markStartupMilestone(StartupMilestones::startupCompleted(),
+                                                             QStringLiteral("wake helper ready"),
+                                                             true);
 
     return app.exec();
 }
