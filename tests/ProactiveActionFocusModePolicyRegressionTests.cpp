@@ -15,6 +15,8 @@ class ProactiveActionFocusModePolicyRegressionTests : public QObject
 private slots:
     void focusModeCooccurrenceCoversCriticalVsNonCriticalWithActionGates();
     void policyRegressionKeepsBreakAndNoveltyReasonCodesStable();
+    void focusModeCompetesWithConnectorUrgencyInSameTrace();
+    void reasonCodesStayStableUnderDesktopContextVariations();
 };
 
 namespace {
@@ -213,6 +215,142 @@ void ProactiveActionFocusModePolicyRegressionTests::policyRegressionKeepsBreakAn
         QVERIFY(decision.allowed);
         QCOMPARE(decision.action, QStringLiteral("break_cooldown"));
         QCOMPARE(decision.reasonCode, QStringLiteral("cooldown.break_high_novelty"));
+    }
+}
+
+void ProactiveActionFocusModePolicyRegressionTests::focusModeCompetesWithConnectorUrgencyInSameTrace()
+{
+    if (!QSqlDatabase::drivers().contains(QStringLiteral("QSQLITE"))) {
+        QSKIP("QSQLITE driver is not available in this runtime.");
+    }
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    BehavioralEventLedger ledger(dir.path(), true);
+    QVERIFY(ledger.initialize());
+
+    const qint64 nowMs = QDateTime::fromString(QStringLiteral("2026-04-18T23:00:00.000Z"),
+                                               Qt::ISODateWithMs).toMSecsSinceEpoch();
+    CooldownEngine cooldownEngine;
+    const CooldownState activeCooldown{
+        .threadId = QStringLiteral("connector_event_toast::live_update"),
+        .activeUntilEpochMs = nowMs + 90000
+    };
+    const CompanionContextSnapshot connectorContext{
+        .threadId = ContextThreadId{QStringLiteral("connector_event_toast::live_update")},
+        .appId = QStringLiteral("calendar"),
+        .taskId = QStringLiteral("meeting_alert"),
+        .topic = QStringLiteral("urgent"),
+        .recentIntent = QStringLiteral("notify"),
+        .confidence = 0.92
+    };
+
+    const BehaviorDecision suppressed = cooldownEngine.evaluate({
+        .context = connectorContext,
+        .state = activeCooldown,
+        .focusMode = FocusModeState{.enabled = true, .allowCriticalAlerts = true},
+        .priority = QStringLiteral("medium"),
+        .confidence = 0.86,
+        .novelty = 0.80,
+        .nowMs = nowMs
+    });
+    QVERIFY(!suppressed.allowed);
+    QCOMPARE(suppressed.reasonCode, QStringLiteral("focus_mode.suppressed"));
+
+    const BehaviorDecision urgencyAllowed = cooldownEngine.evaluate({
+        .context = connectorContext,
+        .state = activeCooldown,
+        .focusMode = FocusModeState{.enabled = true, .allowCriticalAlerts = true},
+        .priority = QStringLiteral("critical"),
+        .confidence = 0.86,
+        .novelty = 0.80,
+        .nowMs = nowMs + 1000
+    });
+    QVERIFY(urgencyAllowed.allowed);
+    QCOMPARE(urgencyAllowed.reasonCode, QStringLiteral("cooldown.break_high_novelty"));
+
+    const QVariantMap desktopContext = mixedDesktopConnectorContext();
+    const ActionRiskPermissionEvaluation pending = ActionRiskPermissionService::evaluate(
+        sideEffectingPlan(), highRiskTrust(), false, {});
+    const ActionRiskPermissionEvaluation approved = ActionRiskPermissionService::evaluate(
+        sideEffectingPlan(), highRiskTrust(), true, {});
+    ActionSession session;
+    session.id = QStringLiteral("session_focus_vs_urgency_trace");
+    session.userRequest = QStringLiteral("Urgent connector under focus mode");
+
+    BehaviorTraceEvent suppressedEvent = BehaviorTraceEvent::create(
+        QStringLiteral("action_proposal"),
+        QStringLiteral("gated"),
+        suppressed.reasonCode,
+        {{QStringLiteral("action"), suppressed.action}, {QStringLiteral("priority"), QStringLiteral("medium")}});
+    BehaviorTraceEvent urgentEvent = BehaviorTraceEvent::create(
+        QStringLiteral("action_proposal"),
+        QStringLiteral("gated"),
+        urgencyAllowed.reasonCode,
+        {{QStringLiteral("action"), urgencyAllowed.action}, {QStringLiteral("priority"), QStringLiteral("critical")}});
+    BehaviorTraceEvent permission = ActionRiskPermissionService::permissionEvent(
+        pending, QStringLiteral("FocusUrgencyCompetition"), desktopContext);
+    BehaviorTraceEvent confirmation = ActionRiskPermissionService::confirmationOutcomeEvent(
+        approved, QStringLiteral("FocusUrgencyCompetition"), session, QStringLiteral("approved"), QStringLiteral("yes"), desktopContext);
+
+    const QString traceId = QStringLiteral("trace_focus_urgency_competition");
+    for (BehaviorTraceEvent *event : {&suppressedEvent, &urgentEvent, &permission, &confirmation}) {
+        event->traceId = traceId;
+        event->threadId = desktopContext.value(QStringLiteral("threadId")).toString();
+    }
+    suppressedEvent.timestampUtc = QDateTime::fromMSecsSinceEpoch(nowMs, Qt::UTC);
+    urgentEvent.timestampUtc = suppressedEvent.timestampUtc.addMSecs(1);
+    permission.timestampUtc = suppressedEvent.timestampUtc.addMSecs(2);
+    confirmation.timestampUtc = suppressedEvent.timestampUtc.addMSecs(3);
+
+    QVERIFY(ledger.recordEvent(suppressedEvent));
+    QVERIFY(ledger.recordEvent(urgentEvent));
+    QVERIFY(ledger.recordEvent(permission));
+    QVERIFY(ledger.recordEvent(confirmation));
+
+    const QList<BehaviorTraceEvent> events = ledger.recentEvents(8);
+    QCOMPARE(events.size(), 4);
+    QCOMPARE(events.at(0).reasonCode, QStringLiteral("focus_mode.suppressed"));
+    QCOMPARE(events.at(1).reasonCode, QStringLiteral("cooldown.break_high_novelty"));
+    QCOMPARE(events.last().stage, QStringLiteral("approved"));
+    QCOMPARE(events.last().payload.value(QStringLiteral("executionWillContinue")).toBool(), true);
+}
+
+void ProactiveActionFocusModePolicyRegressionTests::reasonCodesStayStableUnderDesktopContextVariations()
+{
+    const qint64 nowMs = QDateTime::fromString(QStringLiteral("2026-04-18T23:20:00.000Z"),
+                                               Qt::ISODateWithMs).toMSecsSinceEpoch();
+    const QList<QVariantMap> desktopVariants = {
+        {{QStringLiteral("threadId"), QStringLiteral("desktop::editor::one")},
+         {QStringLiteral("taskId"), QStringLiteral("editor_document")},
+         {QStringLiteral("topic"), QStringLiteral("planning")},
+         {QStringLiteral("appId"), QStringLiteral("vscode")}},
+        {{QStringLiteral("threadId"), QStringLiteral("desktop::editor::two")},
+         {QStringLiteral("taskId"), QStringLiteral("editor_document")},
+         {QStringLiteral("topic"), QStringLiteral("planning notes")},
+         {QStringLiteral("appId"), QStringLiteral("notepad")}},
+        {{QStringLiteral("threadId"), QStringLiteral("desktop::editor::three")},
+         {QStringLiteral("taskId"), QStringLiteral("editor_document")},
+         {QStringLiteral("topic"), QStringLiteral("task graph")},
+         {QStringLiteral("appId"), QStringLiteral("cursor")}}
+    };
+
+    for (const QVariantMap &desktop : desktopVariants) {
+        const ProactiveSuggestionPlan plan = ProactiveSuggestionPlanner::plan({
+            .sourceKind = QStringLiteral("desktop_context"),
+            .taskType = QStringLiteral("active_window"),
+            .resultSummary = QStringLiteral("User is editing PLAN.md"),
+            .sourceUrls = {},
+            .sourceMetadata = {},
+            .success = true,
+            .desktopContext = desktop,
+            .desktopContextAtMs = nowMs,
+            .cooldownState = CooldownState{},
+            .focusMode = FocusModeState{},
+            .nowMs = nowMs + 500
+        });
+        QVERIFY(!plan.decision.allowed);
+        QCOMPARE(plan.decision.reasonCode, QStringLiteral("proposal.focused_context_suppressed"));
+        QCOMPARE(plan.decision.action, QStringLiteral("suppress_proposal"));
     }
 }
 
