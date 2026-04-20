@@ -21,10 +21,10 @@ struct ListeningEngagementThresholdProfile
     int postTtsResidueGuardMs = 420;
     int minVoicedDurationMs = 220;
     float minVoicedRatio = 0.18f;
-    float minAverageRms = 0.014f;
-    float minPeakLevel = 0.07f;
+    float minAverageRms = 0.0035f;
+    float minPeakLevel = 0.02f;
     float minEngagementConfidence = 0.56f;
-    float minNearFieldConfidence = 0.46f;
+    float minNearFieldConfidence = 0.12f;
     float minBargeInConfidence = 0.80f;
     float minRepairConfidence = 0.72f;
 

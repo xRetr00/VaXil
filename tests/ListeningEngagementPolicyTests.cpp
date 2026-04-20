@@ -10,6 +10,7 @@ private slots:
     void rejectsWeakAmbientCaptureBeforeTranscription();
     void rejectsFarFieldCapture();
     void acceptsStrongNearFieldFollowUp();
+    void acceptsWakeDirectedCaptureAtTypicalMicLevels();
     void followUpWindowExpiresCleanly();
     void appliesPostTtsResidueGuard();
     void stateTransitionsAreDeterministic();
@@ -92,6 +93,33 @@ void ListeningEngagementPolicyTests::acceptsStrongNearFieldFollowUp()
     QVERIFY(decision.allowRecognition);
     QVERIFY(decision.nearField);
     QVERIFY(decision.engagementConfidence >= policy.thresholds().minEngagementConfidence);
+}
+
+void ListeningEngagementPolicyTests::acceptsWakeDirectedCaptureAtTypicalMicLevels()
+{
+    ListeningEngagementPolicy policy;
+
+    SpeechCaptureEvidence evidence;
+    evidence.hadSpeech = true;
+    evidence.captureDurationMs = 4600;
+    evidence.voicedDurationMs = 2820;
+    evidence.voicedRatio = 0.623f;
+    evidence.averageRms = 0.0033f;
+    evidence.peakLevel = 0.0320f;
+    evidence.speechActivityTransitions = 3;
+
+    ListeningEngagementContext context;
+    context.followUpWindowOpen = true;
+    context.wakeKeywordDetected = true;
+    context.wakeKeyword = QStringLiteral("HEY_VAXIL");
+    const ListeningEngagementDecision decision = policy.evaluateSpeechAttempt(evidence, context);
+
+    const QString debug = QStringLiteral("reason=%1 near=%2 nearConf=%3 conf=%4")
+        .arg(decision.reasonCode,
+             decision.nearField ? QStringLiteral("true") : QStringLiteral("false"),
+             QString::number(decision.nearFieldConfidence, 'f', 3),
+             QString::number(decision.engagementConfidence, 'f', 3));
+    QVERIFY2(decision.allowRecognition, qPrintable(debug));
 }
 
 void ListeningEngagementPolicyTests::followUpWindowExpiresCleanly()

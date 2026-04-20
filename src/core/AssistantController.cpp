@@ -1845,11 +1845,17 @@ void AssistantController::initialize()
 
         if (completedMode == AudioCaptureMode::Direct && m_listeningEngagementPolicy) {
             const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
+            const qint64 wakeAgeMs = m_lastWakeKeywordDetectedAtMs > 0 ? (nowMs - m_lastWakeKeywordDetectedAtMs) : -1;
+            const bool wakeKeywordRecent = m_lastWakeKeywordDetectedAtMs > 0
+                && wakeAgeMs >= 0
+                && wakeAgeMs <= m_listeningEngagementPolicy->thresholds().followUpWindowMs;
             const ListeningEngagementContext context{
                 .conversationSessionActive = m_conversationSessionActive,
                 .followUpWindowOpen = m_listeningEngagementPolicy->isFollowUpWindowOpen(nowMs),
                 .assistantSpeaking = m_ttsEngine->isSpeaking() || m_duplexState == DuplexState::TtsExclusive,
-                .postTtsResidueGuardActive = m_listeningEngagementPolicy->isPostTtsResidueGuardActive(nowMs)
+                .postTtsResidueGuardActive = m_listeningEngagementPolicy->isPostTtsResidueGuardActive(nowMs),
+                .wakeKeywordDetected = wakeKeywordRecent,
+                .wakeKeyword = m_lastWakeKeyword
             };
             const ListeningEngagementDecision decision = m_listeningEngagementPolicy->evaluateSpeechAttempt(evidence, context);
             m_lastSpeechAttemptAccepted = decision.allowRecognition;
@@ -1859,7 +1865,7 @@ void AssistantController::initialize()
             if (m_loggingService) {
                 m_loggingService->infoFor(
                     QStringLiteral("follow_up_audit"),
-                    QStringLiteral("[engagement_gate] allow=%1 reason=%2 confidence=%3 nearField=%4 nearFieldConf=%5 residue=%6 farField=%7 followUpWindow=%8 minConf=%9 minNear=%10")
+                    QStringLiteral("[engagement_gate] allow=%1 reason=%2 confidence=%3 nearField=%4 nearFieldConf=%5 residue=%6 farField=%7 followUpWindow=%8 wakeRecent=%9 wakeAgeMs=%10 wakeKeyword=\"%11\" minConf=%12 minNear=%13")
                         .arg(decision.allowRecognition ? QStringLiteral("true") : QStringLiteral("false"),
                              decision.reasonCode,
                              QString::number(decision.engagementConfidence, 'f', 3),
@@ -1868,6 +1874,9 @@ void AssistantController::initialize()
                              decision.rejectedAsEchoResidue ? QStringLiteral("true") : QStringLiteral("false"),
                              decision.rejectedAsFarField ? QStringLiteral("true") : QStringLiteral("false"),
                              context.followUpWindowOpen ? QStringLiteral("true") : QStringLiteral("false"),
+                             context.wakeKeywordDetected ? QStringLiteral("true") : QStringLiteral("false"),
+                             QString::number(wakeAgeMs),
+                             context.wakeKeyword,
                              QString::number(m_listeningEngagementPolicy->thresholds().minEngagementConfidence, 'f', 3),
                              QString::number(m_listeningEngagementPolicy->thresholds().minNearFieldConfidence, 'f', 3)));
             }
@@ -3471,6 +3480,8 @@ void AssistantController::bindWakeWordEngineSignals()
             emit responseTextChanged();
         }
         noteWakeTrigger();
+        m_lastWakeKeywordDetectedAtMs = nowMs;
+        m_lastWakeKeyword = keyword.trimmed();
         if (m_wakeWordDataCapture && m_learningDataCollector) {
             ensureLearningSession();
             if (m_learningSessionStarted) {

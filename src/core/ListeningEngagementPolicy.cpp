@@ -48,7 +48,7 @@ ListeningEngagementThresholdProfile ListeningEngagementThresholdProfile::fromEnv
     profile.minAverageRms = envFloat("JARVIS_ENGAGEMENT_MIN_AVERAGE_RMS", profile.minAverageRms, 0.003f, 0.20f);
     profile.minPeakLevel = envFloat("JARVIS_ENGAGEMENT_MIN_PEAK", profile.minPeakLevel, 0.02f, 0.9f);
     profile.minEngagementConfidence = envFloat("JARVIS_ENGAGEMENT_MIN_CONFIDENCE", profile.minEngagementConfidence, 0.20f, 0.98f);
-    profile.minNearFieldConfidence = envFloat("JARVIS_ENGAGEMENT_MIN_NEAR_FIELD", profile.minNearFieldConfidence, 0.20f, 0.98f);
+    profile.minNearFieldConfidence = envFloat("JARVIS_ENGAGEMENT_MIN_NEAR_FIELD", profile.minNearFieldConfidence, 0.05f, 0.98f);
     profile.minBargeInConfidence = envFloat("JARVIS_ENGAGEMENT_MIN_BARGEIN_CONF", profile.minBargeInConfidence, 0.35f, 0.99f);
     profile.minRepairConfidence = envFloat("JARVIS_ENGAGEMENT_MIN_REPAIR_CONF", profile.minRepairConfidence, 0.35f, 0.99f);
     return profile;
@@ -149,7 +149,7 @@ ListeningEngagementDecision ListeningEngagementPolicy::evaluateSpeechAttempt(
 
     const float speechEvidence = computeSpeechEvidenceConfidence(evidence);
     const float nearFieldConfidence = computeNearFieldConfidence(evidence);
-    const float followUpBoost = context.followUpWindowOpen ? 0.10f : 0.0f;
+    const float followUpBoost = context.followUpWindowOpen ? 0.14f : 0.0f;
     const float wakeBoost = context.wakeKeywordDetected ? 0.14f : 0.0f;
     const float stopBoost = context.stopKeywordDetected ? 0.10f : 0.0f;
 
@@ -258,15 +258,20 @@ float ListeningEngagementPolicy::computeSpeechEvidenceConfidence(const SpeechCap
 
 float ListeningEngagementPolicy::computeNearFieldConfidence(const SpeechCaptureEvidence &evidence) const
 {
-    const float energyConfidence = clamp01((evidence.averageRms - 0.007f) / 0.09f);
-    const float peakConfidence = clamp01((evidence.peakLevel - 0.05f) / 0.55f);
-    const float burstConfidence = clamp01((evidence.peakLevel - std::max(0.0f, evidence.averageRms * 1.1f)) / 0.35f);
-    const float voicedConfidence = clamp01(evidence.voicedRatio);
+    const float avgFloor = std::max(0.0001f, m_thresholds.minAverageRms);
+    const float peakFloor = std::max(0.0001f, m_thresholds.minPeakLevel);
+    const float voicedFloor = clamp01(m_thresholds.minVoicedRatio);
 
-    return clamp01((energyConfidence * 0.40f)
-        + (peakConfidence * 0.30f)
+    const float energyConfidence = clamp01((evidence.averageRms - (avgFloor * 0.7f)) / (avgFloor * 6.0f));
+    const float peakConfidence = clamp01((evidence.peakLevel - (peakFloor * 0.7f)) / (peakFloor * 6.0f));
+    const float burstConfidence = clamp01(
+        (evidence.peakLevel - std::max(0.0f, evidence.averageRms * 1.1f)) / std::max(0.001f, peakFloor * 8.0f));
+    const float voicedConfidence = clamp01((evidence.voicedRatio - voicedFloor) / std::max(0.001f, (1.0f - voicedFloor)));
+
+    return clamp01((energyConfidence * 0.45f)
+        + (peakConfidence * 0.35f)
         + (burstConfidence * 0.15f)
-        + (voicedConfidence * 0.15f));
+        + (voicedConfidence * 0.05f));
 }
 
 bool ListeningEngagementPolicy::isLikelyAssistantNameKeyword(const QString &keyword) const

@@ -491,6 +491,8 @@ private:
     AudioCaptureMode m_lastCompletedCaptureMode = AudioCaptureMode::None;
     bool m_wakeMonitorEnabled = false;
     bool m_followUpListeningAfterWakeAck = false;
+    qint64 m_lastWakeKeywordDetectedAtMs = 0;
+    QString m_lastWakeKeyword;
     bool m_conversationSessionActive = false;
     int m_consecutiveSessionMisses = 0;
     qint64 m_conversationSessionExpiresAtMs = 0;
