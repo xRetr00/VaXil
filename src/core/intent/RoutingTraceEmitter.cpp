@@ -66,6 +66,7 @@ QJsonObject RoutingTraceEmitter::buildRouteFinalPayload(const RoutingTrace &trac
 {
     QJsonObject payload;
     payload.insert(QStringLiteral("record"), QStringLiteral("route_final"));
+    payload.insert(QStringLiteral("turn_id"), trace.turnId);
     payload.insert(QStringLiteral("raw_input"), trace.rawInput);
     payload.insert(QStringLiteral("normalized_input"), trace.normalizedInput);
     payload.insert(QStringLiteral("deterministic_matched"), trace.deterministicMatched);

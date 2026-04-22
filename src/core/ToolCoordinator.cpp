@@ -255,6 +255,7 @@ ToolResultHandling ToolCoordinator::handleTaskResult(const QJsonObject &resultOb
 
 QList<AgentToolResult> ToolCoordinator::executeAgentToolCalls(
     const QList<AgentToolCall> &toolCalls,
+    const QString &turnId,
     AgentToolbox *agentToolbox,
     const std::function<void(const QString &, const QString &, const QString &, bool)> &traceCallback) const
 {
@@ -265,6 +266,7 @@ QList<AgentToolResult> ToolCoordinator::executeAgentToolCalls(
     }
 
     QStringList seenCallShapes;
+    int lowSignalAttemptCount = 0;
     for (const AgentToolCall &toolCall : toolCalls) {
         const QString callShape = toolCall.name + QLatin1Char('|') + toolCall.argumentsJson.simplified();
         if (seenCallShapes.contains(callShape)) {
@@ -280,6 +282,16 @@ QList<AgentToolResult> ToolCoordinator::executeAgentToolCalls(
                     QStringLiteral("tool_audit"),
                     QStringLiteral("[tool_call_rejected] name=%1 reason=repeated_identical_call")
                         .arg(toolCall.name));
+                m_loggingService->logTurnTrace(
+                    turnId,
+                    QStringLiteral("tool_call_skipped"),
+                    QStringLiteral("tool.repeated_identical_call"),
+                    {
+                        {QStringLiteral("task_id"), toolCall.id},
+                        {QStringLiteral("tool_name"), toolCall.name},
+                        {QStringLiteral("failure_reason"), QStringLiteral("repeated_identical_call")},
+                        {QStringLiteral("result_quality"), QStringLiteral("low")}
+                    });
             }
             results.push_back(rejected);
             continue;
@@ -305,6 +317,22 @@ QList<AgentToolResult> ToolCoordinator::executeAgentToolCalls(
                 QStringLiteral("tool_audit"),
                 QStringLiteral("[tool_call] id=%1 name=%2 args=%3")
                     .arg(toolCall.id, toolCall.name, toolCall.argumentsJson.left(8000)));
+            m_loggingService->logTurnTrace(
+                turnId,
+                QStringLiteral("tool_selected"),
+                QStringLiteral("tool.selected"),
+                {
+                    {QStringLiteral("task_id"), toolCall.id},
+                    {QStringLiteral("tool_name"), toolCall.name}
+                });
+            m_loggingService->logTurnTrace(
+                turnId,
+                QStringLiteral("tool_call_started"),
+                QStringLiteral("tool.started"),
+                {
+                    {QStringLiteral("task_id"), toolCall.id},
+                    {QStringLiteral("tool_name"), toolCall.name}
+                });
         }
         if (traceCallback) {
             traceCallback(QStringLiteral("tool_call"), toolCall.name, toolCall.argumentsJson.left(500), true);
@@ -312,6 +340,13 @@ QList<AgentToolResult> ToolCoordinator::executeAgentToolCalls(
         const AgentToolResult result = agentToolbox->execute(toolCall);
         const ToolResultEvidenceAssessment evidence = ToolResultEvidencePolicy::assess(result);
         const qint64 finishedAtMs = QDateTime::currentMSecsSinceEpoch();
+        const qint64 latencyMs = std::max<qint64>(0, finishedAtMs - startedAtMs);
+        const QString confidence = evidence.confidence.trimmed().toLower();
+        const QString resultQuality = confidence == QStringLiteral("high")
+            ? QStringLiteral("high")
+            : (confidence == QStringLiteral("medium")
+                   ? QStringLiteral("medium")
+                   : QStringLiteral("low"));
         if (m_loggingService) {
             m_loggingService->breadcrumb(
                 QStringLiteral("tool"),
@@ -335,8 +370,34 @@ QList<AgentToolResult> ToolCoordinator::executeAgentToolCalls(
                          evidence.payloadKeys.join(QLatin1Char(',')),
                          QStringLiteral("confidence:%1,lowSignalReason:%2")
                              .arg(evidence.confidence,
-                                  evidence.lowSignalReason.isEmpty() ? QStringLiteral("none") : evidence.lowSignalReason),
+                                 evidence.lowSignalReason.isEmpty() ? QStringLiteral("none") : evidence.lowSignalReason),
                          result.output.left(8000)));
+            if (evidence.lowSignal && result.success) {
+                ++lowSignalAttemptCount;
+            } else {
+                lowSignalAttemptCount = 0;
+            }
+            if (!(evidence.lowSignal && result.success && lowSignalAttemptCount < 3)) {
+                const bool treatedAsFailure = (!result.success) || (evidence.lowSignal && result.success);
+                m_loggingService->logTurnTrace(
+                    turnId,
+                    treatedAsFailure ? QStringLiteral("tool_call_failed") : QStringLiteral("tool_call_finished"),
+                    treatedAsFailure
+                        ? (evidence.lowSignal && result.success
+                               ? QStringLiteral("tool.low_signal_threshold_reached")
+                               : QStringLiteral("tool.failed"))
+                        : QStringLiteral("tool.finished"),
+                    {
+                        {QStringLiteral("task_id"), result.callId.isEmpty() ? toolCall.id : result.callId},
+                        {QStringLiteral("tool_name"), result.toolName},
+                        {QStringLiteral("latency_ms"), latencyMs},
+                        {QStringLiteral("result_quality"), resultQuality},
+                        {QStringLiteral("failure_reason"), !result.success
+                                 ? evidence.lowSignalReason
+                                 : (evidence.lowSignal ? QStringLiteral("low_signal_threshold_reached") : QString())},
+                        {QStringLiteral("error_kind"), static_cast<int>(result.errorKind)}
+                    });
+            }
         }
         if (traceCallback) {
             const QString detail = m_executionNarrator

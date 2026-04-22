@@ -485,6 +485,42 @@ bool LoggingService::logBehaviorEvent(const BehaviorTraceEvent &event) const
     return m_behavioralLedger ? m_behavioralLedger->recordEvent(event) : false;
 }
 
+bool LoggingService::logTurnTrace(const QString &turnId,
+                                  const QString &stage,
+                                  const QString &reasonCode,
+                                  const QVariantMap &payload,
+                                  const QString &actor,
+                                  const QString &requestId,
+                                  const QString &taskId) const
+{
+    const QString normalizedTurnId = turnId.trimmed();
+    const QString normalizedStage = stage.trimmed();
+    const QString normalizedReason = reasonCode.trimmed().isEmpty()
+        ? QStringLiteral("trace.unspecified")
+        : reasonCode.trimmed();
+    if (normalizedTurnId.isEmpty() || normalizedStage.isEmpty()) {
+        return false;
+    }
+
+    QVariantMap normalizedPayload = payload;
+    if (!requestId.trimmed().isEmpty()) {
+        normalizedPayload.insert(QStringLiteral("request_id"), requestId.trimmed());
+    }
+    if (!taskId.trimmed().isEmpty()) {
+        normalizedPayload.insert(QStringLiteral("task_id"), taskId.trimmed());
+    }
+    normalizedPayload.insert(QStringLiteral("stage"), normalizedStage);
+
+    BehaviorTraceEvent event = BehaviorTraceEvent::create(
+        QStringLiteral("turn_trace"),
+        normalizedStage,
+        normalizedReason,
+        normalizedPayload,
+        actor.trimmed().isEmpty() ? QStringLiteral("system") : actor.trimmed());
+    event.turnId = normalizedTurnId;
+    return logBehaviorEvent(event);
+}
+
 bool LoggingService::logFocusModeTransition(const FocusModeState &state,
                                             const QString &source,
                                             const QString &reasonCode) const

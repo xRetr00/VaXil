@@ -173,6 +173,7 @@ struct IntentInferenceSnapshot {
 };
 
 struct RoutingTrace {
+    QString turnId;
     QString rawInput;
     QString normalizedInput;
     TurnSignals turnSignals;

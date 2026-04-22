@@ -24,6 +24,7 @@ BehaviorTraceEvent eventFromQuery(const QSqlQuery &query)
     BehaviorTraceEvent event;
     event.eventId = query.value(QStringLiteral("event_id")).toString();
     event.sessionId = query.value(QStringLiteral("session_id")).toString();
+    event.turnId = query.value(QStringLiteral("turn_id")).toString();
     event.traceId = query.value(QStringLiteral("trace_id")).toString();
     event.threadId = query.value(QStringLiteral("thread_id")).toString();
     event.capabilityId = query.value(QStringLiteral("capability_id")).toString();
@@ -42,6 +43,7 @@ constexpr auto kSchemaSql =
     "CREATE TABLE IF NOT EXISTS behavioral_events ("
     " event_id TEXT PRIMARY KEY,"
     " session_id TEXT,"
+    " turn_id TEXT,"
     " trace_id TEXT,"
     " thread_id TEXT,"
     " capability_id TEXT,"
@@ -52,6 +54,29 @@ constexpr auto kSchemaSql =
     " timestamp_utc TEXT NOT NULL,"
     " payload_json TEXT NOT NULL"
     ")";
+
+bool ensureColumnExists(QSqlDatabase &db, const QString &table, const QString &column, const QString &columnDef)
+{
+    QSqlQuery pragmaQuery(db);
+    if (!pragmaQuery.exec(QStringLiteral("PRAGMA table_info(%1)").arg(table))) {
+        return false;
+    }
+
+    bool exists = false;
+    while (pragmaQuery.next()) {
+        if (pragmaQuery.value(1).toString().compare(column, Qt::CaseInsensitive) == 0) {
+            exists = true;
+            break;
+        }
+    }
+    if (exists) {
+        return true;
+    }
+
+    QSqlQuery alterQuery(db);
+    return alterQuery.exec(QStringLiteral("ALTER TABLE %1 ADD COLUMN %2 %3")
+                               .arg(table, column, columnDef));
+}
 }
 
 BehavioralEventLedger::BehavioralEventLedger(QString rootPath, bool sqliteEnabled)
@@ -104,6 +129,13 @@ bool BehavioralEventLedger::initialize()
             {
                 QSqlQuery query(db);
                 schemaOk = query.exec(QString::fromUtf8(kSchemaSql));
+            }
+            if (schemaOk) {
+                schemaOk = ensureColumnExists(
+                    db,
+                    QStringLiteral("behavioral_events"),
+                    QStringLiteral("turn_id"),
+                    QStringLiteral("TEXT"));
             }
             db.close();
         }
@@ -177,13 +209,21 @@ bool BehavioralEventLedger::recordSqliteLocked(const BehaviorTraceEvent &event) 
                 schemaOk = schemaQuery.exec(QString::fromUtf8(kSchemaSql));
             }
             if (schemaOk) {
+                schemaOk = ensureColumnExists(
+                    db,
+                    QStringLiteral("behavioral_events"),
+                    QStringLiteral("turn_id"),
+                    QStringLiteral("TEXT"));
+            }
+            if (schemaOk) {
                 QSqlQuery insertQuery(db);
                 insertQuery.prepare(QStringLiteral(
                     "INSERT OR REPLACE INTO behavioral_events ("
-                    "event_id, session_id, trace_id, thread_id, capability_id, actor, stage, family, reason_code, timestamp_utc, payload_json"
-                    ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"));
+                    "event_id, session_id, turn_id, trace_id, thread_id, capability_id, actor, stage, family, reason_code, timestamp_utc, payload_json"
+                    ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"));
                 insertQuery.addBindValue(event.eventId);
                 insertQuery.addBindValue(event.sessionId);
+                insertQuery.addBindValue(event.turnId);
                 insertQuery.addBindValue(event.traceId);
                 insertQuery.addBindValue(event.threadId);
                 insertQuery.addBindValue(event.capabilityId);
@@ -213,7 +253,7 @@ QList<BehaviorTraceEvent> BehavioralEventLedger::recentEventsSqliteLocked(int li
             {
                 QSqlQuery query(db);
                 query.prepare(QStringLiteral(
-                    "SELECT event_id, session_id, trace_id, thread_id, capability_id, actor, stage, family, reason_code, timestamp_utc, payload_json "
+                    "SELECT event_id, session_id, turn_id, trace_id, thread_id, capability_id, actor, stage, family, reason_code, timestamp_utc, payload_json "
                     "FROM behavioral_events ORDER BY timestamp_utc DESC LIMIT ?"));
                 query.addBindValue(qMax(1, limit));
                 if (query.exec()) {

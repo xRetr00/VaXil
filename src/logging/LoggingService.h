@@ -58,6 +58,13 @@ public:
                        const QString &rateLimitKey = QStringLiteral("vision_drop"),
                        int intervalMs = 1500) const;
     bool logBehaviorEvent(const BehaviorTraceEvent &event) const;
+    bool logTurnTrace(const QString &turnId,
+                      const QString &stage,
+                      const QString &reasonCode,
+                      const QVariantMap &payload = {},
+                      const QString &actor = QStringLiteral("system"),
+                      const QString &requestId = QString(),
+                      const QString &taskId = QString()) const;
     bool logFocusModeTransition(const FocusModeState &state,
                                 const QString &source,
                                 const QString &reasonCode) const;

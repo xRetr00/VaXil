@@ -65,6 +65,7 @@ public:
 
     QList<AgentToolResult> executeAgentToolCalls(
         const QList<AgentToolCall> &toolCalls,
+        const QString &turnId,
         AgentToolbox *agentToolbox,
         const std::function<void(const QString &, const QString &, const QString &, bool)> &traceCallback) const;
 

@@ -29,6 +29,7 @@ void ResponseFinalizerTests::doesNotAppendInternalPlanningHint()
     QString status;
     const bool spoke = finalizer.finalizeResponse(
         QStringLiteral("test"),
+        QStringLiteral("test_turn"),
         reply,
         session,
         &responseText,

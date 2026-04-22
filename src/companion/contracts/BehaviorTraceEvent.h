@@ -9,6 +9,7 @@ struct BehaviorTraceEvent
 {
     QString eventId = QUuid::createUuid().toString(QUuid::WithoutBraces);
     QString sessionId;
+    QString turnId;
     QString traceId;
     QString threadId;
     QString capabilityId;
@@ -24,6 +25,7 @@ struct BehaviorTraceEvent
         QVariantMap map = payload;
         map.insert(QStringLiteral("eventId"), eventId);
         map.insert(QStringLiteral("sessionId"), sessionId);
+        map.insert(QStringLiteral("turnId"), turnId);
         map.insert(QStringLiteral("traceId"), traceId);
         map.insert(QStringLiteral("threadId"), threadId);
         map.insert(QStringLiteral("capabilityId"), capabilityId);

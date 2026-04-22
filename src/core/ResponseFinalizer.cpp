@@ -63,12 +63,13 @@ bool shouldAppendHint(const ActionSession &session, const QString &text)
 }
 
 TtsUtteranceContext ttsContextForSession(const QString &source,
+                                        const QString &turnId,
                                         const ActionSession &session)
 {
     TtsUtteranceContext context;
     context.utteranceClass = QStringLiteral("assistant_reply");
     context.source = source.trimmed();
-    context.turnId = session.id.trimmed();
+    context.turnId = turnId.trimmed().isEmpty() ? session.id.trimmed() : turnId.trimmed();
     if (!session.goal.trimmed().isEmpty()) {
         context.semanticTarget = session.goal.trimmed();
     } else {
@@ -94,6 +95,7 @@ bool ResponseFinalizer::willAppendHint(const ActionSession &session,
 }
 
 bool ResponseFinalizer::finalizeResponse(const QString &source,
+                                         const QString &turnId,
                                          const SpokenReply &reply,
                                          const ActionSession &session,
                                          QString *responseText,
@@ -137,15 +139,6 @@ bool ResponseFinalizer::finalizeResponse(const QString &source,
         m_loggingService->info(QStringLiteral("Response finalized. source=\"%1\" speak=%2 chars=%3")
                                    .arg(source, finalizedReply.shouldSpeak ? QStringLiteral("true") : QStringLiteral("false"))
                                    .arg(finalizedReply.displayText.size()));
-        if (finalizedReply.shouldSpeak) {
-            m_loggingService->infoFor(
-                QStringLiteral("tts"),
-                QStringLiteral("[tts_request] source=%1 displayChars=%2 spokenChars=%3 spokenText=%4")
-                    .arg(source,
-                         QString::number(finalizedReply.displayText.size()),
-                         QString::number(finalizedReply.spokenText.size()),
-                         finalizedReply.spokenText.left(1200)));
-        }
     }
     if (logPromptResponsePair) {
         logPromptResponsePair(finalizedReply.displayText, source, effectiveStatus);
@@ -154,10 +147,21 @@ bool ResponseFinalizer::finalizeResponse(const QString &source,
         setStatus(effectiveStatus);
     }
     if (finalizedReply.shouldSpeak && !finalizedReply.spokenText.isEmpty() && m_ttsEngine) {
+        if (m_loggingService) {
+            m_loggingService->logTurnTrace(
+                turnId,
+                QStringLiteral("tts_started"),
+                QStringLiteral("tts.requested"),
+                {
+                    {QStringLiteral("source"), source},
+                    {QStringLiteral("display_chars"), finalizedReply.displayText.size()},
+                    {QStringLiteral("spoken_chars"), finalizedReply.spokenText.size()}
+                });
+        }
         if (refreshConversationSession) {
             refreshConversationSession();
         }
-        m_ttsEngine->speakText(finalizedReply.spokenText, ttsContextForSession(source, session));
+        m_ttsEngine->speakText(finalizedReply.spokenText, ttsContextForSession(source, turnId, session));
         return true;
     }
     return false;

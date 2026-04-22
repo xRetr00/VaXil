@@ -18,6 +18,7 @@ enum class AgentTransportMode {
 };
 
 struct ConversationRequestContext {
+    QString turnId;
     QString modelId;
     QString input;
     QList<AiMessage> history;
@@ -35,6 +36,7 @@ struct ConversationRequestContext {
 };
 
 struct AgentRequestContext {
+    QString turnId;
     QString modelId;
     QString input;
     QString previousResponseId;
@@ -58,6 +60,7 @@ struct AgentRequestContext {
 };
 
 struct CommandRequestContext {
+    QString turnId;
     QString modelId;
     QString input;
     AssistantIdentity identity;

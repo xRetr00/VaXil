@@ -20,6 +20,7 @@ public:
                       LoggingService *loggingService);
 
     bool finalizeResponse(const QString &source,
+                          const QString &turnId,
                           const SpokenReply &reply,
                           const ActionSession &session,
                           QString *responseText,
