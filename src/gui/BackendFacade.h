@@ -107,6 +107,7 @@ class BackendFacade : public QObject
     Q_PROPERTY(double toolUseTemperature READ toolUseTemperature NOTIFY agentStateChanged)
     Q_PROPERTY(int providerTopK READ providerTopK NOTIFY agentStateChanged)
     Q_PROPERTY(int maxOutputTokens READ maxOutputTokens NOTIFY agentStateChanged)
+    Q_PROPERTY(bool budgetEnforcementDisabled READ budgetEnforcementDisabled NOTIFY agentStateChanged)
     Q_PROPERTY(bool memoryAutoWrite READ memoryAutoWrite NOTIFY agentStateChanged)
     Q_PROPERTY(QString webSearchProvider READ webSearchProvider NOTIFY agentStateChanged)
     Q_PROPERTY(QString braveSearchApiKey READ braveSearchApiKey NOTIFY agentStateChanged)
@@ -242,6 +243,7 @@ public:
     double toolUseTemperature() const;
     int providerTopK() const;
     int maxOutputTokens() const;
+    bool budgetEnforcementDisabled() const;
     bool memoryAutoWrite() const;
     QString webSearchProvider() const;
     QString braveSearchApiKey() const;
@@ -304,7 +306,8 @@ public:
                                        bool memoryAutoWrite,
                                        const QString &webSearchProvider,
                                        const QString &braveSearchApiKey,
-                                       bool tracePanelEnabled);
+                                       bool tracePanelEnabled,
+                                       bool budgetEnforcementDisabled);
     Q_INVOKABLE void setSelectedVoicePresetId(const QString &voiceId);
     Q_INVOKABLE void setTtsVoiceProfileId(const QString &profileId);
     Q_INVOKABLE void setWakeEngineKind(const QString &kind);

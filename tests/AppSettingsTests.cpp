@@ -26,6 +26,7 @@ private slots:
     void clampToolUseTemperatureAboveMax();
     void clampMaxOutputTokensBelowMin();
     void clampMaxOutputTokensAboveMax();
+    void budgetEnforcementDisableSetterPreservesValue();
     void clampWakeTriggerThresholdBelowMin();
     void clampWakeTriggerThresholdAboveMax();
     void voiceSpeedPreservesValidValue();
@@ -59,6 +60,7 @@ void AppSettingsTests::hasExpectedDefaults()
     QVERIFY(settings.agentEnabled());
     QCOMPARE(settings.agentProviderMode(), QStringLiteral("auto"));
     QCOMPARE(settings.maxOutputTokens(), 1024);
+    QVERIFY(!settings.budgetEnforcementDisabled());
     QVERIFY(settings.memoryAutoWrite());
     QCOMPARE(settings.webSearchProvider(), QStringLiteral("brave"));
     QVERIFY(!settings.visionEnabled());
@@ -223,6 +225,15 @@ void AppSettingsTests::clampMaxOutputTokensAboveMax()
     AppSettings settings;
     settings.setMaxOutputTokens(99999);
     QCOMPARE(settings.maxOutputTokens(), 8192);
+}
+
+void AppSettingsTests::budgetEnforcementDisableSetterPreservesValue()
+{
+    AppSettings settings;
+    settings.setBudgetEnforcementDisabled(true);
+    QVERIFY(settings.budgetEnforcementDisabled());
+    settings.setBudgetEnforcementDisabled(false);
+    QVERIFY(!settings.budgetEnforcementDisabled());
 }
 
 void AppSettingsTests::clampWakeTriggerThresholdBelowMin()

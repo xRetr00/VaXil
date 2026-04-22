@@ -168,7 +168,7 @@ quint64 OpenAiCompatibleClient::sendChatRequest(const QList<AiMessage> &messages
     if (options.providerTopK.has_value()) {
         body.insert(QStringLiteral("top_k"), options.providerTopK.value());
     }
-    if (options.maxTokens.has_value()) {
+    if (options.maxTokens.has_value() && options.maxTokens.value() > 0) {
         body.insert(QStringLiteral("max_tokens"), options.maxTokens.value());
     }
     if (options.seed.has_value()) {
@@ -302,7 +302,9 @@ quint64 OpenAiCompatibleClient::sendAgentRequest(const AgentRequest &request)
     if (request.sampling.providerTopK.has_value()) {
         body.insert(QStringLiteral("top_k"), *request.sampling.providerTopK);
     }
-    body.insert(QStringLiteral("max_output_tokens"), request.sampling.maxOutputTokens);
+    if (request.sampling.maxOutputTokens > 0) {
+        body.insert(QStringLiteral("max_output_tokens"), request.sampling.maxOutputTokens);
+    }
     body.insert(QStringLiteral("reasoning"), QJsonObject{{QStringLiteral("effort"), reasoningEffortForMode(request.mode)}});
 
     m_activeRequestId = ++m_requestCounter;

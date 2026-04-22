@@ -332,6 +332,7 @@ set(JARVIS_SOURCES
     src/cognition/SuggestionProposalRanker.cpp
     src/core/tasks/TaskDispatcher.cpp
     src/core/tasks/ToolWorker.cpp
+    src/core/tools/AgentToolLoopGuard.cpp
     src/core/tools/ToolExecutionService.cpp
     src/core/tools/ToolResultEvidencePolicy.cpp
     src/devices/DeviceManager.cpp
@@ -448,6 +449,7 @@ set(JARVIS_HEADERS
     src/core/intent/UserGoalInferer.h
     src/core/LocalResponseEngine.h
     src/core/MemoryPolicyHandler.h
+    src/core/tools/AgentToolLoopGuard.h
     src/core/PermissionOverrideSettings.h
     src/core/ResponseFinalizer.h
     src/core/ToolCoordinator.h
@@ -1270,6 +1272,20 @@ if(JARVIS_BUILD_TESTS)
     add_test(NAME jarvis_tool_coordinator_tests COMMAND jarvis_tool_coordinator_tests)
     set_tests_properties(jarvis_tool_coordinator_tests PROPERTIES ENVIRONMENT "PATH=${QT_BIN_DIR}${JARVIS_PATH_ENV_SEPARATOR}$ENV{PATH}")
     jarvis_copy_optional_runtime_libraries(jarvis_tool_coordinator_tests)
+
+    qt_add_executable(jarvis_agent_tool_loop_guard_tests
+        tests/AgentToolLoopGuardTests.cpp
+    )
+
+    target_link_libraries(jarvis_agent_tool_loop_guard_tests
+        PRIVATE
+            jarvis_lib
+            Qt6::Test
+    )
+
+    add_test(NAME jarvis_agent_tool_loop_guard_tests COMMAND jarvis_agent_tool_loop_guard_tests)
+    set_tests_properties(jarvis_agent_tool_loop_guard_tests PROPERTIES ENVIRONMENT "PATH=${QT_BIN_DIR}${JARVIS_PATH_ENV_SEPARATOR}$ENV{PATH}")
+    jarvis_copy_optional_runtime_libraries(jarvis_agent_tool_loop_guard_tests)
 
     qt_add_executable(jarvis_local_response_tests
         tests/LocalResponseEngineTests.cpp

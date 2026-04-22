@@ -407,6 +407,11 @@ int SettingsViewModel::maxOutputTokens() const
     return m_backend ? m_backend->maxOutputTokens() : 0;
 }
 
+bool SettingsViewModel::budgetEnforcementDisabled() const
+{
+    return m_backend && m_backend->budgetEnforcementDisabled();
+}
+
 bool SettingsViewModel::memoryAutoWrite() const
 {
     return m_backend && m_backend->memoryAutoWrite();
@@ -645,7 +650,8 @@ void SettingsViewModel::saveAgentSettings(bool enabled,
                                           bool memoryAutoWrite,
                                           const QString &webSearchProvider,
                                           const QString &braveSearchApiKey,
-                                          bool tracePanelEnabled)
+                                          bool tracePanelEnabled,
+                                          bool budgetEnforcementDisabled)
 {
     if (m_backend) {
         m_backend->saveAgentSettings(enabled,
@@ -658,7 +664,8 @@ void SettingsViewModel::saveAgentSettings(bool enabled,
                                      memoryAutoWrite,
                                      webSearchProvider,
                                      braveSearchApiKey,
-                                     tracePanelEnabled);
+                                     tracePanelEnabled,
+                                     budgetEnforcementDisabled);
     }
 }
 

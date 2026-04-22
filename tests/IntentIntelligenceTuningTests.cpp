@@ -114,6 +114,14 @@ void IntentIntelligenceTuningTests::emitsAdvisorModeAndEvaluationInTrace()
     trace.toolsAvailableCount = 12;
     trace.clarificationTriggerReason = QStringLiteral("clarification.high_ambiguity_low_confidence");
     trace.ambiguityThresholdUsed = 0.6f;
+    trace.budgetEnforcementEnabled = false;
+    trace.budgetEnforcementDisabledReason = QStringLiteral("local_model_tuning_override");
+    trace.technicalGuardTriggered = true;
+    trace.toolLoopBreakerTriggered = true;
+    trace.toolLoopBreakerReason = QStringLiteral("tool_loop.failed_attempts");
+    trace.failedToolAttemptCount = 3;
+    trace.sameFamilyAttemptCount = 2;
+    trace.gracefulFallbackReason = QStringLiteral("fallback.clarify_after_tool_loop");
     trace.finalExecutedRoute = QStringLiteral("conversation");
 
     RoutingTraceEmitter emitter;
@@ -127,6 +135,17 @@ void IntentIntelligenceTuningTests::emitsAdvisorModeAndEvaluationInTrace()
              QStringLiteral("selection.backend_info_or_action_tools_enabled"));
     QCOMPARE(payload.value(QStringLiteral("tools_available_count")).toInt(), 12);
     QVERIFY(qAbs(payload.value(QStringLiteral("ambiguity_threshold_used")).toDouble() - 0.6) < 0.001);
+    QVERIFY(!payload.value(QStringLiteral("budget_enforcement_enabled")).toBool());
+    QCOMPARE(payload.value(QStringLiteral("budget_enforcement_disabled_reason")).toString(),
+             QStringLiteral("local_model_tuning_override"));
+    QVERIFY(payload.value(QStringLiteral("technical_guard_triggered")).toBool());
+    QVERIFY(payload.value(QStringLiteral("tool_loop_breaker_triggered")).toBool());
+    QCOMPARE(payload.value(QStringLiteral("tool_loop_breaker_reason")).toString(),
+             QStringLiteral("tool_loop.failed_attempts"));
+    QCOMPARE(payload.value(QStringLiteral("failed_tool_attempt_count")).toInt(), 3);
+    QCOMPARE(payload.value(QStringLiteral("same_family_attempt_count")).toInt(), 2);
+    QCOMPARE(payload.value(QStringLiteral("graceful_fallback_reason")).toString(),
+             QStringLiteral("fallback.clarify_after_tool_loop"));
 }
 
 void IntentIntelligenceTuningTests::thresholdConfigExposesStableDefaults()

@@ -57,6 +57,7 @@
 #include "core/intent/LocalIntentAdvisor.h"
 #include "core/intent/RouteArbitrator.h"
 #include "core/intent/RoutingTraceEmitter.h"
+#include "core/tools/AgentToolLoopGuard.h"
 #include "behavior_tuning/CompiledContextPolicyTuningPromotionPolicy.h"
 #include "behavior_tuning/FeedbackSignalEventBuilder.h"
 #include "connectors/BrowserBookmarksMonitor.h"
@@ -2110,12 +2111,14 @@ AgentCapabilitySet AssistantController::agentCapabilities() const { return m_age
 QList<AgentTraceEntry> AssistantController::agentTrace() const { return m_agentTrace; }
 SamplingProfile AssistantController::samplingProfile() const
 {
+    const bool budgetDisabled = m_settings != nullptr && m_settings->budgetEnforcementDisabled();
     return {
         .conversationTemperature = m_settings->conversationTemperature(),
         .conversationTopP = m_settings->conversationTopP(),
         .toolUseTemperature = m_settings->toolUseTemperature(),
         .providerTopK = m_settings->providerTopK(),
-        .maxOutputTokens = m_settings->maxOutputTokens()
+        .maxOutputTokens = budgetDisabled ? 0 : m_settings->maxOutputTokens(),
+        .budgetEnforcementDisabled = budgetDisabled
     };
 }
 QList<BackgroundTaskResult> AssistantController::backgroundTaskResults() const { return m_toolCoordinator ? m_toolCoordinator->backgroundTaskResults() : QList<BackgroundTaskResult>{}; }
@@ -3135,6 +3138,10 @@ void AssistantController::submitText(const QString &text)
     routingTrace.finalDecision = decision;
     const QList<AgentToolSpec> availableTools = m_agentToolbox ? m_agentToolbox->builtInTools() : QList<AgentToolSpec>{};
     routingTrace.toolsAvailableCount = availableTools.size();
+    routingTrace.budgetEnforcementEnabled = !(m_settings != nullptr && m_settings->budgetEnforcementDisabled());
+    routingTrace.budgetEnforcementDisabledReason = routingTrace.budgetEnforcementEnabled
+        ? QString()
+        : QStringLiteral("local_model_tuning_override");
     const bool routeNeedsBackendTools = decision.kind == InputRouteKind::Conversation
         || decision.kind == InputRouteKind::AgentConversation
         || decision.kind == InputRouteKind::CommandExtraction;
@@ -3537,7 +3544,8 @@ void AssistantController::saveAgentSettings(bool enabled,
                                             bool memoryAutoWrite,
                                             const QString &webSearchProvider,
                                             const QString &braveSearchApiKey,
-                                            bool tracePanelEnabled)
+                                            bool tracePanelEnabled,
+                                            bool budgetEnforcementDisabled)
 {
     m_settings->setAgentEnabled(enabled);
     m_settings->setAgentProviderMode(providerMode);
@@ -3550,6 +3558,7 @@ void AssistantController::saveAgentSettings(bool enabled,
     m_settings->setWebSearchProvider(webSearchProvider);
     m_settings->setBraveSearchApiKey(braveSearchApiKey);
     m_settings->setTracePanelEnabled(tracePanelEnabled);
+    m_settings->setBudgetEnforcementDisabled(budgetEnforcementDisabled);
     m_settings->save();
     emit agentStateChanged();
 }
@@ -5351,6 +5360,7 @@ void AssistantController::startAgentConversationRequest(const QString &input, In
     m_lastAgentInput = input;
     m_lastAgentIntent = expectedIntent;
     m_activeAgentIteration = 0;
+    AgentToolLoopGuard::reset(&m_agentToolLoopGuardState);
     m_previousAgentResponseId.clear();
     m_agentTrace.clear();
     emit agentTraceChanged();
@@ -5543,7 +5553,44 @@ void AssistantController::startAgentConversationRequest(const QString &input, In
 
 void AssistantController::continueAgentConversation(const QList<AgentToolResult> &results)
 {
+    const AgentToolLoopGuardDecision loopDecision =
+        AgentToolLoopGuard::evaluateResults(results, &m_agentToolLoopGuardState);
+    if (loopDecision.stop) {
+        appendAgentTrace(QStringLiteral("guard"),
+                         QStringLiteral("Tool loop stopped"),
+                         loopDecision.reasonCode,
+                         false);
+        if (m_loggingService) {
+            m_loggingService->infoFor(
+                QStringLiteral("tool_audit"),
+                QStringLiteral("[technical_guard] tool_loop_breaker_triggered=true reason=%1 failed_tool_attempt_count=%2 same_family_attempt_count=%3 budget_enforcement_enabled=%4 graceful_fallback_reason=%5")
+                    .arg(loopDecision.reasonCode,
+                         QString::number(loopDecision.failedToolAttemptCount),
+                         QString::number(loopDecision.sameFamilyAttemptCount),
+                         (m_settings != nullptr && m_settings->budgetEnforcementDisabled()) ? QStringLiteral("false") : QStringLiteral("true"),
+                         QStringLiteral("fallback.clarify_after_tool_loop")));
+            m_loggingService->infoFor(
+                QStringLiteral("route_audit"),
+                QStringLiteral("[technical_guard] technical_guard_triggered=true tool_loop_breaker_triggered=true tool_loop_breaker_reason=%1 failed_tool_attempt_count=%2 same_family_attempt_count=%3 budget_enforcement_enabled=%4 graceful_fallback_reason=%5")
+                    .arg(loopDecision.reasonCode,
+                         QString::number(loopDecision.failedToolAttemptCount),
+                         QString::number(loopDecision.sameFamilyAttemptCount),
+                         (m_settings != nullptr && m_settings->budgetEnforcementDisabled()) ? QStringLiteral("false") : QStringLiteral("true"),
+                         QStringLiteral("fallback.clarify_after_tool_loop")));
+        }
+        handleConversationFinished(loopDecision.userMessage);
+        return;
+    }
+
     if (m_activeAgentIteration >= 6) {
+        if (m_loggingService) {
+            m_loggingService->infoFor(
+                QStringLiteral("route_audit"),
+                QStringLiteral("[technical_guard] technical_guard_triggered=true tool_loop_breaker_triggered=true tool_loop_breaker_reason=tool_loop.iteration_limit failed_tool_attempt_count=%1 same_family_attempt_count=%2 budget_enforcement_enabled=%3 graceful_fallback_reason=fallback.iteration_limit")
+                    .arg(QString::number(m_agentToolLoopGuardState.failedToolAttempts),
+                         QString::number(m_agentToolLoopGuardState.sameFamilyAttemptCount),
+                         (m_settings != nullptr && m_settings->budgetEnforcementDisabled()) ? QStringLiteral("false") : QStringLiteral("true")));
+        }
         handleConversationFinished(QStringLiteral("I’ve hit the tool-call limit for this request. Please narrow it down and try again."));
         return;
     }
@@ -6137,7 +6184,9 @@ void AssistantController::startCommandRequest(const QString &input)
             .temperature = m_settings->toolUseTemperature(),
             .topP = m_settings->conversationTopP(),
             .providerTopK = m_settings->providerTopK(),
-            .maxTokens = m_settings->maxOutputTokens()
+            .maxTokens = (m_settings != nullptr && m_settings->budgetEnforcementDisabled())
+                ? std::optional<int>{}
+                : std::optional<int>{m_settings->maxOutputTokens()}
         });
 }
 

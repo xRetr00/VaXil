@@ -1498,6 +1498,7 @@ double BackendFacade::conversationTopP() const { return m_settings->conversation
 double BackendFacade::toolUseTemperature() const { return m_settings->toolUseTemperature(); }
 int BackendFacade::providerTopK() const { return m_settings->providerTopK().value_or(0); }
 int BackendFacade::maxOutputTokens() const { return m_settings->maxOutputTokens(); }
+bool BackendFacade::budgetEnforcementDisabled() const { return m_settings->budgetEnforcementDisabled(); }
 bool BackendFacade::memoryAutoWrite() const { return m_settings->memoryAutoWrite(); }
 QString BackendFacade::webSearchProvider() const { return m_settings->webSearchProvider(); }
 QString BackendFacade::braveSearchApiKey() const { return m_settings->braveSearchApiKey(); }
@@ -1654,7 +1655,8 @@ void BackendFacade::saveAgentSettings(bool enabled,
                                       bool memoryAutoWrite,
                                       const QString &webSearchProvider,
                                       const QString &braveSearchApiKey,
-                                      bool tracePanelEnabled)
+                                      bool tracePanelEnabled,
+                                      bool budgetEnforcementDisabled)
 {
     m_assistantController->saveAgentSettings(enabled,
                                              providerMode,
@@ -1666,7 +1668,8 @@ void BackendFacade::saveAgentSettings(bool enabled,
                                              memoryAutoWrite,
                                              webSearchProvider,
                                              braveSearchApiKey,
-                                             tracePanelEnabled);
+                                             tracePanelEnabled,
+                                             budgetEnforcementDisabled);
 }
 void BackendFacade::setWakeEngineKind(const QString &kind)
 {

@@ -160,6 +160,7 @@ struct SamplingProfile {
     double toolUseTemperature = 0.2;
     std::optional<int> providerTopK;
     int maxOutputTokens = 1024;
+    bool budgetEnforcementDisabled = false;
 };
 
 struct AudioLevel {

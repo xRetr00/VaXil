@@ -67,6 +67,9 @@ public:
     int maxOutputTokens() const;
     void setMaxOutputTokens(int maxTokens);
 
+    bool budgetEnforcementDisabled() const;
+    void setBudgetEnforcementDisabled(bool disabled);
+
     bool memoryAutoWrite() const;
     void setMemoryAutoWrite(bool enabled);
 
@@ -309,6 +312,7 @@ private:
     double m_toolUseTemperature = 0.2;
     std::optional<int> m_providerTopK;
     int m_maxOutputTokens = 1024;
+    bool m_budgetEnforcementDisabled = false;
     bool m_memoryAutoWrite = true;
     QString m_webSearchProvider = QStringLiteral("brave");
     QString m_braveSearchApiKey;

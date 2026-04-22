@@ -105,6 +105,7 @@ Window {
         toolTempSlider.value = settingsVm.toolUseTemperature
         providerTopKField.text = settingsVm.providerTopK > 0 ? String(settingsVm.providerTopK) : ""
         maxOutputSpin.value = settingsVm.maxOutputTokens
+        budgetDisableCheck.checked = settingsVm.budgetEnforcementDisabled
         memoryAutoWriteCheck.checked = settingsVm.memoryAutoWrite
         webProviderField.text = settingsVm.webSearchProvider
         braveApiKeyField.text = settingsVm.braveSearchApiKey
@@ -637,6 +638,22 @@ Window {
                         CheckBox { id: tracePanelCheck; text: "Trace panel"; checked: settingsVm.tracePanelEnabled }
                     }
 
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        CheckBox {
+                            id: budgetDisableCheck
+                            text: "Ignore cost & token budgets"
+                            checked: settingsVm.budgetEnforcementDisabled
+                        }
+                        Text {
+                            Layout.fillWidth: true
+                            text: "For local-model tuning. Cost/token caps are bypassed; tool-loop and safety guards stay on."
+                            color: "#9fb5c8"
+                            font.pixelSize: 12
+                            wrapMode: Text.Wrap
+                        }
+                    }
+
                     RowLayout {
                         Layout.fillWidth: true
                         ColumnLayout {
@@ -740,7 +757,8 @@ Window {
                             memoryAutoWriteCheck.checked,
                             webProviderField.text,
                             braveApiKeyField.text,
-                            tracePanelCheck.checked
+                            tracePanelCheck.checked,
+                            budgetDisableCheck.checked
                         )
                     }
                 }

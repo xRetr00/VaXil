@@ -200,6 +200,14 @@ struct RoutingTrace {
     int toolsAvailableCount = 0;
     QString clarificationTriggerReason;
     float ambiguityThresholdUsed = 0.0f;
+    bool budgetEnforcementEnabled = true;
+    QString budgetEnforcementDisabledReason;
+    bool technicalGuardTriggered = false;
+    bool toolLoopBreakerTriggered = false;
+    QString toolLoopBreakerReason;
+    int failedToolAttemptCount = 0;
+    int sameFamilyAttemptCount = 0;
+    QString gracefulFallbackReason;
     QStringList overridesApplied;
     QStringList reasonCodes;
 };

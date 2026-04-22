@@ -11,6 +11,7 @@
 #include "companion/contracts/CooldownState.h"
 #include "companion/contracts/FocusModeState.h"
 #include "core/AssistantTypes.h"
+#include "core/tools/AgentToolLoopGuard.h"
 
 class AppSettings;
 class AgentToolbox;
@@ -155,7 +156,8 @@ public slots:
                            bool memoryAutoWrite,
                            const QString &webSearchProvider,
                            const QString &braveSearchApiKey,
-                           bool tracePanelEnabled);
+                           bool tracePanelEnabled,
+                           bool budgetEnforcementDisabled);
     void saveSettings(
         const QString &providerKind,
         const QString &apiKey,
@@ -469,6 +471,7 @@ private:
     std::optional<ActionThread> m_recentActionThread;
     QString m_previousAgentResponseId;
     int m_activeAgentIteration = 0;
+    AgentToolLoopGuardState m_agentToolLoopGuardState;
     AgentCapabilitySet m_agentCapabilities;
     QList<AgentTraceEntry> m_agentTrace;
     QList<BackgroundTaskResult> m_backgroundTaskResults;

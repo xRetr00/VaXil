@@ -5,6 +5,7 @@
 
 #include <QDir>
 #include <QFile>
+#include <QProcessEnvironment>
 #include <QStandardPaths>
 #include <QVariantMap>
 
@@ -150,6 +151,18 @@ double clampTemperature(double value)
 int clampMaxOutputTokens(int value)
 {
     return std::clamp(value, 64, 8192);
+}
+
+bool envFlagEnabled(const char *name)
+{
+    const QString value = QProcessEnvironment::systemEnvironment()
+        .value(QString::fromLatin1(name))
+        .trimmed()
+        .toLower();
+    return value == QStringLiteral("1")
+        || value == QStringLiteral("true")
+        || value == QStringLiteral("yes")
+        || value == QStringLiteral("on");
 }
 
 double clampVadSensitivity(double value)
@@ -316,6 +329,8 @@ bool AppSettings::load()
         m_providerTopK.reset();
     }
     m_maxOutputTokens = clampMaxOutputTokens(parsed.value("maxOutputTokens", 1024));
+    m_budgetEnforcementDisabled = parsed.value("budgetEnforcementDisabled", false)
+        || envFlagEnabled("VAXIL_DISABLE_COST_BUDGET");
     m_memoryAutoWrite = parsed.value("memoryAutoWrite", true);
     m_webSearchProvider = QString::fromStdString(parsed.value("webSearchProvider", m_webSearchProvider.toStdString()));
     m_braveSearchApiKey = QString::fromStdString(parsed.value("braveSearchApiKey", std::string{}));
@@ -481,6 +496,7 @@ bool AppSettings::save() const
         {"toolUseTemperature", m_toolUseTemperature},
         {"providerTopK", m_providerTopK.has_value() ? nlohmann::json(*m_providerTopK) : nlohmann::json(nullptr)},
         {"maxOutputTokens", m_maxOutputTokens},
+        {"budgetEnforcementDisabled", m_budgetEnforcementDisabled},
         {"memoryAutoWrite", m_memoryAutoWrite},
         {"webSearchProvider", m_webSearchProvider.toStdString()},
         {"braveSearchApiKey", m_braveSearchApiKey.toStdString()},
@@ -654,6 +670,12 @@ int AppSettings::maxOutputTokens() const { return m_maxOutputTokens; }
 void AppSettings::setMaxOutputTokens(int maxTokens)
 {
     m_maxOutputTokens = clampMaxOutputTokens(maxTokens);
+    emit settingsChanged();
+}
+bool AppSettings::budgetEnforcementDisabled() const { return m_budgetEnforcementDisabled; }
+void AppSettings::setBudgetEnforcementDisabled(bool disabled)
+{
+    m_budgetEnforcementDisabled = disabled;
     emit settingsChanged();
 }
 bool AppSettings::memoryAutoWrite() const { return m_memoryAutoWrite; }

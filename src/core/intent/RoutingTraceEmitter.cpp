@@ -79,6 +79,14 @@ QJsonObject RoutingTraceEmitter::buildRouteFinalPayload(const RoutingTrace &trac
     payload.insert(QStringLiteral("tools_available_count"), trace.toolsAvailableCount);
     payload.insert(QStringLiteral("clarification_trigger_reason"), trace.clarificationTriggerReason);
     payload.insert(QStringLiteral("ambiguity_threshold_used"), trace.ambiguityThresholdUsed);
+    payload.insert(QStringLiteral("budget_enforcement_enabled"), trace.budgetEnforcementEnabled);
+    payload.insert(QStringLiteral("budget_enforcement_disabled_reason"), trace.budgetEnforcementDisabledReason);
+    payload.insert(QStringLiteral("technical_guard_triggered"), trace.technicalGuardTriggered);
+    payload.insert(QStringLiteral("tool_loop_breaker_triggered"), trace.toolLoopBreakerTriggered);
+    payload.insert(QStringLiteral("tool_loop_breaker_reason"), trace.toolLoopBreakerReason);
+    payload.insert(QStringLiteral("failed_tool_attempt_count"), trace.failedToolAttemptCount);
+    payload.insert(QStringLiteral("same_family_attempt_count"), trace.sameFamilyAttemptCount);
+    payload.insert(QStringLiteral("graceful_fallback_reason"), trace.gracefulFallbackReason);
     payload.insert(QStringLiteral("confirmation_gate_triggered"), trace.confirmationGateTriggered);
     payload.insert(QStringLiteral("confirmation_outcome"), trace.confirmationOutcome);
     payload.insert(QStringLiteral("reason_codes"), stringsToArray(trace.reasonCodes));
