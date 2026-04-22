@@ -100,6 +100,19 @@ RouteArbitrationResult RouteArbitrator::arbitrate(const InputRouteDecision &poli
         }
         result.reasonCodes.push_back(QStringLiteral("arbitrator.ask_clarification"));
         result.reasonCodes.push_back(QStringLiteral("arbitrator.low_confidence_high_ambiguity"));
+    } else if (effectiveAmbiguity >= 0.85f) {
+        if (const std::optional<ExecutionIntentCandidate> clarify = findCandidate(InputRouteKind::LocalResponse)) {
+            result.decision = clarify->route;
+            result.confidence = clarify->score;
+            result.reasonCodes = clarify->reasonCodes;
+        } else {
+            result.decision.kind = InputRouteKind::LocalResponse;
+            result.confidence = 0.78f;
+            result.decision.message = QStringLiteral("Can you clarify what you want me to do?");
+            result.decision.status = QStringLiteral("Clarification needed");
+            result.reasonCodes = {QStringLiteral("arbitrator.ask_clarification")};
+        }
+        result.reasonCodes.push_back(QStringLiteral("arbitrator.very_high_ambiguity_clarify"));
     } else if (state.isContinuation
                && advisorSuggestion.continuationLikelihood >= 0.55f
                && effectiveAmbiguity < 0.8f) {

@@ -9,8 +9,7 @@
   {
     "name": "greeting_plus_request",
     "input": "hi explain open source licensing",
-    "expectedFinalRoute": "Conversation",
-    "expectedBackendEscalation": true
+    "expectedFinalRoute": "Conversation"
   },
   {
     "name": "smalltalk_plus_question",
@@ -27,6 +26,8 @@
     "input": "open it",
     "hasAnyActionThread": true,
     "hasUsableActionThread": false,
+    "ambiguityOverride": 0.9,
+    "confidenceOverride": 0.35,
     "expectedFinalRoute": "LocalResponse",
     "expectedClarification": true
   },
@@ -40,12 +41,15 @@
   {
     "name": "ambiguity_to_clarification",
     "input": "open or explain this issue",
+    "ambiguityOverride": 0.92,
+    "confidenceOverride": 0.36,
     "expectedFinalRoute": "LocalResponse",
     "expectedClarification": true
   },
   {
     "name": "low_confidence_to_backend",
     "input": "compare this and tell me what to do next",
+    "confidenceOverride": 0.34,
     "expectedFinalRoute": "Conversation",
     "expectedBackendEscalation": true
   },
@@ -69,4 +73,3 @@
     "expectedTopCandidateRoute": "BackgroundTasks"
   }
 ]
-

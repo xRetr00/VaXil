@@ -27,6 +27,8 @@ struct RoutingReplayFixture
     qint64 desktopContextAtMs = 0;
     qint64 nowMs = 0;
     QString workspaceRoot;
+    float ambiguityOverride = -1.0f;
+    float confidenceOverride = -1.0f;
     InputRouteKind expectedFinalRoute = InputRouteKind::None;
     bool expectedClarification = false;
     bool expectedBackendEscalation = false;

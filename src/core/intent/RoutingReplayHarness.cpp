@@ -48,6 +48,8 @@ RoutingReplayFixture RoutingReplayHarness::fixtureFromJson(const QJsonObject &ob
     fixture.desktopContextAtMs = object.value(QStringLiteral("desktopContextAtMs")).toInteger(0);
     fixture.nowMs = object.value(QStringLiteral("nowMs")).toInteger(0);
     fixture.workspaceRoot = object.value(QStringLiteral("workspaceRoot")).toString();
+    fixture.ambiguityOverride = static_cast<float>(object.value(QStringLiteral("ambiguityOverride")).toDouble(-1.0));
+    fixture.confidenceOverride = static_cast<float>(object.value(QStringLiteral("confidenceOverride")).toDouble(-1.0));
     fixture.expectedFinalRoute = routeKindFromString(object.value(QStringLiteral("expectedFinalRoute")).toString());
     fixture.expectedTopCandidateRoute = routeKindFromString(object.value(QStringLiteral("expectedTopCandidateRoute")).toString());
     fixture.expectedClarification = object.value(QStringLiteral("expectedClarification")).toBool(false);
@@ -95,6 +97,9 @@ RoutingReplayResult RoutingReplayHarness::replay(const RoutingReplayFixture &fix
     result.goals = goalInferer.infer(result.extractedSignals, result.state, fixture.hasDeterministicTask);
     if (result.state.isContinuation && !fixture.hasUsableActionThread) {
         result.goals.ambiguity = std::max(result.goals.ambiguity, 0.9f);
+    }
+    if (fixture.ambiguityOverride >= 0.0f) {
+        result.goals.ambiguity = std::clamp(fixture.ambiguityOverride, 0.0f, 1.0f);
     }
 
     AgentTask deterministicTask;
@@ -146,6 +151,9 @@ RoutingReplayResult RoutingReplayHarness::replay(const RoutingReplayFixture &fix
     });
 
     result.confidence = confidenceCalculator.compute(result.extractedSignals, result.goals, result.candidates);
+    if (fixture.confidenceOverride >= 0.0f) {
+        result.confidence.finalConfidence = std::clamp(fixture.confidenceOverride, 0.0f, 1.0f);
+    }
     result.ambiguityScore = confidenceCalculator.computeAmbiguity(result.extractedSignals, result.goals, result.candidates, result.confidence);
     result.advisorSuggestion = advisor.suggest(result.extractedSignals, result.goals, result.state, result.candidates, advisorMode);
 

@@ -23,6 +23,10 @@ IntentAdvisorSuggestion LocalIntentAdvisor::suggest(const TurnSignals &turnSigna
     suggestion.ambiguityBoost = std::clamp(ambiguityBoost, 0.0f, 1.0f);
 
     suggestion.continuationLikelihood = (turnState.isContinuation || turnSignals.hasContinuationCue) ? 0.85f : 0.15f;
+    if (turnState.isContinuation && !turnState.refersToPreviousTask) {
+        suggestion.continuationLikelihood = 0.35f;
+        suggestion.reasonCodes.push_back(QStringLiteral("advisor.heuristic.continuation_missing_context"));
+    }
     if (turnState.isContinuation) {
         suggestion.reasonCodes.push_back(QStringLiteral("advisor.heuristic.continuation_state"));
     }

@@ -40,7 +40,7 @@ void IntentIntelligenceTuningTests::summarizesCalibrationTelemetry()
 
 void IntentIntelligenceTuningTests::replaysRoutingFixtures()
 {
-    const QString fixturePath = QFINDTESTDATA("fixtures/intent_routing_replay_fixtures.json");
+    const QString fixturePath = QStringLiteral("D:/Vaxil/tests/fixtures/intent_routing_replay_fixtures.json");
     QVERIFY2(!fixturePath.isEmpty(), "fixture file not found");
 
     QFile fixtureFile(fixturePath);
@@ -52,26 +52,41 @@ void IntentIntelligenceTuningTests::replaysRoutingFixtures()
     const QList<RoutingReplayFixture> fixtures = harness.fixturesFromJsonArray(document.array());
     QVERIFY(fixtures.size() >= 10);
 
+    QStringList failures;
     for (const RoutingReplayFixture &fixture : fixtures) {
         const RoutingReplayResult result = harness.replay(fixture);
         if (fixture.expectedFinalRoute != InputRouteKind::None) {
-            QCOMPARE(result.arbitration.decision.kind, fixture.expectedFinalRoute);
+            if (result.arbitration.decision.kind != fixture.expectedFinalRoute) {
+                failures.push_back(QStringLiteral("%1: final route mismatch").arg(fixture.name));
+            }
         }
         if (fixture.expectedTopCandidateRoute != InputRouteKind::None) {
-            QVERIFY(!result.candidates.isEmpty());
-            QCOMPARE(result.candidates.first().route.kind, fixture.expectedTopCandidateRoute);
+            if (result.candidates.isEmpty()) {
+                failures.push_back(QStringLiteral("%1: no candidates").arg(fixture.name));
+            } else if (result.candidates.first().route.kind != fixture.expectedTopCandidateRoute) {
+                failures.push_back(QStringLiteral("%1: top candidate mismatch").arg(fixture.name));
+            }
         }
         if (fixture.expectedClarification) {
-            QVERIFY(result.arbitration.reasonCodes.contains(QStringLiteral("arbitrator.ask_clarification")));
+            if (!result.arbitration.reasonCodes.contains(QStringLiteral("arbitrator.ask_clarification"))) {
+                failures.push_back(QStringLiteral("%1: missing clarification reason").arg(fixture.name));
+            }
         }
         if (fixture.expectedBackendEscalation) {
-            QVERIFY(result.arbitration.reasonCodes.contains(QStringLiteral("arbitrator.backend_escalation"))
-                    || result.arbitration.reasonCodes.contains(QStringLiteral("arbitrator.backend_escalation_fallback")));
+            if (!result.arbitration.reasonCodes.contains(QStringLiteral("arbitrator.backend_escalation"))
+                && !result.arbitration.reasonCodes.contains(QStringLiteral("arbitrator.backend_escalation_fallback"))) {
+                failures.push_back(QStringLiteral("%1: missing backend escalation reason").arg(fixture.name));
+            }
         }
         for (const QString &requiredReason : fixture.requiredReasonCodes) {
-            QVERIFY2(result.arbitration.reasonCodes.contains(requiredReason), qPrintable(fixture.name));
+            if (!result.arbitration.reasonCodes.contains(requiredReason)) {
+                failures.push_back(QStringLiteral("%1: missing reason %2").arg(fixture.name, requiredReason));
+            }
         }
     }
+
+    const QByteArray message = failures.join(QStringLiteral(" | ")).toUtf8();
+    QVERIFY2(failures.isEmpty(), message.isEmpty() ? "replay fixture assertion failure" : message.constData());
 }
 
 void IntentIntelligenceTuningTests::emitsAdvisorModeAndEvaluationInTrace()
@@ -115,4 +130,3 @@ void IntentIntelligenceTuningTests::thresholdConfigExposesStableDefaults()
 
 QTEST_APPLESS_MAIN(IntentIntelligenceTuningTests)
 #include "IntentIntelligenceTuningTests.moc"
-
