@@ -1893,6 +1893,27 @@ void BackendFacade::saveSettings(
 {
     Q_UNUSED(wakeEngineKind);
 
+    const QString normalizedProviderRaw = providerKind.trimmed().toLower();
+    const QString normalizedProviderKind = (normalizedProviderRaw.isEmpty() || normalizedProviderRaw == QStringLiteral("lmstudio"))
+        ? QStringLiteral("openai_compatible_local")
+        : normalizedProviderRaw;
+    QString normalizedEndpoint = endpoint.trimmed();
+    const QString openRouterEndpoint = QStringLiteral("https://openrouter.ai/api");
+    if (normalizedProviderKind == QStringLiteral("openrouter")) {
+        if (normalizedEndpoint.isEmpty()) {
+            normalizedEndpoint = openRouterEndpoint;
+        }
+    } else {
+        if (normalizedEndpoint.isEmpty() || normalizedEndpoint.compare(openRouterEndpoint, Qt::CaseInsensitive) == 0) {
+            QString preferredLocalEndpoint = m_settings->lmStudioEndpoint().trimmed();
+            if (preferredLocalEndpoint.isEmpty()
+                || preferredLocalEndpoint.compare(openRouterEndpoint, Qt::CaseInsensitive) == 0) {
+                preferredLocalEndpoint = QStringLiteral("http://localhost:1234");
+            }
+            normalizedEndpoint = preferredLocalEndpoint;
+        }
+    }
+
     const QString detectedVoicePresetId = detectVoicePresetIdFromPath(voicePath);
     if (!detectedVoicePresetId.isEmpty()) {
         m_settings->setSelectedVoicePresetId(detectedVoicePresetId);
@@ -1920,9 +1941,9 @@ void BackendFacade::saveSettings(
         : inferredProfile);
 
     m_assistantController->saveSettings(
-        providerKind,
+        normalizedProviderKind,
         apiKey,
-        endpoint, modelId, defaultMode, autoRouting, streaming, timeoutMs,
+        normalizedEndpoint, modelId, defaultMode, autoRouting, streaming, timeoutMs,
         aecEnabled,
         rnnoiseEnabled,
         vadSensitivity,
@@ -2090,12 +2111,25 @@ bool BackendFacade::completeInitialSetup(
     const QString &audioOutputDeviceId,
     bool clickThrough)
 {
-    const QString normalizedProviderKind = providerKind.trimmed().toLower().isEmpty()
+    const QString normalizedProviderRaw = providerKind.trimmed().toLower();
+    const QString normalizedProviderKind = (normalizedProviderRaw.isEmpty() || normalizedProviderRaw == QStringLiteral("lmstudio"))
         ? QStringLiteral("openai_compatible_local")
-        : providerKind.trimmed().toLower();
+        : normalizedProviderRaw;
     QString normalizedEndpoint = endpoint.trimmed();
-    if (normalizedProviderKind == QStringLiteral("openrouter") && normalizedEndpoint.isEmpty()) {
-        normalizedEndpoint = QStringLiteral("https://openrouter.ai/api");
+    const QString openRouterEndpoint = QStringLiteral("https://openrouter.ai/api");
+    if (normalizedProviderKind == QStringLiteral("openrouter")) {
+        if (normalizedEndpoint.isEmpty()) {
+            normalizedEndpoint = openRouterEndpoint;
+        }
+    } else {
+        if (normalizedEndpoint.isEmpty() || normalizedEndpoint.compare(openRouterEndpoint, Qt::CaseInsensitive) == 0) {
+            QString preferredLocalEndpoint = m_settings->lmStudioEndpoint().trimmed();
+            if (preferredLocalEndpoint.isEmpty()
+                || preferredLocalEndpoint.compare(openRouterEndpoint, Qt::CaseInsensitive) == 0) {
+                preferredLocalEndpoint = QStringLiteral("http://localhost:1234");
+            }
+            normalizedEndpoint = preferredLocalEndpoint;
+        }
     }
     if (normalizedEndpoint.isEmpty()) {
         setToolInstallStatus(QStringLiteral("Provider endpoint is required."));
@@ -2221,12 +2255,25 @@ bool BackendFacade::runSetupScenario(
     bool clickThrough,
     const QString &scenarioId)
 {
-    const QString normalizedProviderKind = providerKind.trimmed().toLower().isEmpty()
+    const QString normalizedProviderRaw = providerKind.trimmed().toLower();
+    const QString normalizedProviderKind = (normalizedProviderRaw.isEmpty() || normalizedProviderRaw == QStringLiteral("lmstudio"))
         ? QStringLiteral("openai_compatible_local")
-        : providerKind.trimmed().toLower();
+        : normalizedProviderRaw;
     QString normalizedEndpoint = endpoint.trimmed();
-    if (normalizedProviderKind == QStringLiteral("openrouter") && normalizedEndpoint.isEmpty()) {
-        normalizedEndpoint = QStringLiteral("https://openrouter.ai/api");
+    const QString openRouterEndpoint = QStringLiteral("https://openrouter.ai/api");
+    if (normalizedProviderKind == QStringLiteral("openrouter")) {
+        if (normalizedEndpoint.isEmpty()) {
+            normalizedEndpoint = openRouterEndpoint;
+        }
+    } else {
+        if (normalizedEndpoint.isEmpty() || normalizedEndpoint.compare(openRouterEndpoint, Qt::CaseInsensitive) == 0) {
+            QString preferredLocalEndpoint = m_settings->lmStudioEndpoint().trimmed();
+            if (preferredLocalEndpoint.isEmpty()
+                || preferredLocalEndpoint.compare(openRouterEndpoint, Qt::CaseInsensitive) == 0) {
+                preferredLocalEndpoint = QStringLiteral("http://localhost:1234");
+            }
+            normalizedEndpoint = preferredLocalEndpoint;
+        }
     }
     if (normalizedEndpoint.isEmpty()) {
         setToolInstallStatus(QStringLiteral("Provider endpoint is required before running a setup scenario."));

@@ -296,15 +296,24 @@ bool AppSettings::load()
     }
 
     m_chatBackendKind = QString::fromStdString(parsed.value("chatBackendKind", m_chatBackendKind.toStdString())).trimmed().toLower();
+    if (m_chatBackendKind == QStringLiteral("lmstudio")) {
+        m_chatBackendKind = QStringLiteral("openai_compatible_local");
+    }
     if (m_chatBackendKind.isEmpty()) {
         m_chatBackendKind = QStringLiteral("openai_compatible_local");
     }
     m_chatBackendEndpoint = QString::fromStdString(parsed.value("chatBackendEndpoint", std::string{}));
     m_chatBackendApiKey = QString::fromStdString(parsed.value("chatBackendApiKey", std::string{}));
-    if (m_chatBackendEndpoint.isEmpty()) {
-        m_chatBackendEndpoint = QString::fromStdString(parsed.value("lmStudioEndpoint", m_chatBackendEndpoint.toStdString()));
+    m_lmStudioEndpoint = QString::fromStdString(parsed.value("lmStudioEndpoint", std::string{}));
+    if (m_lmStudioEndpoint.trimmed().isEmpty()) {
+        m_lmStudioEndpoint = QStringLiteral("http://localhost:1234");
     }
-    m_lmStudioEndpoint = m_chatBackendEndpoint;
+    if (m_chatBackendEndpoint.isEmpty()) {
+        m_chatBackendEndpoint = m_lmStudioEndpoint;
+    }
+    if (m_chatBackendEndpoint.trimmed().isEmpty()) {
+        m_chatBackendEndpoint = QStringLiteral("http://localhost:1234");
+    }
     m_chatBackendModel = QString::fromStdString(parsed.value("chatBackendModel", std::string{}));
     if (m_chatBackendModel.isEmpty()) {
         m_chatBackendModel = QString::fromStdString(parsed.value("selectedModel", std::string{}));
@@ -588,14 +597,20 @@ QString AppSettings::chatBackendKind() const { return m_chatBackendKind; }
 void AppSettings::setChatBackendKind(const QString &kind)
 {
     const QString normalized = kind.trimmed().toLower();
-    m_chatBackendKind = normalized.isEmpty() ? QStringLiteral("openai_compatible_local") : normalized;
+    if (normalized == QStringLiteral("lmstudio") || normalized.isEmpty()) {
+        m_chatBackendKind = QStringLiteral("openai_compatible_local");
+    } else {
+        m_chatBackendKind = normalized;
+    }
     emit settingsChanged();
 }
 QString AppSettings::chatBackendEndpoint() const { return m_chatBackendEndpoint; }
 void AppSettings::setChatBackendEndpoint(const QString &endpoint)
 {
     m_chatBackendEndpoint = endpoint;
-    m_lmStudioEndpoint = endpoint;
+    if (m_chatBackendKind != QStringLiteral("openrouter") && !endpoint.trimmed().isEmpty()) {
+        m_lmStudioEndpoint = endpoint;
+    }
     emit settingsChanged();
 }
 QString AppSettings::chatBackendApiKey() const { return m_chatBackendApiKey; }
@@ -616,7 +631,9 @@ QString AppSettings::lmStudioEndpoint() const { return m_lmStudioEndpoint; }
 void AppSettings::setLmStudioEndpoint(const QString &endpoint)
 {
     m_lmStudioEndpoint = endpoint;
-    m_chatBackendEndpoint = endpoint;
+    if (m_chatBackendKind != QStringLiteral("openrouter")) {
+        m_chatBackendEndpoint = endpoint;
+    }
     emit settingsChanged();
 }
 QString AppSettings::selectedModel() const { return m_selectedModel; }
