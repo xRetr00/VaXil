@@ -7,6 +7,7 @@
 #include <QDateTime>
 #include <QDir>
 #include <QFileInfo>
+#include <QHash>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -120,6 +121,15 @@ bool debugPromptDumpEnabled()
                               .value(QStringLiteral("VAXIL_DEBUG_PROMPT_DUMP"))
                               .trimmed()
                               .toLower();
+    if (value.isEmpty()) {
+        return true;
+    }
+    if (value == QStringLiteral("0")
+        || value == QStringLiteral("false")
+        || value == QStringLiteral("no")
+        || value == QStringLiteral("off")) {
+        return false;
+    }
     return value == QStringLiteral("1")
         || value == QStringLiteral("true")
         || value == QStringLiteral("yes")
@@ -208,6 +218,63 @@ QString failureTypeFromToolErrorKind(ToolErrorKind kind)
     default:
         return QStringLiteral("unknown");
     }
+}
+
+QList<QString> requiredToolArgumentKeys(const AgentToolSpec &spec)
+{
+    QList<QString> required;
+    if (!spec.parameters.is_object()) {
+        return required;
+    }
+    const auto requiredIt = spec.parameters.find("required");
+    if (requiredIt == spec.parameters.end() || !requiredIt->is_array()) {
+        return required;
+    }
+    for (const auto &entry : *requiredIt) {
+        if (entry.is_string()) {
+            required.push_back(QString::fromStdString(entry.get<std::string>()));
+        }
+    }
+    return required;
+}
+
+QStringList missingRequiredToolArguments(const AgentToolSpec &spec,
+                                        const QString &argumentsJson,
+                                        bool *jsonValid = nullptr)
+{
+    if (jsonValid != nullptr) {
+        *jsonValid = true;
+    }
+    const QList<QString> required = requiredToolArgumentKeys(spec);
+    if (required.isEmpty()) {
+        return {};
+    }
+
+    QJsonParseError parseError;
+    const QByteArray payload = argumentsJson.trimmed().isEmpty()
+        ? QByteArray("{}")
+        : argumentsJson.toUtf8();
+    const QJsonDocument parsed = QJsonDocument::fromJson(payload, &parseError);
+    if (parseError.error != QJsonParseError::NoError || !parsed.isObject()) {
+        if (jsonValid != nullptr) {
+            *jsonValid = false;
+        }
+        return {QStringLiteral("<invalid_json>")};
+    }
+
+    const QJsonObject args = parsed.object();
+    QStringList missing;
+    for (const QString &key : required) {
+        if (!args.contains(key)) {
+            missing.push_back(key);
+            continue;
+        }
+        const QJsonValue value = args.value(key);
+        if (value.isNull() || (value.isString() && value.toString().trimmed().isEmpty())) {
+            missing.push_back(key);
+        }
+    }
+    return missing;
 }
 
 QJsonObject redactedToolArgs(const QJsonObject &args)
@@ -420,6 +487,12 @@ bool isCurrentDateQuery(const QString &input)
     return lowered.contains(QStringLiteral("what day is it"))
         || lowered.contains(QStringLiteral("what's the date"))
         || lowered.contains(QStringLiteral("whats the date"))
+        || lowered.contains(QStringLiteral("and the date"))
+        || lowered == QStringLiteral("the date?")
+        || lowered == QStringLiteral("the date")
+        || lowered.contains(QStringLiteral("and tomorrow"))
+        || lowered == QStringLiteral("tomorrow?")
+        || lowered == QStringLiteral("tomorrow")
         || lowered.contains(QStringLiteral("today's date"))
         || lowered.contains(QStringLiteral("todays date"))
         || lowered.contains(QStringLiteral("current date"));
@@ -552,6 +625,18 @@ bool shouldUseDesktopContextForPrompt(const QString &input, IntentType intent)
 
     return lowered.contains(QStringLiteral("this"))
         || DesktopActionContextPolicy::isDesktopContextRecallRequest(input)
+        || lowered.contains(QStringLiteral("what am i doing"))
+        || lowered.contains(QStringLiteral("what i'm doing"))
+        || lowered.contains(QStringLiteral("what im doing"))
+        || lowered.contains(QStringLiteral("what's open"))
+        || lowered.contains(QStringLiteral("whats open"))
+        || lowered.contains(QStringLiteral("what am i working on"))
+        || lowered.contains(QStringLiteral("what i'm working on"))
+        || lowered.contains(QStringLiteral("what im working on"))
+        || lowered.contains(QStringLiteral("vs code"))
+        || lowered.contains(QStringLiteral("vscode"))
+        || lowered.contains(QStringLiteral("visual studio code"))
+        || lowered.contains(QStringLiteral("desktop"))
         || lowered.contains(QStringLiteral("current"))
         || lowered.contains(QStringLiteral("here"))
         || lowered.contains(QStringLiteral("tab"))
@@ -2603,6 +2688,10 @@ void AssistantController::submitText(const QString &text)
 
     clearSurfaceError(QStringLiteral("assistant"));
     m_lastPromptForAiLog = trimmed;
+    m_lastAgentAllowedTools.clear();
+    m_lastProviderToolFilterReason.clear();
+    m_lastProviderToolCompatibilityMode.clear();
+    m_lastToolsRemovedForProvider.clear();
     invalidateWakeMonitorResume();
 
     bool wakeDetected = false;
@@ -2713,6 +2802,16 @@ void AssistantController::submitText(const QString &text)
         routedInput,
         routeContext.effectiveIntent,
         m_latestDesktopContext);
+    routingTrace.contextInjected = !m_latestDesktopContextSummary.trimmed().isEmpty()
+        && DesktopContextSelectionBuilder::contextRelevanceScore(
+               routedInput,
+               routeContext.effectiveIntent,
+               m_latestDesktopContext) >= 0.55;
+    routingTrace.contextDropReason = routingTrace.contextInjected
+        ? QString()
+        : (m_latestDesktopContextSummary.trimmed().isEmpty()
+               ? QStringLiteral("context_drop.no_desktop_summary")
+               : routingTrace.contextInjectionReason);
 
     const bool hasUsableActionThread = m_actionThreadTracker
         ? m_actionThreadTracker->isCurrentUsable(nowMs)
@@ -3244,12 +3343,22 @@ void AssistantController::submitText(const QString &text)
         routingTrace.reasonCodes.push_back(QStringLiteral("continuation.override"));
         if (decision.kind == InputRouteKind::AgentConversation) {
             routingTrace.finalExecutedRoute = QStringLiteral("agent_conversation");
+            routingTrace.providerToolFilterReason = m_lastProviderToolFilterReason.trimmed().isEmpty()
+                ? QStringLiteral("provider_tools.pending_request")
+                : m_lastProviderToolFilterReason;
+            routingTrace.providerToolCompatibilityMode = m_lastProviderToolCompatibilityMode.trimmed().isEmpty()
+                ? QStringLiteral("pending")
+                : m_lastProviderToolCompatibilityMode;
+            routingTrace.toolsRemovedForProvider = m_lastToolsRemovedForProvider;
             if (m_routingTraceEmitter) {
                 m_routingTraceEmitter->emitRouteFinal(m_loggingService, routingTrace);
             }
             startAgentConversationRequest(continuationInput, IntentType::GENERAL_CHAT);
         } else {
             routingTrace.finalExecutedRoute = QStringLiteral("conversation");
+            routingTrace.providerToolFilterReason = QStringLiteral("provider_tools.not_applicable");
+            routingTrace.providerToolCompatibilityMode = QStringLiteral("conversation_no_tools");
+            routingTrace.toolsRemovedForProvider.clear();
             if (m_routingTraceEmitter) {
                 m_routingTraceEmitter->emitRouteFinal(m_loggingService, routingTrace);
             }
@@ -3286,6 +3395,9 @@ void AssistantController::submitText(const QString &text)
         routingTrace.overridesApplied.push_back(QStringLiteral("override.fallback_conversation"));
         routingTrace.reasonCodes.push_back(QStringLiteral("route.fallback"));
         routingTrace.finalExecutedRoute = QStringLiteral("conversation");
+        routingTrace.providerToolFilterReason = QStringLiteral("provider_tools.not_applicable");
+        routingTrace.providerToolCompatibilityMode = QStringLiteral("conversation_no_tools");
+        routingTrace.toolsRemovedForProvider.clear();
         if (m_routingTraceEmitter) {
             m_routingTraceEmitter->emitRouteFinal(m_loggingService, routingTrace);
         }
@@ -3294,6 +3406,17 @@ void AssistantController::submitText(const QString &text)
         routingTrace.finalExecutedRoute = executedRoute.trimmed().isEmpty()
             ? routeKindToString(decision.kind).toLower()
             : executedRoute;
+        if (decision.kind == InputRouteKind::AgentConversation
+            || routingTrace.finalExecutedRoute == QStringLiteral("agent_conversation")) {
+            routingTrace.providerToolFilterReason = m_lastProviderToolFilterReason;
+            routingTrace.providerToolCompatibilityMode = m_lastProviderToolCompatibilityMode;
+            routingTrace.toolsRemovedForProvider = m_lastToolsRemovedForProvider;
+        } else if (decision.kind == InputRouteKind::Conversation
+                   || routingTrace.finalExecutedRoute == QStringLiteral("conversation")) {
+            routingTrace.providerToolFilterReason = QStringLiteral("provider_tools.not_applicable");
+            routingTrace.providerToolCompatibilityMode = QStringLiteral("conversation_no_tools");
+            routingTrace.toolsRemovedForProvider.clear();
+        }
         routingTrace.confirmationGateTriggered = routingTrace.finalExecutedRoute == QStringLiteral("pending_confirmation");
         routingTrace.confirmationOutcome = routingTrace.confirmationGateTriggered
             ? QStringLiteral("pending")
@@ -5258,6 +5381,7 @@ bool AssistantController::finalizeReply(const QString &source,
                 {QStringLiteral("status"), status}
             });
     }
+    const QString promptForAiExchange = m_lastPromptForAiLog;
     const bool spoke = m_responseFinalizer->finalizeResponse(
         source,
         m_activeTurnId,
@@ -5300,7 +5424,7 @@ bool AssistantController::finalizeReply(const QString &source,
     }
 
     if (logAgentExchange && m_loggingService) {
-        m_loggingService->logAgentExchange(m_lastPromptForAiLog,
+        m_loggingService->logAgentExchange(promptForAiExchange,
                                            reply.displayText,
                                            source,
                                            m_agentCapabilities,
@@ -5541,9 +5665,12 @@ void AssistantController::startAgentConversationRequest(const QString &input, In
     m_activeActionSession = m_assistantBehaviorPolicy
         ? m_assistantBehaviorPolicy->createActionSession(input, routeDecision, toolPlan, trustDecision, m_latestDesktopContext)
         : ActionSession{};
-    const QList<AgentToolSpec> relevantTools = m_assistantBehaviorPolicy
+    QList<AgentToolSpec> relevantTools = m_assistantBehaviorPolicy
         ? m_assistantBehaviorPolicy->selectRelevantTools(selectionInput, expectedIntent, availableTools)
         : m_promptAdapter->getRelevantTools(input, expectedIntent, availableTools);
+    if (relevantTools.isEmpty()) {
+        relevantTools = availableTools;
+    }
     if (m_loggingService) {
         m_loggingService->logBehaviorEvent(SelectionTelemetryBuilder::toolExposureEvent(
             QStringLiteral("agent"),
@@ -5662,9 +5789,13 @@ void AssistantController::startAgentConversationRequest(const QString &input, In
         turnPlan = m_turnOrchestrationRuntime->buildPlan(runtimeInput);
     }
 
-    const QList<AgentToolSpec> requestTools = m_turnOrchestrationRuntime
+    QList<AgentToolSpec> requestTools = m_turnOrchestrationRuntime
         ? turnPlan.selectedTools
         : relevantTools;
+    if (requestTools.isEmpty()) {
+        requestTools = relevantTools;
+    }
+    m_lastAgentAllowedTools = requestTools;
     const AgentRequestContext requestContext{
         .turnId = m_activeTurnId,
         .modelId = modelId,
@@ -5691,6 +5822,12 @@ void AssistantController::startAgentConversationRequest(const QString &input, In
         m_promptAdapter,
         m_agentCapabilities,
         requestContext);
+    if (!startResult.effectiveTools.isEmpty()) {
+        m_lastAgentAllowedTools = startResult.effectiveTools;
+    }
+    m_lastProviderToolFilterReason = startResult.providerToolFilterReason;
+    m_lastProviderToolCompatibilityMode = startResult.providerToolCompatibilityMode;
+    m_lastToolsRemovedForProvider = startResult.toolsRemovedForProvider;
     m_activeAgentUsesResponses = startResult.transportMode == AgentTransportMode::Responses;
     m_activeRequestId = startResult.requestId;
 }
@@ -5906,9 +6043,13 @@ void AssistantController::continueAgentConversation(const QList<AgentToolResult>
         turnPlan = m_turnOrchestrationRuntime->buildPlan(runtimeInput);
     }
 
-    const QList<AgentToolSpec> requestTools = m_turnOrchestrationRuntime
+    QList<AgentToolSpec> requestTools = m_turnOrchestrationRuntime
         ? turnPlan.selectedTools
         : relevantTools;
+    if (requestTools.isEmpty()) {
+        requestTools = relevantTools;
+    }
+    m_lastAgentAllowedTools = requestTools;
     const AgentRequestContext requestContext{
         .turnId = m_activeTurnId,
         .modelId = modelId,
@@ -5932,11 +6073,18 @@ void AssistantController::continueAgentConversation(const QList<AgentToolResult>
         .memoryAutoWrite = m_settings->memoryAutoWrite(),
         .timeoutMs = effectiveRequestTimeoutMs(m_settings)
     };
-    m_activeRequestId = m_aiRequestCoordinator->continueAgentRequest(
+    const AgentStartRequestResult continueResult = m_aiRequestCoordinator->continueAgentRequest(
         m_aiBackendClient,
         m_promptAdapter,
         m_activeAgentUsesResponses,
         requestContext);
+    if (!continueResult.effectiveTools.isEmpty()) {
+        m_lastAgentAllowedTools = continueResult.effectiveTools;
+    }
+    m_lastProviderToolFilterReason = continueResult.providerToolFilterReason;
+    m_lastProviderToolCompatibilityMode = continueResult.providerToolCompatibilityMode;
+    m_lastToolsRemovedForProvider = continueResult.toolsRemovedForProvider;
+    m_activeRequestId = continueResult.requestId;
 }
 
 QList<AgentToolResult> AssistantController::executeAgentToolCalls(const QList<AgentToolCall> &toolCalls)
@@ -6409,14 +6557,23 @@ void AssistantController::handleHybridAgentFinished(const QString &payload)
 
     const IntentType returnedIntent = intentTypeFromString(QString::fromStdString(json.value("intent", std::string{})));
     const QString message = QString::fromStdString(json.value("message", std::string{})).trimmed();
-    const QList<AgentToolSpec> relevantTools = m_promptAdapter->getRelevantTools(
-        m_lastAgentInput,
-        m_lastAgentIntent,
-        m_agentToolbox->builtInTools());
-    const QStringList allowedTaskTypes = [&relevantTools]() {
+    const QList<AgentToolSpec> relevantTools = m_lastAgentAllowedTools.isEmpty()
+        ? m_promptAdapter->getRelevantTools(
+            m_lastAgentInput,
+            m_lastAgentIntent,
+            m_agentToolbox->builtInTools())
+        : m_lastAgentAllowedTools;
+    const QHash<QString, AgentToolSpec> allowedToolSpecs = [&relevantTools]() {
+        QHash<QString, AgentToolSpec> map;
+        for (const AgentToolSpec &tool : relevantTools) {
+            map.insert(tool.name, tool);
+        }
+        return map;
+    }();
+    const QStringList allowedTaskTypes = [&allowedToolSpecs]() {
         QStringList names;
-        for (const auto &tool : relevantTools) {
-            names.push_back(tool.name);
+        for (auto it = allowedToolSpecs.constBegin(); it != allowedToolSpecs.constEnd(); ++it) {
+            names.push_back(it.key());
         }
         return names;
     }();
@@ -6429,6 +6586,28 @@ void AssistantController::handleHybridAgentFinished(const QString &payload)
                              QStringLiteral("Tool %1 is not allowed for this intent.").arg(call.name),
                              false);
             continue;
+        }
+        if (allowedToolSpecs.contains(call.name)) {
+            bool argsJsonValid = true;
+            const QStringList missingArgs = missingRequiredToolArguments(
+                allowedToolSpecs.value(call.name),
+                call.argumentsJson,
+                &argsJsonValid);
+            if (!argsJsonValid) {
+                appendAgentTrace(QStringLiteral("validation"),
+                                 QStringLiteral("Rejected tool call"),
+                                 QStringLiteral("Tool %1 arguments are not valid JSON.").arg(call.name),
+                                 false);
+                continue;
+            }
+            if (!missingArgs.isEmpty()) {
+                appendAgentTrace(QStringLiteral("validation"),
+                                 QStringLiteral("Rejected tool call"),
+                                 QStringLiteral("Tool %1 is missing required arguments: %2")
+                                     .arg(call.name, missingArgs.join(QStringLiteral(", "))),
+                                 false);
+                continue;
+            }
         }
         toolCalls.push_back(call);
     }

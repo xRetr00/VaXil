@@ -1,6 +1,7 @@
 #include "cognition/SelectionContextCompiler.h"
 
 #include <QDateTime>
+#include <QRegularExpression>
 
 #include "cognition/CompiledContextHistoryPolicy.h"
 #include "cognition/CompiledContextLayeredSignalBuilder.h"
@@ -128,7 +129,10 @@ void appendPromptRecord(QList<MemoryRecord> &records,
                         const QString &updatedAt)
 {
     const QString trimmedValue = value.trimmed();
-    if (trimmedValue.isEmpty()) {
+    static const QRegularExpression emptyFieldPattern(
+        QStringLiteral("^(Task type|Topic|Document|Page|Site|Workspace|App|Thread):\\s*\\.$"),
+        QRegularExpression::CaseInsensitiveOption);
+    if (trimmedValue.isEmpty() || emptyFieldPattern.match(trimmedValue).hasMatch()) {
         return;
     }
 
@@ -176,105 +180,139 @@ QList<MemoryRecord> promptContextRecordsForIntent(IntentType intent,
                        summary,
                        0.92f,
                        updatedAt);
-    appendPromptRecord(records,
-                       QStringLiteral("desktop_prompt_task"),
-                       QStringLiteral("Task type: %1.").arg(taskId),
-                       0.9f,
-                       updatedAt);
+    if (!taskId.isEmpty()) {
+        appendPromptRecord(records,
+                           QStringLiteral("desktop_prompt_task"),
+                           QStringLiteral("Task type: %1.").arg(taskId),
+                           0.9f,
+                           updatedAt);
+    }
 
     switch (intent) {
     case IntentType::LIST_FILES:
-        appendPromptRecord(records,
-                           QStringLiteral("desktop_prompt_workspace"),
-                           QStringLiteral("Workspace: %1.").arg(workspace),
-                           0.86f,
-                           updatedAt);
-        appendPromptRecord(records,
-                           QStringLiteral("desktop_prompt_document"),
-                           QStringLiteral("Document: %1.").arg(document),
-                           0.84f,
-                           updatedAt);
-        break;
-    case IntentType::READ_FILE:
-    case IntentType::WRITE_FILE:
-        appendPromptRecord(records,
-                           QStringLiteral("desktop_prompt_document"),
-                           QStringLiteral("Document: %1.").arg(document),
-                           0.9f,
-                           updatedAt);
-        appendPromptRecord(records,
-                           QStringLiteral("desktop_prompt_workspace"),
-                           QStringLiteral("Workspace: %1.").arg(workspace),
-                           0.86f,
-                           updatedAt);
-        appendPromptRecord(records,
-                           QStringLiteral("desktop_prompt_app"),
-                           QStringLiteral("App: %1.").arg(app),
-                           0.8f,
-                           updatedAt);
-        break;
-    case IntentType::MEMORY_WRITE:
-        appendPromptRecord(records,
-                           QStringLiteral("desktop_prompt_topic"),
-                           QStringLiteral("Topic: %1.").arg(topic),
-                           0.88f,
-                           updatedAt);
-        appendPromptRecord(records,
-                           QStringLiteral("desktop_prompt_thread"),
-                           QStringLiteral("Thread: %1.").arg(threadId),
-                           0.84f,
-                           updatedAt);
-        break;
-    case IntentType::GENERAL_CHAT:
-        appendPromptRecord(records,
-                           QStringLiteral("desktop_prompt_topic"),
-                           QStringLiteral("Topic: %1.").arg(topic),
-                           0.88f,
-                           updatedAt);
-        if (isBrowserTask(taskId)) {
-            appendPromptRecord(records,
-                               QStringLiteral("desktop_prompt_document"),
-                               QStringLiteral("Page: %1.").arg(document),
-                               0.88f,
-                               updatedAt);
-            appendPromptRecord(records,
-                               QStringLiteral("desktop_prompt_site"),
-                               QStringLiteral("Site: %1.").arg(site),
-                               0.86f,
-                               updatedAt);
-        } else if (isEditorTask(taskId)) {
-            appendPromptRecord(records,
-                               QStringLiteral("desktop_prompt_document"),
-                               QStringLiteral("Document: %1.").arg(document),
-                               0.88f,
-                               updatedAt);
+        if (!workspace.isEmpty()) {
             appendPromptRecord(records,
                                QStringLiteral("desktop_prompt_workspace"),
                                QStringLiteral("Workspace: %1.").arg(workspace),
                                0.86f,
                                updatedAt);
-        } else {
+        }
+        if (!document.isEmpty()) {
             appendPromptRecord(records,
                                QStringLiteral("desktop_prompt_document"),
                                QStringLiteral("Document: %1.").arg(document),
                                0.84f,
                                updatedAt);
+        }
+        break;
+    case IntentType::READ_FILE:
+    case IntentType::WRITE_FILE:
+        if (!document.isEmpty()) {
             appendPromptRecord(records,
-                               QStringLiteral("desktop_prompt_site"),
-                               QStringLiteral("Site: %1.").arg(site),
-                               0.82f,
+                               QStringLiteral("desktop_prompt_document"),
+                               QStringLiteral("Document: %1.").arg(document),
+                               0.9f,
                                updatedAt);
+        }
+        if (!workspace.isEmpty()) {
             appendPromptRecord(records,
                                QStringLiteral("desktop_prompt_workspace"),
                                QStringLiteral("Workspace: %1.").arg(workspace),
-                               0.82f,
+                               0.86f,
                                updatedAt);
         }
-        appendPromptRecord(records,
-                           QStringLiteral("desktop_prompt_thread"),
-                           QStringLiteral("Thread: %1.").arg(threadId),
-                           0.84f,
-                           updatedAt);
+        if (!app.isEmpty()) {
+            appendPromptRecord(records,
+                               QStringLiteral("desktop_prompt_app"),
+                               QStringLiteral("App: %1.").arg(app),
+                               0.8f,
+                               updatedAt);
+        }
+        break;
+    case IntentType::MEMORY_WRITE:
+        if (!topic.isEmpty()) {
+            appendPromptRecord(records,
+                               QStringLiteral("desktop_prompt_topic"),
+                               QStringLiteral("Topic: %1.").arg(topic),
+                               0.88f,
+                               updatedAt);
+        }
+        if (!threadId.isEmpty()) {
+            appendPromptRecord(records,
+                               QStringLiteral("desktop_prompt_thread"),
+                               QStringLiteral("Thread: %1.").arg(threadId),
+                               0.84f,
+                               updatedAt);
+        }
+        break;
+    case IntentType::GENERAL_CHAT:
+        if (!topic.isEmpty()) {
+            appendPromptRecord(records,
+                               QStringLiteral("desktop_prompt_topic"),
+                               QStringLiteral("Topic: %1.").arg(topic),
+                               0.88f,
+                               updatedAt);
+        }
+        if (isBrowserTask(taskId)) {
+            if (!document.isEmpty()) {
+                appendPromptRecord(records,
+                                   QStringLiteral("desktop_prompt_document"),
+                                   QStringLiteral("Page: %1.").arg(document),
+                                   0.88f,
+                                   updatedAt);
+            }
+            if (!site.isEmpty()) {
+                appendPromptRecord(records,
+                                   QStringLiteral("desktop_prompt_site"),
+                                   QStringLiteral("Site: %1.").arg(site),
+                                   0.86f,
+                                   updatedAt);
+            }
+        } else if (isEditorTask(taskId)) {
+            if (!document.isEmpty()) {
+                appendPromptRecord(records,
+                                   QStringLiteral("desktop_prompt_document"),
+                                   QStringLiteral("Document: %1.").arg(document),
+                                   0.88f,
+                                   updatedAt);
+            }
+            if (!workspace.isEmpty()) {
+                appendPromptRecord(records,
+                                   QStringLiteral("desktop_prompt_workspace"),
+                                   QStringLiteral("Workspace: %1.").arg(workspace),
+                                   0.86f,
+                                   updatedAt);
+            }
+        } else {
+            if (!document.isEmpty()) {
+                appendPromptRecord(records,
+                                   QStringLiteral("desktop_prompt_document"),
+                                   QStringLiteral("Document: %1.").arg(document),
+                                   0.84f,
+                                   updatedAt);
+            }
+            if (!site.isEmpty()) {
+                appendPromptRecord(records,
+                                   QStringLiteral("desktop_prompt_site"),
+                                   QStringLiteral("Site: %1.").arg(site),
+                                   0.82f,
+                                   updatedAt);
+            }
+            if (!workspace.isEmpty()) {
+                appendPromptRecord(records,
+                                   QStringLiteral("desktop_prompt_workspace"),
+                                   QStringLiteral("Workspace: %1.").arg(workspace),
+                                   0.82f,
+                                   updatedAt);
+            }
+        }
+        if (!threadId.isEmpty()) {
+            appendPromptRecord(records,
+                               QStringLiteral("desktop_prompt_thread"),
+                               QStringLiteral("Thread: %1.").arg(threadId),
+                               0.84f,
+                               updatedAt);
+        }
         break;
     }
 

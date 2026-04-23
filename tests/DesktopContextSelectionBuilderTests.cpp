@@ -10,6 +10,7 @@ private slots:
     void includesFreshEditorContextForWorkQueries();
     void includesWorkModeAndDocumentMetadata();
     void skipsNoisyClipboardContext();
+    void allowsExplicitWorkReferentDespiteNoisyClipboardContext();
     void skipsIrrelevantGeneralChat();
     void skipsStaleTopicForUnrelatedCorrection();
     void includesExplicitCurrentPageReference();
@@ -83,6 +84,25 @@ void DesktopContextSelectionBuilderTests::skipsNoisyClipboardContext()
         false);
 
     QCOMPARE(selectionInput, QStringLiteral("what did I copy?"));
+}
+
+void DesktopContextSelectionBuilderTests::allowsExplicitWorkReferentDespiteNoisyClipboardContext()
+{
+    QVariantMap context;
+    context.insert(QStringLiteral("taskId"), QStringLiteral("clipboard"));
+    context.insert(QStringLiteral("clipboardPreview"), QStringLiteral("non_text:image/png"));
+    context.insert(QStringLiteral("topic"), QStringLiteral("current editor task"));
+
+    const QString selectionInput = DesktopContextSelectionBuilder::buildSelectionInput(
+        QStringLiteral("what am I doing right now"),
+        IntentType::GENERAL_CHAT,
+        QStringLiteral("Editor document: PLAN.md"),
+        context,
+        1000,
+        1500,
+        false);
+
+    QVERIFY(selectionInput.contains(QStringLiteral("Current desktop context:")));
 }
 
 void DesktopContextSelectionBuilderTests::skipsIrrelevantGeneralChat()

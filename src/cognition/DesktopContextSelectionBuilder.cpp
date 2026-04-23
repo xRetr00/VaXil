@@ -25,7 +25,7 @@ QStringList contentWords(const QString &text)
         QStringLiteral("the"), QStringLiteral("and"), QStringLiteral("for"), QStringLiteral("with"),
         QStringLiteral("this"), QStringLiteral("that"), QStringLiteral("what"), QStringLiteral("why"),
         QStringLiteral("how"), QStringLiteral("can"), QStringLiteral("you"), QStringLiteral("about"),
-        QStringLiteral("latest"), QStringLiteral("current"), QStringLiteral("open")
+        QStringLiteral("latest"), QStringLiteral("current"), QStringLiteral("open"), QStringLiteral("doing")
     };
     QStringList filtered;
     for (const QString &word : words) {
@@ -185,19 +185,24 @@ double DesktopContextSelectionBuilder::contextRelevanceScore(const QString &user
                                                              IntentType intent,
                                                              const QVariantMap &desktopContext)
 {
-    if (isNoisyClipboardContext(desktopContext)) {
-        return 0.0;
-    }
-    if (intent != IntentType::GENERAL_CHAT) {
-        return 0.85;
-    }
-
     const QString lowered = userInput.trimmed().toLower();
     const QString taskId = cleanedField(desktopContext, QStringLiteral("taskId")).toLower();
     const bool explicitReferent = containsAny(lowered, {
+        QStringLiteral("what am i doing"),
+        QStringLiteral("what i'm doing"),
+        QStringLiteral("what im doing"),
+        QStringLiteral("what's open"),
+        QStringLiteral("whats open"),
+        QStringLiteral("what am i working on"),
+        QStringLiteral("what i'm working on"),
+        QStringLiteral("what im working on"),
+        QStringLiteral("vs code"),
+        QStringLiteral("vscode"),
+        QStringLiteral("visual studio code"),
         QStringLiteral("this"),
         QStringLiteral("current"),
         QStringLiteral("here"),
+        QStringLiteral("desktop"),
         QStringLiteral("tab"),
         QStringLiteral("page"),
         QStringLiteral("window"),
@@ -206,6 +211,19 @@ double DesktopContextSelectionBuilder::contextRelevanceScore(const QString &user
         QStringLiteral("clipboard"),
         QStringLiteral("copied")
     });
+    if (isNoisyClipboardContext(desktopContext)) {
+        const bool clipboardReferent = containsAny(lowered, {
+            QStringLiteral("clipboard"),
+            QStringLiteral("copied"),
+            QStringLiteral("copy")
+        });
+        if (!explicitReferent || clipboardReferent) {
+            return 0.0;
+        }
+    }
+    if (intent != IntentType::GENERAL_CHAT) {
+        return 0.85;
+    }
     if (explicitReferent) {
         return 0.92;
     }

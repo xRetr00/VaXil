@@ -468,6 +468,10 @@ private:
     ReasoningMode m_activeReasoningMode = ReasoningMode::Balanced;
     bool m_activeAgentUsesResponses = false;
     ActionSession m_activeActionSession;
+    QList<AgentToolSpec> m_lastAgentAllowedTools;
+    QString m_lastProviderToolFilterReason;
+    QString m_lastProviderToolCompatibilityMode;
+    QStringList m_lastToolsRemovedForProvider;
     bool m_hasPendingConfirmation = false;
     ActionSession m_pendingActionSession;
     InputRouteDecision m_pendingRouteDecision;

@@ -105,6 +105,8 @@ QJsonObject RoutingTraceEmitter::buildRouteFinalPayload(const RoutingTrace &trac
     payload.insert(QStringLiteral("tools_removed_for_provider"), stringsToArray(trace.toolsRemovedForProvider));
     payload.insert(QStringLiteral("context_relevance_score"), trace.contextRelevanceScore);
     payload.insert(QStringLiteral("context_injection_reason"), trace.contextInjectionReason);
+    payload.insert(QStringLiteral("context_injected"), trace.contextInjected);
+    payload.insert(QStringLiteral("context_drop_reason"), trace.contextDropReason);
     payload.insert(QStringLiteral("confirmation_gate_triggered"), trace.confirmationGateTriggered);
     payload.insert(QStringLiteral("confirmation_outcome"), trace.confirmationOutcome);
     payload.insert(QStringLiteral("reason_codes"), stringsToArray(trace.reasonCodes));

@@ -40,7 +40,11 @@ bool canSatisfyEvidenceNeed(const QString &family, const QString &toolName)
 {
     return family == QStringLiteral("web")
         || toolName == QStringLiteral("browser_fetch_text")
-        || family == QStringLiteral("file")
+        || toolName == QStringLiteral("file_read")
+        || toolName == QStringLiteral("file_search")
+        || toolName == QStringLiteral("log_search")
+        || toolName == QStringLiteral("log_tail")
+        || toolName == QStringLiteral("ai_log_read")
         || family == QStringLiteral("memory");
 }
 }
@@ -125,7 +129,7 @@ AgentToolLoopGuardDecision AgentToolLoopGuard::evaluateResults(
     if (state->toolDriftDetected) {
         decision.stop = true;
         decision.reasonCode = QStringLiteral("tool_loop.cross_family_drift");
-    } else if (state->evidenceSufficient && state->totalToolCalls > 1 && state->consecutiveFailureCount > 0) {
+    } else if (state->evidenceSufficient && state->totalToolCalls > 1 && state->consecutiveFailureCount >= 2) {
         decision.stop = true;
         decision.reasonCode = QStringLiteral("tool_loop.evidence_sufficient");
     } else if (state->totalToolCalls >= config.maxToolCallsPerTurn) {

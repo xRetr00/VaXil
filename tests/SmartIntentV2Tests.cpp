@@ -27,6 +27,7 @@ private slots:
     void blocksBackendForTerminalIntent();
     void blocksBackendForExpandedTerminalPhrase();
     void blocksBackendForSocialQuestion();
+    void keepsLocalTimeDatePriorityOverBackend();
     void arbitratesContinuationAsPriorityRoute();
     void resolvesContextReferenceToExecutionTask();
     void prefersClarificationAtHighAmbiguity();
@@ -298,6 +299,42 @@ void SmartIntentV2Tests::blocksBackendForSocialQuestion()
 
     QCOMPARE(result.decision.kind, InputRouteKind::LocalResponse);
     QVERIFY(result.reasonCodes.contains(QStringLiteral("override.blocked.backend_for_social")));
+}
+
+void SmartIntentV2Tests::keepsLocalTimeDatePriorityOverBackend()
+{
+    RouteArbitrator arbitrator;
+    TurnSignals turnSignals;
+    TurnState state;
+    TurnGoalSet goals;
+    goals.primaryGoal.kind = UserGoalKind::InfoQuery;
+    QList<ExecutionIntentCandidate> candidates;
+
+    ExecutionIntentCandidate backend;
+    backend.kind = ExecutionIntentKind::BackendReasoning;
+    backend.route.kind = InputRouteKind::Conversation;
+    backend.score = 0.88f;
+    backend.requiresBackend = true;
+    backend.backendPriority = 95;
+    backend.reasonCodes = {QStringLiteral("candidate.backend")};
+    candidates.push_back(backend);
+
+    InputRouteDecision policyDecision;
+    policyDecision.kind = InputRouteKind::LocalResponse;
+    policyDecision.status = QStringLiteral("Local date response");
+    const RouteArbitrationResult result = arbitrator.arbitrate(
+        policyDecision,
+        turnSignals,
+        state,
+        goals,
+        candidates,
+        IntentConfidence{.signalConfidence = 0.3f, .goalConfidence = 0.5f, .executionConfidence = 0.5f, .finalConfidence = 0.32f},
+        0.62f,
+        IntentAdvisorSuggestion{.available = false, .backendNecessity = 0.95f},
+        false);
+
+    QCOMPARE(result.decision.kind, InputRouteKind::LocalResponse);
+    QVERIFY(result.reasonCodes.contains(QStringLiteral("arbitrator.local_time_or_date_priority")));
 }
 
 void SmartIntentV2Tests::arbitratesContinuationAsPriorityRoute()

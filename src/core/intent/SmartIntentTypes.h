@@ -228,6 +228,8 @@ struct RoutingTrace {
     QStringList toolsRemovedForProvider;
     float contextRelevanceScore = 0.0f;
     QString contextInjectionReason;
+    bool contextInjected = false;
+    QString contextDropReason;
     QStringList overridesApplied;
     QStringList reasonCodes;
 };

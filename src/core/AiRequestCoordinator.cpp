@@ -27,6 +27,15 @@ bool debugPromptDumpEnabled()
                               .value(QStringLiteral("VAXIL_DEBUG_PROMPT_DUMP"))
                               .trimmed()
                               .toLower();
+    if (value.isEmpty()) {
+        return true;
+    }
+    if (value == QStringLiteral("0")
+        || value == QStringLiteral("false")
+        || value == QStringLiteral("no")
+        || value == QStringLiteral("off")) {
+        return false;
+    }
     return value == QStringLiteral("1")
         || value == QStringLiteral("true")
         || value == QStringLiteral("yes")
@@ -193,6 +202,18 @@ QString formatMessages(const QList<AiMessage> &messages)
         lines << message.content;
     }
     return lines.join(QStringLiteral("\n"));
+}
+
+int promptContextSize(const std::optional<PromptTurnContext> &context)
+{
+    if (!context.has_value()) {
+        return 0;
+    }
+    return context->desktopContext.size()
+        + context->visionContext.size()
+        + context->activeTaskState.size()
+        + context->verifiedEvidence.size()
+        + context->activeBehavioralConstraints.size();
 }
 
 QString formatToolSpecs(const QList<AgentToolSpec> &tools)
@@ -422,7 +443,7 @@ quint64 AiRequestCoordinator::startConversationRequest(AiBackendClient *backendC
         const QString providerEndpoint = providerEndpointForAudit(m_settings);
         m_loggingService->infoFor(
             QStringLiteral("ai_prompt"),
-            QStringLiteral("[conversation_request] provider=%1 endpoint=%2 model=%3 mode=%4 stream=%5 timeoutMs=%6 historyCount=%7 visionContextChars=%8 sessionGoal=%9 nextStepHint=%10")
+            QStringLiteral("[conversation_request] provider=%1 endpoint=%2 model=%3 mode=%4 stream=%5 timeoutMs=%6 historyCount=%7 visionContextChars=%8 sessionGoal=%9 nextStepHint=%10 prompt_size=%11 context_size=%12 tools_count=%13")
                 .arg(providerKind,
                      providerEndpoint,
                      context.modelId,
@@ -432,10 +453,15 @@ quint64 AiRequestCoordinator::startConversationRequest(AiBackendClient *backendC
                      QString::number(context.history.size()),
                      QString::number(context.visionContext.size()),
                      context.sessionGoal.simplified(),
-                     context.nextStepHint.simplified()));
+                     context.nextStepHint.simplified(),
+                     QString::number(formatMessages(messages).size()),
+                     QString::number(promptContextSize(context.promptContext)),
+                     QString::number(context.promptContext.has_value() ? context.promptContext->allowedTools.size() : 0)));
         m_loggingService->infoFor(QStringLiteral("memory_audit"), clipAuditText(formatMemoryContext(context.memory)));
         if (debugPromptDumpEnabled()) {
-            m_loggingService->infoFor(QStringLiteral("ai_prompt"), clipAuditText(formatMessages(messages)));
+            const QString formattedMessages = formatMessages(messages);
+            m_loggingService->infoFor(QStringLiteral("ai_prompt"), clipAuditText(formattedMessages));
+            m_loggingService->logAiExchange(formattedMessages, QString(), QStringLiteral("conversation_prompt"), QStringLiteral("Prompt sent"));
         }
     }
 
@@ -499,7 +525,11 @@ AgentStartRequestResult AiRequestCoordinator::startAgentRequest(AiBackendClient 
         context.modelId,
         context.tools,
         result.transportMode);
+    result.providerToolFilterReason = providerToolFilter.reasonCode;
+    result.providerToolCompatibilityMode = providerToolFilter.compatibilityMode;
+    result.toolsRemovedForProvider = providerToolFilter.removedTools;
     compatibleContext.tools = providerToolFilter.tools;
+    result.effectiveTools = compatibleContext.tools;
     if (compatibleContext.promptContext.has_value()) {
         compatibleContext.promptContext->allowedTools = compatibleContext.tools;
     }
@@ -646,23 +676,29 @@ AgentStartRequestResult AiRequestCoordinator::startAgentRequest(AiBackendClient 
     return result;
 }
 
-quint64 AiRequestCoordinator::continueAgentRequest(AiBackendClient *backendClient,
-                                                   PromptAdapter *promptAdapter,
-                                                   bool useResponses,
-                                                   const AgentRequestContext &context) const
+AgentStartRequestResult AiRequestCoordinator::continueAgentRequest(AiBackendClient *backendClient,
+                                                                   PromptAdapter *promptAdapter,
+                                                                   bool useResponses,
+                                                                   const AgentRequestContext &context) const
 {
+    AgentStartRequestResult result;
+    result.transportMode = useResponses ? AgentTransportMode::Responses : AgentTransportMode::ChatAdapter;
     if (backendClient == nullptr || promptAdapter == nullptr) {
-        return 0;
+        return result;
     }
 
     AgentRequestContext compatibleContext = context;
-    const AgentTransportMode transportMode = useResponses ? AgentTransportMode::Responses : AgentTransportMode::ChatAdapter;
+    const AgentTransportMode transportMode = result.transportMode;
     const ProviderToolFilterResult providerToolFilter = filterToolsForProvider(
         providerKindForAudit(m_settings),
         context.modelId,
         context.tools,
         transportMode);
+    result.providerToolFilterReason = providerToolFilter.reasonCode;
+    result.providerToolCompatibilityMode = providerToolFilter.compatibilityMode;
+    result.toolsRemovedForProvider = providerToolFilter.removedTools;
     compatibleContext.tools = providerToolFilter.tools;
+    result.effectiveTools = compatibleContext.tools;
     if (compatibleContext.promptContext.has_value()) {
         compatibleContext.promptContext->allowedTools = compatibleContext.tools;
     }
@@ -729,7 +765,8 @@ quint64 AiRequestCoordinator::continueAgentRequest(AiBackendClient *backendClien
                 QStringLiteral("agent_continue"),
                 QStringLiteral("responses"));
         }
-        return requestId;
+        result.requestId = requestId;
+        return result;
     }
 
     const auto messages = compatibleContext.promptContext.has_value()
@@ -786,11 +823,12 @@ quint64 AiRequestCoordinator::continueAgentRequest(AiBackendClient *backendClien
             requestId,
             providerKindForAudit(m_settings),
             providerEndpointForAudit(m_settings),
-            compatibleContext.modelId,
-            QStringLiteral("agent_continue"),
-            QStringLiteral("chat_adapter"));
+                compatibleContext.modelId,
+                QStringLiteral("agent_continue"),
+                QStringLiteral("chat_adapter"));
     }
-    return requestId;
+    result.requestId = requestId;
+    return result;
 }
 
 quint64 AiRequestCoordinator::startCommandRequest(AiBackendClient *backendClient,

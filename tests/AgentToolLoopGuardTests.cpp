@@ -24,6 +24,7 @@ private slots:
     void stopsAfterRepeatedFailedTools();
     void stopsAfterRepeatedLowSignalSameFamily();
     void doesNotStopAfterSuccessThenSingleFailure();
+    void doesNotStopAfterEvidenceThenSingleFailure();
     void stopsAfterEvidenceThenCrossFamilyDrift();
     void classifiesToolFamilies();
 };
@@ -96,6 +97,31 @@ void AgentToolLoopGuardTests::doesNotStopAfterSuccessThenSingleFailure()
     QVERIFY(!second.stop);
     QCOMPARE(second.consecutiveFailureCount, 1);
     QVERIFY(!second.lastToolSuccess);
+}
+
+void AgentToolLoopGuardTests::doesNotStopAfterEvidenceThenSingleFailure()
+{
+    AgentToolLoopGuardState state;
+    AgentToolLoopGuardConfig config;
+    config.maxFailedToolCallsPerTurn = 5;
+
+    const AgentToolLoopGuardDecision first = AgentToolLoopGuard::evaluateResults(
+        {[] {
+            AgentToolResult result = makeResult(QStringLiteral("web_search"), true, QStringLiteral("OpenAI release result with enough evidence."));
+            result.payload = QJsonObject{{QStringLiteral("text"), QStringLiteral("OpenAI release result with enough evidence.")}};
+            return result;
+        }()},
+        &state,
+        config);
+    QVERIFY(!first.stop);
+    QVERIFY(first.evidenceSufficient);
+
+    const AgentToolLoopGuardDecision second = AgentToolLoopGuard::evaluateResults(
+        {makeResult(QStringLiteral("web_fetch"), false)},
+        &state,
+        config);
+    QVERIFY(!second.stop);
+    QCOMPARE(second.consecutiveFailureCount, 1);
 }
 
 void AgentToolLoopGuardTests::stopsAfterEvidenceThenCrossFamilyDrift()

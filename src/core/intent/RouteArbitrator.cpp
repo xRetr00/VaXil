@@ -137,6 +137,10 @@ RouteArbitrationResult RouteArbitrator::arbitrate(const InputRouteDecision &poli
         || (effectiveConfidence < thresholds.mediumConfidence
             && advisorSuggestion.backendNecessity >= thresholds.backendAssistNeed
             && !highAmbiguity);
+    const bool localTimeOrDate = findCandidateByReason(QStringLiteral("candidate.time_or_date")).has_value()
+        || ((policyDecision.kind == InputRouteKind::LocalResponse)
+            && (policyDecision.status.compare(QStringLiteral("Local time response"), Qt::CaseInsensitive) == 0
+                || policyDecision.status.compare(QStringLiteral("Local date response"), Qt::CaseInsensitive) == 0));
 
     if (hasDeterministicTask) {
         if (const std::optional<ExecutionIntentCandidate> deterministic = findCandidate(InputRouteKind::DeterministicTasks)) {
@@ -176,6 +180,16 @@ RouteArbitrationResult RouteArbitrator::arbitrate(const InputRouteDecision &poli
             result.reasonCodes = {QStringLiteral("arbitrator.social_question_local_response")};
         }
         result.reasonCodes.push_back(QStringLiteral("override.blocked.backend_for_social"));
+    } else if (localTimeOrDate) {
+        if (const std::optional<ExecutionIntentCandidate> local = findCandidateByReason(QStringLiteral("candidate.time_or_date"))) {
+            result.decision = local->route;
+            result.confidence = local->score;
+            result.reasonCodes = local->reasonCodes;
+        } else {
+            result.decision = policyDecision;
+            result.confidence = 0.98f;
+            result.reasonCodes = {QStringLiteral("arbitrator.local_time_or_date_priority")};
+        }
     } else if (shouldAskClarification) {
         if (const std::optional<ExecutionIntentCandidate> clarify = findCandidate(InputRouteKind::LocalResponse)) {
             result.decision = clarify->route;

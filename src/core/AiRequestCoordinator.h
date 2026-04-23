@@ -77,6 +77,10 @@ struct CommandRequestContext {
 struct AgentStartRequestResult {
     quint64 requestId = 0;
     AgentTransportMode transportMode = AgentTransportMode::ChatAdapter;
+    QList<AgentToolSpec> effectiveTools;
+    QString providerToolFilterReason = QStringLiteral("provider_tools.unknown");
+    QString providerToolCompatibilityMode = QStringLiteral("unknown");
+    QStringList toolsRemovedForProvider;
 };
 
 class AiRequestCoordinator
@@ -99,10 +103,10 @@ public:
                                               PromptAdapter *promptAdapter,
                                               const AgentCapabilitySet &capabilities,
                                               const AgentRequestContext &context) const;
-    quint64 continueAgentRequest(AiBackendClient *backendClient,
-                                 PromptAdapter *promptAdapter,
-                                 bool useResponses,
-                                 const AgentRequestContext &context) const;
+    AgentStartRequestResult continueAgentRequest(AiBackendClient *backendClient,
+                                                 PromptAdapter *promptAdapter,
+                                                 bool useResponses,
+                                                 const AgentRequestContext &context) const;
     quint64 startCommandRequest(AiBackendClient *backendClient,
                                 PromptAdapter *promptAdapter,
                                 const CommandRequestContext &context) const;
