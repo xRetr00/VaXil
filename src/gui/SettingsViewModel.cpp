@@ -669,6 +669,15 @@ void SettingsViewModel::saveAgentSettings(bool enabled,
     }
 }
 
+void SettingsViewModel::saveProviderSettings(const QString &providerKind,
+                                             const QString &apiKey,
+                                             const QString &endpoint)
+{
+    if (m_backend) {
+        m_backend->saveProviderSettings(providerKind, apiKey, endpoint);
+    }
+}
+
 void SettingsViewModel::saveSettings(const QString &endpoint,
                                      const QString &providerKind,
                                      const QString &apiKey,

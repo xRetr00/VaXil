@@ -1854,6 +1854,47 @@ void BackendFacade::refreshAudioDevices()
     emit settingsChanged();
 }
 
+void BackendFacade::saveProviderSettings(const QString &providerKind,
+                                         const QString &apiKey,
+                                         const QString &endpoint)
+{
+    saveSettings(endpoint,
+                 providerKind,
+                 apiKey,
+                 m_settings->selectedModel(),
+                 static_cast<int>(m_settings->defaultReasoningMode()),
+                 m_settings->autoRoutingEnabled(),
+                 m_settings->streamingEnabled(),
+                 m_settings->requestTimeoutMs(),
+                 m_settings->aecEnabled(),
+                 m_settings->rnnoiseEnabled(),
+                 m_settings->vadSensitivity(),
+                 m_settings->wakeEngineKind(),
+                 m_settings->whisperExecutable(),
+                 m_settings->whisperModelPath(),
+                 m_settings->wakeTriggerThreshold(),
+                 m_settings->wakeTriggerCooldownMs(),
+                 m_settings->ttsEngineKind(),
+                 m_settings->piperExecutable(),
+                 m_settings->piperVoiceModel(),
+                 m_settings->qwenTtsExecutable(),
+                 m_settings->qwenTtsModelDir(),
+                 m_settings->qwenTtsLanguage(),
+                 m_settings->qwenTtsThreads(),
+                 m_settings->ffmpegExecutable(),
+                 m_settings->voiceSpeed(),
+                 m_settings->voicePitch(),
+                 m_settings->piperNoiseScale(),
+                 m_settings->piperNoiseW(),
+                 m_settings->piperSentenceSilence(),
+                 m_settings->ttsPostProcessMode(),
+                 m_settings->ttsVoiceProfileId(),
+                 m_settings->micSensitivity(),
+                 m_settings->selectedAudioInputDeviceId(),
+                 m_settings->selectedAudioOutputDeviceId(),
+                 m_settings->clickThroughEnabled());
+}
+
 void BackendFacade::saveSettings(
     const QString &endpoint,
     const QString &providerKind,

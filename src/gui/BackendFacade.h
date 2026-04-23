@@ -324,6 +324,9 @@ public:
                                         bool contextAlwaysOn,
                                         double objectsMinConfidence,
                                         double gesturesMinConfidence);
+    Q_INVOKABLE void saveProviderSettings(const QString &providerKind,
+                                          const QString &apiKey,
+                                          const QString &endpoint);
     Q_INVOKABLE void saveSettings(
         const QString &endpoint,
         const QString &providerKind,

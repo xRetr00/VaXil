@@ -50,6 +50,15 @@ Window {
         return openRouterSelected ? "https://openrouter.ai/api" : endpointField.text
     }
 
+    function autoApplyProviderSelection() {
+        settingsVm.saveProviderSettings(
+            providerCombo.currentValue,
+            providerApiKeyField.text,
+            effectiveEndpointText()
+        )
+        refreshRequirementStatus()
+    }
+
     function refreshRequirementStatus() {
         requirementStatus = settingsVm.evaluateSetupRequirements(
             effectiveEndpointText(),
@@ -464,6 +473,7 @@ Window {
                         model: providerOptions
                         textRole: "label"
                         valueRole: "value"
+                        onActivated: settingsWindow.autoApplyProviderSelection()
                     }
 
                     Text { text: "Provider API key (optional for local backends)"; color: "#c9def3"; font.pixelSize: 13 }
@@ -471,6 +481,7 @@ Window {
                         id: providerApiKeyField
                         Layout.fillWidth: true
                         echoMode: TextInput.Password
+                        onEditingFinished: settingsWindow.autoApplyProviderSelection()
                     }
 
                     Text {
@@ -486,7 +497,13 @@ Window {
                         text: "https://openrouter.ai/api"
                     }
                     Text { visible: !openRouterSelected; text: "Local AI backend endpoint (LM Studio / compatible)"; color: "#c9def3"; font.pixelSize: 13 }
-                    TextField { id: endpointField; visible: !openRouterSelected; Layout.fillWidth: true; text: settingsVm.lmStudioEndpoint }
+                    TextField {
+                        id: endpointField
+                        visible: !openRouterSelected
+                        Layout.fillWidth: true
+                        text: settingsVm.lmStudioEndpoint
+                        onEditingFinished: settingsWindow.autoApplyProviderSelection()
+                    }
                     RowLayout {
                         Layout.fillWidth: true
                         Rectangle { width: 10; height: 10; radius: 5; color: settingsWindow.statusColor(requirementStatus.endpointOk === true) }

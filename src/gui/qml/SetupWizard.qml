@@ -41,6 +41,14 @@ Window {
         return typed.length > 0 ? typed : (modelCombo.currentText || "").trim()
     }
 
+    function autoApplyProviderSelection() {
+        settingsVm.saveProviderSettings(
+            providerCombo.currentValue,
+            providerApiKeyField.text,
+            wizard.openRouterSelected ? "https://openrouter.ai/api" : endpointField.text
+        )
+    }
+
     function syncVoiceFieldsFromBackend() {
         const providerKind = settingsVm.chatProviderKind === "lmstudio"
             ? "openai_compatible_local"
@@ -370,6 +378,7 @@ Window {
                             model: providerOptions
                             textRole: "label"
                             valueRole: "value"
+                            onActivated: wizard.autoApplyProviderSelection()
                         }
 
                         Text { text: "Provider API key"; color: "#d0e3f5"; font.pixelSize: 13 }
@@ -378,6 +387,7 @@ Window {
                             Layout.fillWidth: true
                             echoMode: TextInput.Password
                             placeholderText: "Required for OpenRouter"
+                            onEditingFinished: wizard.autoApplyProviderSelection()
                         }
 
                         Text {
@@ -404,6 +414,7 @@ Window {
                             visible: !wizard.openRouterSelected
                             Layout.fillWidth: true
                             text: settingsVm.lmStudioEndpoint
+                            onEditingFinished: wizard.autoApplyProviderSelection()
                         }
 
                         RowLayout {
