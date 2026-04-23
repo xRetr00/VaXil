@@ -452,10 +452,15 @@ SelectionContextCompilation SelectionContextCompiler::compile(const QString &que
     }
     compilation.historySelectionDirective = effectiveHistoryDecision.selectionDirective;
     compilation.historyPolicyMetadata = effectiveHistoryDecision.plannerMetadata;
+    const bool desktopContextPromptRelevant =
+        !privateModeEnabled
+        && DesktopContextSelectionBuilder::contextRelevanceScore(query, intent, desktopContext) >= 0.55;
+    const QVariantMap promptDesktopContext = desktopContextPromptRelevant ? desktopContext : QVariantMap{};
+    const QString promptDesktopSummary = desktopContextPromptRelevant ? compilation.compiledDesktopSummary : QString{};
     compilation.promptContextRecords = promptContextRecordsForIntent(
         intent,
-        desktopContext,
-        compilation.compiledDesktopSummary,
+        promptDesktopContext,
+        promptDesktopSummary,
         effectiveHistoryDecision);
     compilation.promptContextRecords.append(
         CompiledContextLayeredSignalBuilder::buildPromptContextRecords(
@@ -465,7 +470,9 @@ SelectionContextCompilation SelectionContextCompiler::compile(const QString &que
     compilation.selectedMemoryRecords = memoryPolicyHandler
         ? memoryPolicyHandler->requestMemory(compilation.selectionInput, runtimeRecord)
         : QList<MemoryRecord>{};
-    compilation.compiledContextRecords = desktopContextRecords(desktopContext, desktopSummary);
+    compilation.compiledContextRecords = desktopContextPromptRelevant
+        ? desktopContextRecords(desktopContext, desktopSummary)
+        : QList<MemoryRecord>{};
     if (memoryPolicyHandler != nullptr) {
         const QList<MemoryRecord> policySummaryRecords = memoryPolicyHandler->compiledContextPolicySummaryRecords();
         for (const MemoryRecord &record : policySummaryRecords) {

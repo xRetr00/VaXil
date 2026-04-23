@@ -68,6 +68,27 @@ bool isBackendRoute(InputRouteKind kind)
         || kind == InputRouteKind::CommandExtraction;
 }
 
+QString toolFamily(const QString &toolName)
+{
+    const QString normalized = toolName.trimmed().toLower();
+    if (normalized.startsWith(QStringLiteral("web_"))) {
+        return QStringLiteral("web");
+    }
+    if (normalized == QStringLiteral("browser_fetch_text")) {
+        return QStringLiteral("web");
+    }
+    if (normalized.startsWith(QStringLiteral("file_"))
+        || normalized == QStringLiteral("dir_list")
+        || normalized.startsWith(QStringLiteral("log_"))
+        || normalized == QStringLiteral("ai_log_read")) {
+        return QStringLiteral("file");
+    }
+    if (normalized.startsWith(QStringLiteral("memory_"))) {
+        return QStringLiteral("memory");
+    }
+    return normalized.section(QLatin1Char('_'), 0, 0);
+}
+
 bool hasAnyCue(const QString &lowered, const QStringList &cues)
 {
     for (const QString &cue : cues) {
@@ -352,6 +373,8 @@ TurnRuntimePlan TurnOrchestrationRuntime::buildPlan(const TurnRuntimeInput &inpu
 
     QStringList verifiedEvidence;
     bool sawLowSignalEvidence = false;
+    QString firstUsefulFamily;
+    bool toolDriftDetected = false;
     for (const AgentToolResult &result : input.toolResults) {
         const ToolResultEvidenceAssessment assessment = ToolResultEvidencePolicy::assess(result);
         if (assessment.lowSignal) {
@@ -362,6 +385,12 @@ TurnRuntimePlan TurnOrchestrationRuntime::buildPlan(const TurnRuntimeInput &inpu
             const QString evidence = evidenceTextForResult(result);
             if (!evidence.trimmed().isEmpty()) {
                 verifiedEvidence.push_back(evidence);
+                const QString family = toolFamily(result.toolName);
+                if (firstUsefulFamily.isEmpty()) {
+                    firstUsefulFamily = family;
+                } else if (family != firstUsefulFamily && family != QStringLiteral("memory")) {
+                    toolDriftDetected = true;
+                }
             }
         }
     }
@@ -373,9 +402,11 @@ TurnRuntimePlan TurnOrchestrationRuntime::buildPlan(const TurnRuntimeInput &inpu
 
     if (!verifiedEvidence.isEmpty()) {
         plan.evidenceState = QStringLiteral("verified");
+        plan.evidenceSufficient = true;
     } else if (sawLowSignalEvidence) {
         plan.evidenceState = QStringLiteral("low_signal");
     }
+    plan.toolDriftDetected = toolDriftDetected;
 
     plan.selectedMemory = input.privateMode
         ? suppressPrivateContextMemory(input.selectedMemory)
@@ -394,6 +425,12 @@ TurnRuntimePlan TurnOrchestrationRuntime::buildPlan(const TurnRuntimeInput &inpu
     }
     if (plan.evidenceState == QStringLiteral("low_signal")) {
         constraints << QStringLiteral("evidence=low_signal_do_not_claim_grounded_success");
+    }
+    if (plan.evidenceSufficient) {
+        constraints << QStringLiteral("evidence_sufficient=true_answer_from_verified_evidence_no_more_tools_unless_explicitly_needed");
+    }
+    if (plan.toolDriftDetected) {
+        constraints << QStringLiteral("tool_drift_detected=true_stop_cross_family_tool_hopping");
     }
 
     QStringList taskState;
@@ -430,7 +467,9 @@ TurnRuntimePlan TurnOrchestrationRuntime::buildPlan(const TurnRuntimeInput &inpu
     context.activeTaskState = taskState.join(QStringLiteral("\n"));
     context.verifiedEvidence = verifiedEvidence.join(QStringLiteral("\n\n---\n\n"));
     context.activeBehavioralConstraints = constraints.join(QStringLiteral("\n"));
-    context.compactResponseContract = QStringLiteral("Use inspect -> decide -> tool-use -> verify -> continue. Answer only from verified evidence; ask one concise clarification if required.");
+    context.compactResponseContract = plan.evidenceSufficient
+        ? QStringLiteral("Answer from verified evidence now. Do not call more tools unless a clearly missing same-topic source is required.")
+        : QStringLiteral("Use inspect -> decide -> tool-use -> verify -> continue. Answer only from verified evidence; ask one concise clarification if required.");
     context.includeWorkspaceContext = intent == IntentType::LIST_FILES
         || intent == IntentType::READ_FILE
         || intent == IntentType::WRITE_FILE

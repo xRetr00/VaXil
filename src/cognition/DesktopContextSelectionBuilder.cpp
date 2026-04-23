@@ -1,6 +1,9 @@
 #include "cognition/DesktopContextSelectionBuilder.h"
 
+#include <algorithm>
+
 #include <QRegularExpression>
+#include <QSet>
 
 namespace {
 bool containsAny(const QString &input, const QStringList &needles)
@@ -11,6 +14,27 @@ bool containsAny(const QString &input, const QStringList &needles)
         }
     }
     return false;
+}
+
+QStringList contentWords(const QString &text)
+{
+    QString cleaned = text.toLower();
+    cleaned.replace(QRegularExpression(QStringLiteral("[^a-z0-9]+")), QStringLiteral(" "));
+    QStringList words = cleaned.split(QChar::fromLatin1(' '), Qt::SkipEmptyParts);
+    static const QSet<QString> stopWords = {
+        QStringLiteral("the"), QStringLiteral("and"), QStringLiteral("for"), QStringLiteral("with"),
+        QStringLiteral("this"), QStringLiteral("that"), QStringLiteral("what"), QStringLiteral("why"),
+        QStringLiteral("how"), QStringLiteral("can"), QStringLiteral("you"), QStringLiteral("about"),
+        QStringLiteral("latest"), QStringLiteral("current"), QStringLiteral("open")
+    };
+    QStringList filtered;
+    for (const QString &word : words) {
+        if (word.size() >= 3 && !stopWords.contains(word)) {
+            filtered.push_back(word);
+        }
+    }
+    filtered.removeDuplicates();
+    return filtered;
 }
 
 QString cleanedField(const QVariantMap &context, const QString &key)
@@ -157,21 +181,20 @@ bool DesktopContextSelectionBuilder::isNoisyClipboardContext(const QVariantMap &
     return preview.size() < 6 && !preview.contains(QRegularExpression(QStringLiteral("[A-Za-z0-9]{3}")));
 }
 
-bool DesktopContextSelectionBuilder::shouldUseDesktopContext(const QString &userInput,
+double DesktopContextSelectionBuilder::contextRelevanceScore(const QString &userInput,
                                                              IntentType intent,
                                                              const QVariantMap &desktopContext)
 {
     if (isNoisyClipboardContext(desktopContext)) {
-        return false;
+        return 0.0;
     }
-
     if (intent != IntentType::GENERAL_CHAT) {
-        return true;
+        return 0.85;
     }
 
     const QString lowered = userInput.trimmed().toLower();
     const QString taskId = cleanedField(desktopContext, QStringLiteral("taskId")).toLower();
-    const bool refersToCurrentContext = containsAny(lowered, {
+    const bool explicitReferent = containsAny(lowered, {
         QStringLiteral("this"),
         QStringLiteral("current"),
         QStringLiteral("here"),
@@ -181,38 +204,66 @@ bool DesktopContextSelectionBuilder::shouldUseDesktopContext(const QString &user
         QStringLiteral("file"),
         QStringLiteral("document"),
         QStringLiteral("clipboard"),
-        QStringLiteral("copied"),
-        QStringLiteral("that")
+        QStringLiteral("copied")
     });
-
-    if (refersToCurrentContext) {
-        return true;
+    if (explicitReferent) {
+        return 0.92;
     }
 
-    if (taskId == QStringLiteral("editor_document") || taskId == QStringLiteral("browser_tab")) {
-        return containsAny(lowered, {
-            QStringLiteral("summarize"),
-            QStringLiteral("explain"),
-            QStringLiteral("review"),
-            QStringLiteral("fix"),
-            QStringLiteral("edit"),
-            QStringLiteral("read"),
-            QStringLiteral("write"),
-            QStringLiteral("project"),
-            QStringLiteral("code"),
-            QStringLiteral("repo"),
-            QStringLiteral("log"),
-            QStringLiteral("plan")
-        });
+    if (taskId != QStringLiteral("editor_document")
+        && taskId != QStringLiteral("browser_tab")
+        && taskId != QStringLiteral("clipboard")) {
+        return 0.0;
     }
 
-    if (taskId == QStringLiteral("clipboard")) {
-        return containsAny(lowered, {
-            QStringLiteral("paste"),
-            QStringLiteral("copied"),
-            QStringLiteral("clipboard")
-        });
+    const QString contextText = QStringList{
+        cleanedField(desktopContext, QStringLiteral("topic")),
+        cleanedField(desktopContext, QStringLiteral("documentContext")),
+        cleanedField(desktopContext, QStringLiteral("siteContext")),
+        cleanedField(desktopContext, QStringLiteral("workspaceContext")),
+        cleanedField(desktopContext, QStringLiteral("languageHint"))
+    }.join(QStringLiteral(" "));
+    const QStringList inputWords = contentWords(lowered);
+    const QStringList contextWords = contentWords(contextText);
+    if (inputWords.isEmpty() || contextWords.isEmpty()) {
+        return 0.0;
     }
 
-    return false;
+    int overlap = 0;
+    for (const QString &word : inputWords) {
+        if (contextWords.contains(word)) {
+            ++overlap;
+        }
+    }
+    if (overlap <= 0) {
+        return 0.0;
+    }
+    return std::min(0.85, 0.35 + (0.2 * overlap));
+}
+
+QString DesktopContextSelectionBuilder::contextInjectionReason(const QString &userInput,
+                                                               IntentType intent,
+                                                               const QVariantMap &desktopContext)
+{
+    if (isNoisyClipboardContext(desktopContext)) {
+        return QStringLiteral("context.noisy_clipboard_suppressed");
+    }
+    if (intent != IntentType::GENERAL_CHAT) {
+        return QStringLiteral("context.non_chat_intent");
+    }
+    const double score = contextRelevanceScore(userInput, intent, desktopContext);
+    if (score >= 0.9) {
+        return QStringLiteral("context.explicit_referent");
+    }
+    if (score >= 0.55) {
+        return QStringLiteral("context.lexical_topic_match");
+    }
+    return QStringLiteral("context.low_relevance_suppressed");
+}
+
+bool DesktopContextSelectionBuilder::shouldUseDesktopContext(const QString &userInput,
+                                                             IntentType intent,
+                                                             const QVariantMap &desktopContext)
+{
+    return contextRelevanceScore(userInput, intent, desktopContext) >= 0.55;
 }

@@ -19,11 +19,13 @@ class SmartIntentV2Tests : public QObject
 private slots:
     void analyzesContinuationVsNewTurn();
     void detectsConfirmationReplyState();
+    void detectsCorrectionAsContinuationWhenThreadExists();
     void infersPrimaryAndSecondaryGoals();
     void plansDeterministicCandidateFromSocialPrefixCommand();
     void deterministicCandidateCarriesTaskPayload();
     void arbitratesCommandVsInfoConflictToConversation();
     void blocksBackendForTerminalIntent();
+    void blocksBackendForExpandedTerminalPhrase();
     void blocksBackendForSocialQuestion();
     void arbitratesContinuationAsPriorityRoute();
     void resolvesContextReferenceToExecutionTask();
@@ -70,6 +72,24 @@ void SmartIntentV2Tests::detectsConfirmationReplyState()
     input.hasPendingConfirmation = true;
     const TurnState state = analyzer.analyze(input);
     QVERIFY(state.isConfirmationReply);
+}
+
+void SmartIntentV2Tests::detectsCorrectionAsContinuationWhenThreadExists()
+{
+    TurnSignalExtractor extractor;
+    TurnStateAnalyzer analyzer;
+
+    TurnStateInput input;
+    input.normalizedInput = QStringLiteral("no, the latest model released by openai");
+    input.turnSignals = extractor.extract(input.normalizedInput);
+    input.hasAnyActionThread = true;
+    input.hasUsableActionThread = true;
+    const TurnState state = analyzer.analyze(input);
+    QVERIFY(state.isCorrection);
+    QVERIFY(state.correctionDetected);
+    QVERIFY(state.correctionConfidence > 0.8f);
+    QVERIFY(state.isContinuation);
+    QVERIFY(state.reasonCodes.contains(QStringLiteral("correction.bound_previous_context")));
 }
 
 void SmartIntentV2Tests::infersPrimaryAndSecondaryGoals()
@@ -201,6 +221,40 @@ void SmartIntentV2Tests::blocksBackendForTerminalIntent()
         IntentConfidence{.signalConfidence = 0.4f, .goalConfidence = 0.4f, .executionConfidence = 0.6f, .finalConfidence = 0.45f},
         0.4f,
         IntentAdvisorSuggestion{.available = false, .backendNecessity = 0.9f},
+        false);
+
+    QCOMPARE(result.decision.kind, InputRouteKind::LocalResponse);
+    QVERIFY(result.reasonCodes.contains(QStringLiteral("override.blocked.backend_for_terminal")));
+}
+
+void SmartIntentV2Tests::blocksBackendForExpandedTerminalPhrase()
+{
+    RouteArbitrator arbitrator;
+    TurnSignals turnSignals;
+    turnSignals.normalizedInput = QStringLiteral("okay you can go");
+    TurnState state;
+    TurnGoalSet goals;
+    QList<ExecutionIntentCandidate> candidates;
+
+    ExecutionIntentCandidate backend;
+    backend.kind = ExecutionIntentKind::BackendReasoning;
+    backend.route.kind = InputRouteKind::Conversation;
+    backend.score = 0.9f;
+    backend.requiresBackend = true;
+    backend.backendPriority = 99;
+    candidates.push_back(backend);
+
+    InputRouteDecision policyDecision;
+    policyDecision.kind = InputRouteKind::Conversation;
+    const RouteArbitrationResult result = arbitrator.arbitrate(
+        policyDecision,
+        turnSignals,
+        state,
+        goals,
+        candidates,
+        IntentConfidence{.signalConfidence = 0.4f, .goalConfidence = 0.4f, .executionConfidence = 0.5f, .finalConfidence = 0.45f},
+        0.2f,
+        IntentAdvisorSuggestion{.backendNecessity = 1.0f},
         false);
 
     QCOMPARE(result.decision.kind, InputRouteKind::LocalResponse);
@@ -548,6 +602,9 @@ void SmartIntentV2Tests::buildsRouteFinalTracePayload()
     QVERIFY(payload.contains(QStringLiteral("turn_signals")));
     QVERIFY(payload.contains(QStringLiteral("policy_decision")));
     QVERIFY(payload.contains(QStringLiteral("final_decision")));
+    QVERIFY(payload.contains(QStringLiteral("context_relevance_score")));
+    QVERIFY(payload.contains(QStringLiteral("provider_tool_compatibility_mode")));
+    QVERIFY(payload.contains(QStringLiteral("proactive_suggestion_spoken")));
 }
 
 QTEST_APPLESS_MAIN(SmartIntentV2Tests)

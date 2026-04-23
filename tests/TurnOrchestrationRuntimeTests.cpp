@@ -57,6 +57,7 @@ private slots:
     void unrelatedRequestDoesNotAttachToThread();
     void selectedToolsAreNarrowedByIntent();
     void lowSignalEvidenceBlocksGroundedState();
+    void verifiedEvidenceSetsSufficientAndStopsMoreToolPrompting();
     void promptTaskStateClipsRecursiveThreadEnvelope();
     void privateModeSuppressesDesktopContextMemory();
     void backendRouteGetsMinimalToolsWhenSelectionEmpty();
@@ -182,6 +183,43 @@ void TurnOrchestrationRuntimeTests::lowSignalEvidenceBlocksGroundedState()
     QCOMPARE(plan.evidenceState, QStringLiteral("low_signal"));
     QVERIFY(plan.promptContext.verifiedEvidence.trimmed().isEmpty());
     QVERIFY(plan.promptContext.activeBehavioralConstraints.contains(QStringLiteral("low_signal")));
+}
+
+void TurnOrchestrationRuntimeTests::verifiedEvidenceSetsSufficientAndStopsMoreToolPrompting()
+{
+    AssistantBehaviorPolicy policy;
+    TurnOrchestrationRuntime runtime(&policy);
+
+    InputRouteDecision route;
+    route.kind = InputRouteKind::AgentConversation;
+    route.intent = IntentType::GENERAL_CHAT;
+
+    TurnRuntimeInput input;
+    input.rawUserInput = QStringLiteral("latest OpenAI model");
+    input.effectiveInput = input.rawUserInput;
+    input.routeDecision = route;
+    input.intent = IntentType::GENERAL_CHAT;
+    input.identity = identity();
+    input.userProfile = userProfile();
+    input.currentTimeMs = QDateTime::currentMSecsSinceEpoch();
+    input.toolResults = {
+        AgentToolResult{
+            .callId = QStringLiteral("call-1"),
+            .toolName = QStringLiteral("web_search"),
+            .output = QStringLiteral("OpenAI release result with sources."),
+            .success = true,
+            .errorKind = ToolErrorKind::None,
+            .summary = QStringLiteral("OpenAI release result"),
+            .payload = QJsonObject{{QStringLiteral("text"), QStringLiteral("OpenAI release result with sources.")}}
+        }
+    };
+
+    const TurnRuntimePlan plan = runtime.buildPlan(input);
+
+    QCOMPARE(plan.evidenceState, QStringLiteral("verified"));
+    QVERIFY(plan.evidenceSufficient);
+    QVERIFY(plan.promptContext.activeBehavioralConstraints.contains(QStringLiteral("evidence_sufficient=true")));
+    QVERIFY(plan.promptContext.compactResponseContract.contains(QStringLiteral("Do not call more tools")));
 }
 
 void TurnOrchestrationRuntimeTests::promptTaskStateClipsRecursiveThreadEnvelope()

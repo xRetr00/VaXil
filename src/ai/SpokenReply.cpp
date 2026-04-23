@@ -21,6 +21,18 @@ QString stripHiddenReasoning(QString text)
     return text;
 }
 
+QString stripModelWrapperTags(QString text)
+{
+    text.replace(QRegularExpression(
+                     QStringLiteral("</?\\s*(answer|final|response|assistant_response|assistant|message|output)\\s*>"),
+                     QRegularExpression::CaseInsensitiveOption),
+                 QStringLiteral(" "));
+    text.replace(QRegularExpression(
+                     QStringLiteral("</?\\s*[a-zA-Z][a-zA-Z0-9_-]{0,32}(?:\\s+[^<>]*)?>")),
+                 QStringLiteral(" "));
+    return text;
+}
+
 QString collapseWhitespace(QString text)
 {
     text.replace(QRegularExpression(QStringLiteral("\\s+")), QStringLiteral(" "));
@@ -130,6 +142,7 @@ QString sanitizeDisplayText(const QString &input)
     QString cleaned = input;
     cleaned = stripCodeFences(cleaned);
     cleaned = stripHiddenReasoning(cleaned);
+    cleaned = stripModelWrapperTags(cleaned);
     cleaned.replace(QRegularExpression(QStringLiteral("https?://\\S+")), QStringLiteral(" "));
     cleaned.replace(QRegularExpression(QStringLiteral("[\\x{1F300}-\\x{1FAFF}\\x{2600}-\\x{27BF}]")), QStringLiteral(" "));
     cleaned = collapseWhitespace(cleaned);

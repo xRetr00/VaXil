@@ -11,6 +11,8 @@ private slots:
     void includesWorkModeAndDocumentMetadata();
     void skipsNoisyClipboardContext();
     void skipsIrrelevantGeneralChat();
+    void skipsStaleTopicForUnrelatedCorrection();
+    void includesExplicitCurrentPageReference();
     void skipsPrivateModeContext();
 };
 
@@ -98,6 +100,53 @@ void DesktopContextSelectionBuilderTests::skipsIrrelevantGeneralChat()
         false);
 
     QCOMPARE(selectionInput, QStringLiteral("tell me a joke"));
+}
+
+void DesktopContextSelectionBuilderTests::skipsStaleTopicForUnrelatedCorrection()
+{
+    QVariantMap context;
+    context.insert(QStringLiteral("taskId"), QStringLiteral("browser_tab"));
+    context.insert(QStringLiteral("topic"), QStringLiteral("machine learning youtube"));
+    context.insert(QStringLiteral("documentContext"), QStringLiteral("machine learning - YouTube"));
+
+    const QString selectionInput = DesktopContextSelectionBuilder::buildSelectionInput(
+        QStringLiteral("No, the latest model released by OpenAI"),
+        IntentType::GENERAL_CHAT,
+        QStringLiteral("Browser tab: machine learning - YouTube"),
+        context,
+        1000,
+        1500,
+        false);
+
+    QCOMPARE(selectionInput, QStringLiteral("No, the latest model released by OpenAI"));
+    QVERIFY(DesktopContextSelectionBuilder::contextRelevanceScore(
+                QStringLiteral("No, the latest model released by OpenAI"),
+                IntentType::GENERAL_CHAT,
+                context) < 0.55);
+}
+
+void DesktopContextSelectionBuilderTests::includesExplicitCurrentPageReference()
+{
+    QVariantMap context;
+    context.insert(QStringLiteral("taskId"), QStringLiteral("browser_tab"));
+    context.insert(QStringLiteral("topic"), QStringLiteral("machine learning youtube"));
+    context.insert(QStringLiteral("documentContext"), QStringLiteral("machine learning - YouTube"));
+
+    const QString selectionInput = DesktopContextSelectionBuilder::buildSelectionInput(
+        QStringLiteral("summarize this page"),
+        IntentType::GENERAL_CHAT,
+        QStringLiteral("Browser tab: machine learning - YouTube"),
+        context,
+        1000,
+        1500,
+        false);
+
+    QVERIFY(selectionInput.contains(QStringLiteral("Current desktop context:")));
+    QCOMPARE(DesktopContextSelectionBuilder::contextInjectionReason(
+                 QStringLiteral("summarize this page"),
+                 IntentType::GENERAL_CHAT,
+                 context),
+             QStringLiteral("context.explicit_referent"));
 }
 
 void DesktopContextSelectionBuilderTests::skipsPrivateModeContext()

@@ -59,6 +59,7 @@
 #include "core/intent/RouteArbitrator.h"
 #include "core/intent/RoutingTraceEmitter.h"
 #include "core/tools/AgentToolLoopGuard.h"
+#include "core/tools/WebSearchQueryBuilder.h"
 #include "behavior_tuning/CompiledContextPolicyTuningPromotionPolicy.h"
 #include "behavior_tuning/FeedbackSignalEventBuilder.h"
 #include "connectors/BrowserBookmarksMonitor.h"
@@ -78,6 +79,7 @@
 #include "cognition/SelectionContextCompiler.h"
 #include "cognition/ConnectorHistoryTracker.h"
 #include "cognition/ConnectorResultSignal.h"
+#include "cognition/ProactiveSpeechPolicy.h"
 #include "cognition/ProactiveSuggestionGate.h"
 #include "cognition/ProactiveSuggestionPlanner.h"
 #include "core/tasks/TaskDispatcher.h"
@@ -1162,24 +1164,7 @@ bool asksForDetailedAnswer(const QString &input)
 
 QString extractWebSearchQuery(QString input)
 {
-    input = input.trimmed();
-    input.remove(QRegularExpression(QStringLiteral("^(yeah|yes|okay|ok|please|vaxil|jarvis)\\s*,?\\s*"),
-                                    QRegularExpression::CaseInsensitiveOption));
-    input.remove(QRegularExpression(QStringLiteral("^(can you|could you|would you|please)\\s+"),
-                                    QRegularExpression::CaseInsensitiveOption));
-    input.remove(QRegularExpression(QStringLiteral("^(search|browse)\\s+(the\\s+)?(web|internet)\\s+(for|about|on)\\s+"),
-                                    QRegularExpression::CaseInsensitiveOption));
-    input.remove(QRegularExpression(QStringLiteral("^(search|browse)\\s+(the\\s+)?(web|internet)\\s*"),
-                                    QRegularExpression::CaseInsensitiveOption));
-    input.remove(QRegularExpression(QStringLiteral("^(search|find|look up)\\s+(for\\s+)?"),
-                                    QRegularExpression::CaseInsensitiveOption));
-    input.remove(QRegularExpression(QStringLiteral("^(what('?s| is)\\s+the\\s+latest\\s+model)"),
-                                    QRegularExpression::CaseInsensitiveOption));
-    input.remove(QRegularExpression(QStringLiteral("^(latest\\s+news\\s+(in|about)\\s+)"),
-                                    QRegularExpression::CaseInsensitiveOption));
-    input = input.trimmed();
-    input.remove(QRegularExpression(QStringLiteral("^[\\s,.:;!?-]+|[\\s,.:;!?-]+$")));
-    return input.trimmed();
+    return WebSearchQueryBuilder::build(input, QDate::currentDate().year());
 }
 
 QString mcpPackageManifestPath(const QString &mcpRootPath, const QString &packageName)
@@ -2719,6 +2704,15 @@ void AssistantController::submitText(const QString &text)
     routingTrace.deterministicMatched = hasDeterministicTask;
     routingTrace.deterministicTaskType = deterministicTask.type;
     routingTrace.deterministicTaskPayloadPresent = hasDeterministicTask && !deterministicTask.type.trimmed().isEmpty();
+    routingTrace.contextRelevanceScore = static_cast<float>(
+        DesktopContextSelectionBuilder::contextRelevanceScore(
+            routedInput,
+            routeContext.effectiveIntent,
+            m_latestDesktopContext));
+    routingTrace.contextInjectionReason = DesktopContextSelectionBuilder::contextInjectionReason(
+        routedInput,
+        routeContext.effectiveIntent,
+        m_latestDesktopContext);
 
     const bool hasUsableActionThread = m_actionThreadTracker
         ? m_actionThreadTracker->isCurrentUsable(nowMs)
@@ -3188,6 +3182,12 @@ void AssistantController::submitText(const QString &text)
         if (decision.kind != policyDecision.kind) {
             routingTrace.overridesApplied.push_back(QStringLiteral("override.arbitrator_over_policy"));
         }
+    }
+    if (decision.kind != InputRouteKind::DeterministicTasks
+        && decision.kind != InputRouteKind::BackgroundTasks
+        && !decision.tasks.isEmpty()) {
+        decision.tasks.clear();
+        routingTrace.reasonCodes.push_back(QStringLiteral("trace.final_task_metadata_cleared_for_non_task_route"));
     }
     routingTrace.finalDecision = decision;
     const QList<AgentToolSpec> availableTools = m_agentToolbox ? m_agentToolbox->builtInTools() : QList<AgentToolSpec>{};
@@ -4858,6 +4858,67 @@ QString AssistantController::gateNextStepHint(const QString &hint,
     return decision.allowed ? trimmedHint : QString{};
 }
 
+bool AssistantController::speakProactiveSuggestion(const ProactiveSuggestionPlan &plan,
+                                                   const QString &surfaceKind,
+                                                   const QString &taskType,
+                                                   const QString &priority,
+                                                   qint64 nowMs)
+{
+    const ProactiveSpeechDecision decision = ProactiveSpeechPolicy::evaluate(
+        plan.selectedSummary,
+        surfaceKind,
+        currentFocusModeState(),
+        m_proactiveCooldownState,
+        nowMs);
+
+    if (m_loggingService != nullptr) {
+        m_loggingService->infoFor(
+            QStringLiteral("follow_up_audit"),
+            QStringLiteral("[proactive_speech] proactive_suggestion_spoken=%1 proactive_speech_reason=%2 proactive_speech_surface=%3 proactive_speech_cooldown_active=%4")
+                .arg(decision.shouldSpeak ? QStringLiteral("true") : QStringLiteral("false"),
+                     decision.reasonCode,
+                     surfaceKind,
+                     decision.cooldownActive ? QStringLiteral("true") : QStringLiteral("false")));
+        m_loggingService->logTurnTrace(
+            m_activeTurnId,
+            QStringLiteral("proactive_speech_decision"),
+            decision.reasonCode,
+            {
+                {QStringLiteral("proactive_suggestion_spoken"), decision.shouldSpeak},
+                {QStringLiteral("proactive_speech_reason"), decision.reasonCode},
+                {QStringLiteral("proactive_speech_surface"), surfaceKind},
+                {QStringLiteral("proactive_speech_cooldown_active"), decision.cooldownActive},
+                {QStringLiteral("task_type"), taskType},
+                {QStringLiteral("priority"), priority}
+            });
+    }
+
+    if (!decision.shouldSpeak || m_responseFinalizer == nullptr) {
+        return false;
+    }
+
+    ActionSession session;
+    session.id = QStringLiteral("proactive_%1").arg(QString::number(nowMs));
+    session.userRequest = surfaceKind;
+    session.goal = plan.selectedSummary;
+    session.responseMode = ResponseMode::Chat;
+    session.successSummary = plan.selectedSummary;
+
+    return m_responseFinalizer->finalizeResponse(
+        QStringLiteral("proactive"),
+        m_activeTurnId,
+        parseSpokenReply(plan.selectedSummary),
+        session,
+        &m_responseText,
+        [this]() { emit responseTextChanged(); },
+        [this]() { refreshConversationSession(); },
+        [this](const QString &response, const QString &responseSource, const QString &logStatus) {
+            logPromptResponsePair(response, responseSource, logStatus);
+        },
+        QStringLiteral("Proactive suggestion"),
+        [this](const QString &newStatus) { setStatus(newStatus); });
+}
+
 void AssistantController::considerDesktopContextSuggestion(const QString &summary, const QVariantMap &context)
 {
     if (m_settings == nullptr || m_settings->privateModeEnabled()) {
@@ -4890,6 +4951,12 @@ void AssistantController::considerDesktopContextSuggestion(const QString &summar
 
     m_lastProactiveSuggestionThreadId = threadId;
     m_lastProactiveSuggestionMs = nowMs;
+    speakProactiveSuggestion(
+        plan,
+        QStringLiteral("desktop_context_toast"),
+        taskId,
+        QStringLiteral("medium"),
+        nowMs);
     m_proactiveCooldownState = plan.nextCooldownState;
     setLatestProactiveSuggestion(
         plan.selectedSummary,
@@ -4952,6 +5019,12 @@ void AssistantController::considerConnectorEvent(const ConnectorEvent &event)
     if (m_connectorHistoryTracker != nullptr) {
         m_connectorHistoryTracker->recordPresented(dedupeKey, nowMs);
     }
+    speakProactiveSuggestion(
+        plan,
+        QStringLiteral("connector_event_toast"),
+        event.taskType,
+        event.priority,
+        nowMs);
     setLatestProactiveSuggestion(
         plan.selectedSummary,
         QStringLiteral("response"),
@@ -5038,6 +5111,12 @@ void AssistantController::considerTaskResultSuggestion(const BackgroundTaskResul
     if (m_connectorHistoryTracker != nullptr && !resultConnectorKind.isEmpty()) {
         m_connectorHistoryTracker->recordPresented(resultKey, nowMs);
     }
+    speakProactiveSuggestion(
+        plan,
+        QStringLiteral("task_result_toast"),
+        result.type,
+        result.success ? QStringLiteral("medium") : QStringLiteral("high"),
+        nowMs);
     setLatestProactiveSuggestion(
         plan.selectedSummary,
         QStringLiteral("response"),
@@ -5633,7 +5712,9 @@ void AssistantController::continueAgentConversation(const QList<AgentToolResult>
                 {
                     {QStringLiteral("failure_reason"), loopDecision.reasonCode},
                     {QStringLiteral("failed_tool_attempt_count"), loopDecision.failedToolAttemptCount},
-                    {QStringLiteral("same_family_attempt_count"), loopDecision.sameFamilyAttemptCount}
+                    {QStringLiteral("same_family_attempt_count"), loopDecision.sameFamilyAttemptCount},
+                    {QStringLiteral("evidence_sufficient"), loopDecision.evidenceSufficient},
+                    {QStringLiteral("tool_drift_detected"), loopDecision.toolDriftDetected}
                 });
             m_loggingService->logTurnTrace(
                 m_activeTurnId,
@@ -5644,24 +5725,28 @@ void AssistantController::continueAgentConversation(const QList<AgentToolResult>
                 });
             m_loggingService->infoFor(
                 QStringLiteral("tool_audit"),
-                QStringLiteral("[technical_guard] tool_loop_breaker_triggered=true reason=%1 failed_tool_attempt_count=%2 same_family_attempt_count=%3 consecutive_failure_count=%4 last_tool_success=%5 budget_enforcement_enabled=%6 graceful_fallback_reason=%7")
+                QStringLiteral("[technical_guard] tool_loop_breaker_triggered=true reason=%1 failed_tool_attempt_count=%2 same_family_attempt_count=%3 consecutive_failure_count=%4 last_tool_success=%5 budget_enforcement_enabled=%6 graceful_fallback_reason=%7 evidence_sufficient=%8 tool_drift_detected=%9")
                     .arg(loopDecision.reasonCode,
                          QString::number(loopDecision.failedToolAttemptCount),
                          QString::number(loopDecision.sameFamilyAttemptCount),
                          QString::number(loopDecision.consecutiveFailureCount),
                          loopDecision.lastToolSuccess ? QStringLiteral("true") : QStringLiteral("false"),
                          (m_settings != nullptr && m_settings->budgetEnforcementDisabled()) ? QStringLiteral("false") : QStringLiteral("true"),
-                         QStringLiteral("fallback.clarify_after_tool_loop")));
+                         QStringLiteral("fallback.clarify_after_tool_loop"),
+                         loopDecision.evidenceSufficient ? QStringLiteral("true") : QStringLiteral("false"),
+                         loopDecision.toolDriftDetected ? QStringLiteral("true") : QStringLiteral("false")));
             m_loggingService->infoFor(
                 QStringLiteral("route_audit"),
-                QStringLiteral("[technical_guard] technical_guard_triggered=true tool_loop_breaker_triggered=true tool_loop_breaker_reason=%1 failed_tool_attempt_count=%2 same_family_attempt_count=%3 consecutive_failure_count=%4 last_tool_success=%5 budget_enforcement_enabled=%6 graceful_fallback_reason=%7")
+                QStringLiteral("[technical_guard] technical_guard_triggered=true tool_loop_breaker_triggered=true tool_loop_breaker_reason=%1 failed_tool_attempt_count=%2 same_family_attempt_count=%3 consecutive_failure_count=%4 last_tool_success=%5 budget_enforcement_enabled=%6 graceful_fallback_reason=%7 evidence_sufficient=%8 tool_drift_detected=%9")
                     .arg(loopDecision.reasonCode,
                          QString::number(loopDecision.failedToolAttemptCount),
                          QString::number(loopDecision.sameFamilyAttemptCount),
                          QString::number(loopDecision.consecutiveFailureCount),
                          loopDecision.lastToolSuccess ? QStringLiteral("true") : QStringLiteral("false"),
                          (m_settings != nullptr && m_settings->budgetEnforcementDisabled()) ? QStringLiteral("false") : QStringLiteral("true"),
-                         QStringLiteral("fallback.clarify_after_tool_loop")));
+                         QStringLiteral("fallback.clarify_after_tool_loop"),
+                         loopDecision.evidenceSufficient ? QStringLiteral("true") : QStringLiteral("false"),
+                         loopDecision.toolDriftDetected ? QStringLiteral("true") : QStringLiteral("false")));
         }
         handleConversationFinished(loopDecision.userMessage);
         return;

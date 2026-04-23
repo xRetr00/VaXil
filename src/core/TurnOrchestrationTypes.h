@@ -140,6 +140,8 @@ struct TurnRuntimePlan
     QList<AgentToolSpec> selectedTools;
     MemoryContext selectedMemory;
     QString evidenceState = QStringLiteral("none");
+    bool evidenceSufficient = false;
+    bool toolDriftDetected = false;
     QString actionLoopState = QStringLiteral("inspect");
     PromptTurnContext promptContext;
     PromptAssemblyReport promptReport;

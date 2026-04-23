@@ -82,6 +82,8 @@ QJsonObject RoutingTraceEmitter::buildRouteFinalPayload(const RoutingTrace &trac
     payload.insert(QStringLiteral("tools_available_count"), trace.toolsAvailableCount);
     payload.insert(QStringLiteral("clarification_trigger_reason"), trace.clarificationTriggerReason);
     payload.insert(QStringLiteral("ambiguity_threshold_used"), trace.ambiguityThresholdUsed);
+    payload.insert(QStringLiteral("evidence_sufficient"), trace.evidenceSufficient);
+    payload.insert(QStringLiteral("tool_drift_detected"), trace.toolDriftDetected);
     payload.insert(QStringLiteral("budget_enforcement_enabled"), trace.budgetEnforcementEnabled);
     payload.insert(QStringLiteral("budget_enforcement_disabled_reason"), trace.budgetEnforcementDisabledReason);
     payload.insert(QStringLiteral("technical_guard_triggered"), trace.technicalGuardTriggered);
@@ -94,6 +96,15 @@ QJsonObject RoutingTraceEmitter::buildRouteFinalPayload(const RoutingTrace &trac
     payload.insert(QStringLiteral("graceful_fallback_reason"), trace.gracefulFallbackReason);
     payload.insert(QStringLiteral("backend_failure_detected"), trace.backendFailureDetected);
     payload.insert(QStringLiteral("fallback_reason"), trace.fallbackReason);
+    payload.insert(QStringLiteral("proactive_suggestion_spoken"), trace.proactiveSuggestionSpoken);
+    payload.insert(QStringLiteral("proactive_speech_reason"), trace.proactiveSpeechReason);
+    payload.insert(QStringLiteral("proactive_speech_surface"), trace.proactiveSpeechSurface);
+    payload.insert(QStringLiteral("proactive_speech_cooldown_active"), trace.proactiveSpeechCooldownActive);
+    payload.insert(QStringLiteral("provider_tool_filter_reason"), trace.providerToolFilterReason);
+    payload.insert(QStringLiteral("provider_tool_compatibility_mode"), trace.providerToolCompatibilityMode);
+    payload.insert(QStringLiteral("tools_removed_for_provider"), stringsToArray(trace.toolsRemovedForProvider));
+    payload.insert(QStringLiteral("context_relevance_score"), trace.contextRelevanceScore);
+    payload.insert(QStringLiteral("context_injection_reason"), trace.contextInjectionReason);
     payload.insert(QStringLiteral("confirmation_gate_triggered"), trace.confirmationGateTriggered);
     payload.insert(QStringLiteral("confirmation_outcome"), trace.confirmationOutcome);
     payload.insert(QStringLiteral("reason_codes"), stringsToArray(trace.reasonCodes));
@@ -127,6 +138,8 @@ QJsonObject RoutingTraceEmitter::buildRouteFinalPayload(const RoutingTrace &trac
     turnState.insert(QStringLiteral("is_continuation"), trace.turnState.isContinuation);
     turnState.insert(QStringLiteral("is_confirmation_reply"), trace.turnState.isConfirmationReply);
     turnState.insert(QStringLiteral("is_correction"), trace.turnState.isCorrection);
+    turnState.insert(QStringLiteral("correction_detected"), trace.turnState.correctionDetected);
+    turnState.insert(QStringLiteral("correction_confidence"), trace.turnState.correctionConfidence);
     turnState.insert(QStringLiteral("refers_to_previous_task"), trace.turnState.refersToPreviousTask);
     turnState.insert(QStringLiteral("reason_codes"), stringsToArray(trace.turnState.reasonCodes));
     payload.insert(QStringLiteral("turn_state"), turnState);

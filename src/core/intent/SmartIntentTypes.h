@@ -68,6 +68,8 @@ struct TurnState {
     bool isContinuation = false;
     bool isConfirmationReply = false;
     bool isCorrection = false;
+    bool correctionDetected = false;
+    float correctionConfidence = 0.0f;
     bool refersToPreviousTask = false;
     QStringList reasonCodes;
 };
@@ -203,6 +205,8 @@ struct RoutingTrace {
     int toolsAvailableCount = 0;
     QString clarificationTriggerReason;
     float ambiguityThresholdUsed = 0.0f;
+    bool evidenceSufficient = false;
+    bool toolDriftDetected = false;
     bool budgetEnforcementEnabled = true;
     QString budgetEnforcementDisabledReason;
     bool technicalGuardTriggered = false;
@@ -215,6 +219,15 @@ struct RoutingTrace {
     QString gracefulFallbackReason;
     bool backendFailureDetected = false;
     QString fallbackReason;
+    bool proactiveSuggestionSpoken = false;
+    QString proactiveSpeechReason;
+    QString proactiveSpeechSurface;
+    bool proactiveSpeechCooldownActive = false;
+    QString providerToolFilterReason;
+    QString providerToolCompatibilityMode;
+    QStringList toolsRemovedForProvider;
+    float contextRelevanceScore = 0.0f;
+    QString contextInjectionReason;
     QStringList overridesApplied;
     QStringList reasonCodes;
 };

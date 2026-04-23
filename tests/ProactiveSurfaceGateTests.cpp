@@ -1,6 +1,7 @@
 #include <QtTest>
 
 #include "cognition/ProactiveSurfaceGate.h"
+#include "cognition/ProactiveSpeechPolicy.h"
 
 class ProactiveSurfaceGateTests : public QObject
 {
@@ -17,6 +18,8 @@ private slots:
     void allowsUserRequestedCompletionDuringActiveCooldown();
     void allowsUserRequestedCompletionDuringFocusedDesktopWork();
     void allowsFailureFollowUpEvenInFocusMode();
+    void proactiveSpeechAllowsApprovedSuggestion();
+    void proactiveSpeechRespectsCooldownAndFocusMode();
 };
 
 void ProactiveSurfaceGateTests::suppressesSuccessToastDuringFocusMode()
@@ -169,6 +172,45 @@ void ProactiveSurfaceGateTests::allowsFailureFollowUpEvenInFocusMode()
     const BehaviorDecision decision = ProactiveSurfaceGate::evaluateCompletionFollowUp(input, false);
     QVERIFY(decision.allowed);
     QCOMPARE(decision.reasonCode, QStringLiteral("surface.follow_up_error_visible"));
+}
+
+void ProactiveSurfaceGateTests::proactiveSpeechAllowsApprovedSuggestion()
+{
+    const ProactiveSpeechDecision decision = ProactiveSpeechPolicy::evaluate(
+        QStringLiteral("YouTube search is ready."),
+        QStringLiteral("task_result_toast"),
+        FocusModeState{},
+        CooldownState{},
+        1500);
+
+    QVERIFY(decision.shouldSpeak);
+    QCOMPARE(decision.reasonCode, QStringLiteral("proactive_speech.allowed.task_result_toast"));
+}
+
+void ProactiveSurfaceGateTests::proactiveSpeechRespectsCooldownAndFocusMode()
+{
+    CooldownState cooldown;
+    cooldown.activeUntilEpochMs = 3000;
+    ProactiveSpeechDecision cooldownDecision = ProactiveSpeechPolicy::evaluate(
+        QStringLiteral("Suggestion"),
+        QStringLiteral("task_result_toast"),
+        FocusModeState{},
+        cooldown,
+        1500);
+    QVERIFY(!cooldownDecision.shouldSpeak);
+    QVERIFY(cooldownDecision.cooldownActive);
+
+    FocusModeState focus;
+    focus.enabled = true;
+    focus.allowCriticalAlerts = false;
+    const ProactiveSpeechDecision focusDecision = ProactiveSpeechPolicy::evaluate(
+        QStringLiteral("Suggestion"),
+        QStringLiteral("task_result_toast"),
+        focus,
+        CooldownState{},
+        1500);
+    QVERIFY(!focusDecision.shouldSpeak);
+    QCOMPARE(focusDecision.reasonCode, QStringLiteral("proactive_speech.suppressed_focus_mode"));
 }
 
 QTEST_APPLESS_MAIN(ProactiveSurfaceGateTests)

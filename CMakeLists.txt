@@ -323,6 +323,7 @@ set(JARVIS_SOURCES
     src/cognition/DesktopWorkMode.cpp
     src/cognition/FocusModePolicy.cpp
     src/cognition/ProactivePlannerInputEnricher.cpp
+    src/cognition/ProactiveSpeechPolicy.cpp
     src/cognition/ProactiveSuggestionGate.cpp
     src/cognition/ProactiveSuggestionPlanner.cpp
     src/cognition/ProactiveSurfaceGate.cpp
@@ -335,6 +336,7 @@ set(JARVIS_SOURCES
     src/core/tools/AgentToolLoopGuard.cpp
     src/core/tools/ToolExecutionService.cpp
     src/core/tools/ToolResultEvidencePolicy.cpp
+    src/core/tools/WebSearchQueryBuilder.cpp
     src/devices/DeviceManager.cpp
     src/devices/MockDevices.cpp
     src/gui/AgentViewModel.cpp
@@ -1806,6 +1808,7 @@ if(JARVIS_BUILD_TESTS)
     qt_add_executable(jarvis_proactive_surface_tests
         tests/ProactiveSurfaceGateTests.cpp
         src/cognition/ProactiveSurfaceGate.cpp
+        src/cognition/ProactiveSpeechPolicy.cpp
     )
 
     target_include_directories(jarvis_proactive_surface_tests PRIVATE src)

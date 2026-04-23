@@ -112,7 +112,14 @@ RouteArbitrationResult RouteArbitrator::arbitrate(const InputRouteDecision &poli
         || turnSignals.matchedCues.contains(QStringLiteral("stop"))
         || turnSignals.normalizedInput.contains(QStringLiteral("never mind"))
         || turnSignals.normalizedInput.contains(QStringLiteral("nevermind"))
-        || turnSignals.normalizedInput.contains(QStringLiteral("quit"));
+        || turnSignals.normalizedInput.contains(QStringLiteral("quit"))
+        || turnSignals.normalizedInput.contains(QStringLiteral("you can go"))
+        || turnSignals.normalizedInput.contains(QStringLiteral("that's all"))
+        || turnSignals.normalizedInput.contains(QStringLiteral("that is all"))
+        || turnSignals.normalizedInput.contains(QStringLiteral("we're done"))
+        || turnSignals.normalizedInput.contains(QStringLiteral("we are done"))
+        || turnSignals.normalizedInput.contains(QStringLiteral("that's enough"))
+        || turnSignals.normalizedInput.contains(QStringLiteral("that is enough"));
     const bool socialQuestionOnly =
         !terminalIntent
         && (turnSignals.hasGreeting || turnSignals.hasSmallTalk)

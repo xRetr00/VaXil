@@ -15,6 +15,12 @@ public:
                                                      qint64 contextAtMs,
                                                      qint64 nowMs,
                                                      bool privateModeEnabled);
+    [[nodiscard]] static double contextRelevanceScore(const QString &userInput,
+                                                      IntentType intent,
+                                                      const QVariantMap &desktopContext);
+    [[nodiscard]] static QString contextInjectionReason(const QString &userInput,
+                                                        IntentType intent,
+                                                        const QVariantMap &desktopContext);
 
 private:
     [[nodiscard]] static QString buildHint(const QString &desktopSummary,

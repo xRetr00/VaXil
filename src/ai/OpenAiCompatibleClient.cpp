@@ -388,7 +388,7 @@ QNetworkRequest OpenAiCompatibleClient::buildJsonRequest(const QString &path) co
         request.setRawHeader("Authorization", QStringLiteral("Bearer %1").arg(m_apiKey).toUtf8());
     }
     if (m_providerKind == QStringLiteral("openrouter")) {
-        request.setRawHeader("HTTP-Referer", "https://github.com/xRetr00/Vaxil");
+        request.setRawHeader("HTTP-Referer", "https://www.vaxil.app/");
         request.setRawHeader("X-Title", "Vaxil");
     }
     qInfo().noquote() << "[AI_PROVIDER] build_request provider=" << m_providerKind

@@ -32,7 +32,7 @@ TurnGoalSet UserGoalInferer::infer(const TurnSignals &turnSignals,
     } else if (state.isCorrection) {
         goals.primaryGoal = makeGoal(UserGoalKind::Correction,
                                      QStringLiteral("correction"),
-                                     0.9f,
+                                     std::max(0.75f, state.correctionConfidence),
                                      QStringLiteral("goal.correction"));
     } else if (hasDeterministicTask || turnSignals.hasDeterministicCue) {
         goals.primaryGoal = makeGoal(UserGoalKind::DeterministicAction,

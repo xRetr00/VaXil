@@ -13,7 +13,35 @@ QString stopMessageForReason(const QString &reasonCode)
     if (reasonCode == QStringLiteral("tool_loop.max_tool_calls")) {
         return QStringLiteral("I’ve hit the technical tool-call guard for this request. Please narrow it down and try again.");
     }
+    if (reasonCode == QStringLiteral("tool_loop.evidence_sufficient")) {
+        return QStringLiteral("I have enough evidence to answer, so I stopped additional tool calls.");
+    }
+    if (reasonCode == QStringLiteral("tool_loop.cross_family_drift")) {
+        return QStringLiteral("The tools started drifting away from the request after useful evidence was found. Please clarify the next source if you want me to inspect more.");
+    }
     return QStringLiteral("The tool attempts are failing or returning too little evidence. Please clarify what source or action you want me to use.");
+}
+
+QString usefulEvidenceSummary(const AgentToolResult &result)
+{
+    const QString summary = result.summary.trimmed();
+    if (!summary.isEmpty()) {
+        return summary.left(240);
+    }
+    const QString output = result.output.trimmed();
+    if (!output.isEmpty()) {
+        return output.left(240);
+    }
+    const QString detail = result.detail.trimmed();
+    return detail.left(240);
+}
+
+bool canSatisfyEvidenceNeed(const QString &family, const QString &toolName)
+{
+    return family == QStringLiteral("web")
+        || toolName == QStringLiteral("browser_fetch_text")
+        || family == QStringLiteral("file")
+        || family == QStringLiteral("memory");
 }
 }
 
@@ -44,6 +72,19 @@ AgentToolLoopGuardDecision AgentToolLoopGuard::evaluateResults(
 
         const ToolResultEvidenceAssessment assessment = ToolResultEvidencePolicy::assess(result);
         const bool failedOrLowSignal = !result.success || assessment.lowSignal;
+        const bool usefulEvidence = canSatisfyEvidenceNeed(family, result.toolName)
+            && result.success
+            && !assessment.lowSignal
+            && (assessment.confidence == QStringLiteral("strong")
+                || assessment.confidence == QStringLiteral("medium")
+                || !usefulEvidenceSummary(result).isEmpty());
+        if (state->evidenceSufficient
+            && usefulEvidence
+            && !state->lastUsefulToolFamily.isEmpty()
+            && state->lastUsefulToolFamily != family
+            && family != QStringLiteral("memory")) {
+            state->toolDriftDetected = true;
+        }
         if (!result.success) {
             ++state->failedToolAttempts;
         }
@@ -64,6 +105,11 @@ AgentToolLoopGuardDecision AgentToolLoopGuard::evaluateResults(
             state->consecutiveSameFamilyFailureCount = 0;
             state->lastFailureFamily.clear();
             state->lastToolSuccess = true;
+            if (usefulEvidence) {
+                state->evidenceSufficient = true;
+                state->lastUsefulToolFamily = family;
+                state->lastUsefulEvidenceSummary = usefulEvidenceSummary(result);
+            }
         }
     }
 
@@ -71,8 +117,18 @@ AgentToolLoopGuardDecision AgentToolLoopGuard::evaluateResults(
     decision.sameFamilyAttemptCount = state->sameFamilyAttemptCount;
     decision.consecutiveFailureCount = state->consecutiveFailureCount;
     decision.lastToolSuccess = state->lastToolSuccess;
+    decision.evidenceSufficient = state->evidenceSufficient;
+    decision.toolDriftDetected = state->toolDriftDetected;
+    decision.lastUsefulToolFamily = state->lastUsefulToolFamily;
+    decision.lastUsefulEvidenceSummary = state->lastUsefulEvidenceSummary;
 
-    if (state->totalToolCalls >= config.maxToolCallsPerTurn) {
+    if (state->toolDriftDetected) {
+        decision.stop = true;
+        decision.reasonCode = QStringLiteral("tool_loop.cross_family_drift");
+    } else if (state->evidenceSufficient && state->totalToolCalls > 1 && state->consecutiveFailureCount > 0) {
+        decision.stop = true;
+        decision.reasonCode = QStringLiteral("tool_loop.evidence_sufficient");
+    } else if (state->totalToolCalls >= config.maxToolCallsPerTurn) {
         decision.stop = true;
         decision.reasonCode = QStringLiteral("tool_loop.max_tool_calls");
     } else if (state->failedToolAttempts >= config.maxFailedToolCallsPerTurn) {

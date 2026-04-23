@@ -70,6 +70,91 @@ QString transportModeName(AgentTransportMode mode)
     }
 }
 
+bool modelLooksToolCapable(const QString &modelId)
+{
+    const QString lowered = modelId.toLower();
+    return lowered.contains(QStringLiteral("qwen"))
+        || lowered.contains(QStringLiteral("granite"))
+        || lowered.contains(QStringLiteral("llama"))
+        || lowered.contains(QStringLiteral("gpt"))
+        || lowered.contains(QStringLiteral("claude"))
+        || lowered.contains(QStringLiteral("gemini"))
+        || lowered.contains(QStringLiteral("mistral"))
+        || lowered.contains(QStringLiteral("deepseek"))
+        || lowered.contains(QStringLiteral("gpt-oss"))
+        || lowered.contains(QStringLiteral("tool"));
+}
+
+bool isSideEffectingProviderTool(const QString &toolName)
+{
+    return toolName == QStringLiteral("browser_open")
+        || toolName == QStringLiteral("computer_open_url")
+        || toolName == QStringLiteral("computer_open_app")
+        || toolName == QStringLiteral("computer_write_file")
+        || toolName == QStringLiteral("computer_set_timer")
+        || toolName == QStringLiteral("file_write")
+        || toolName == QStringLiteral("file_patch")
+        || toolName == QStringLiteral("memory_write")
+        || toolName == QStringLiteral("memory_delete");
+}
+
+struct ProviderToolFilterResult
+{
+    QList<AgentToolSpec> tools;
+    QString reasonCode = QStringLiteral("provider_tools.unchanged");
+    QString compatibilityMode = QStringLiteral("full_tools");
+    QStringList removedTools;
+};
+
+ProviderToolFilterResult filterToolsForProvider(const QString &providerKind,
+                                                const QString &modelId,
+                                                const QList<AgentToolSpec> &tools,
+                                                AgentTransportMode transportMode)
+{
+    ProviderToolFilterResult result;
+    result.tools = tools;
+    if (tools.isEmpty()) {
+        result.reasonCode = QStringLiteral("provider_tools.none_requested");
+        result.compatibilityMode = QStringLiteral("no_tools");
+        return result;
+    }
+    if (transportMode != AgentTransportMode::Responses) {
+        result.reasonCode = QStringLiteral("provider_tools.chat_adapter_prompt_tools");
+        result.compatibilityMode = QStringLiteral("chat_adapter");
+        return result;
+    }
+
+    const bool openRouter = providerKind == QStringLiteral("openrouter");
+    if (!openRouter) {
+        return result;
+    }
+
+    if (!modelLooksToolCapable(modelId)) {
+        result.tools.clear();
+        for (const AgentToolSpec &tool : tools) {
+            result.removedTools.push_back(tool.name);
+        }
+        result.reasonCode = QStringLiteral("provider_tools.model_not_tool_capable");
+        result.compatibilityMode = QStringLiteral("no_tools");
+        return result;
+    }
+
+    QList<AgentToolSpec> kept;
+    for (const AgentToolSpec &tool : tools) {
+        if (isSideEffectingProviderTool(tool.name)) {
+            result.removedTools.push_back(tool.name);
+            continue;
+        }
+        kept.push_back(tool);
+    }
+    if (!result.removedTools.isEmpty()) {
+        result.tools = kept;
+        result.reasonCode = QStringLiteral("provider_tools.openrouter_side_effecting_filtered");
+        result.compatibilityMode = kept.isEmpty() ? QStringLiteral("no_tools") : QStringLiteral("safe_tools_only");
+    }
+    return result;
+}
+
 QString formatMemoryLane(const QString &name, const QList<MemoryRecord> &records)
 {
     QStringList lines;
@@ -252,18 +337,21 @@ ReasoningMode AiRequestCoordinator::chooseReasoningMode(const QString &input) co
     return m_reasoningRouter->chooseMode(input, m_settings->autoRoutingEnabled(), m_settings->defaultReasoningMode());
 }
 
-AgentTransportMode AiRequestCoordinator::resolveAgentTransport(const AgentCapabilitySet &capabilities, const QString &) const
+AgentTransportMode AiRequestCoordinator::resolveAgentTransport(const AgentCapabilitySet &capabilities, const QString &modelId) const
 {
     const QString mode = m_settings ? m_settings->agentProviderMode().trimmed().toLower() : QStringLiteral("auto");
+    const QString providerKind = providerKindForAudit(m_settings);
+    const bool providerModelLikelyToolCapable = providerKind != QStringLiteral("openrouter")
+        || modelLooksToolCapable(modelId);
     if (mode == QStringLiteral("responses")) {
-        return (capabilities.responsesApi && capabilities.selectedModelToolCapable)
+        return (capabilities.responsesApi && capabilities.selectedModelToolCapable && providerModelLikelyToolCapable)
             ? AgentTransportMode::Responses
             : AgentTransportMode::CapabilityError;
     }
     if (mode == QStringLiteral("chat_adapter")) {
         return AgentTransportMode::ChatAdapter;
     }
-    return (capabilities.responsesApi && capabilities.selectedModelToolCapable)
+    return (capabilities.responsesApi && capabilities.selectedModelToolCapable && providerModelLikelyToolCapable)
         ? AgentTransportMode::Responses
         : AgentTransportMode::ChatAdapter;
 }
@@ -405,54 +493,68 @@ AgentStartRequestResult AiRequestCoordinator::startAgentRequest(AiBackendClient 
         return result;
     }
 
+    AgentRequestContext compatibleContext = context;
+    const ProviderToolFilterResult providerToolFilter = filterToolsForProvider(
+        providerKindForAudit(m_settings),
+        context.modelId,
+        context.tools,
+        result.transportMode);
+    compatibleContext.tools = providerToolFilter.tools;
+    if (compatibleContext.promptContext.has_value()) {
+        compatibleContext.promptContext->allowedTools = compatibleContext.tools;
+    }
+
     if (m_loggingService) {
         const QString providerKind = providerKindForAudit(m_settings);
         const QString providerEndpoint = providerEndpointForAudit(m_settings);
         m_loggingService->infoFor(
             QStringLiteral("route_audit"),
-            QStringLiteral("[agent_request] provider=%1 endpoint=%2 transport=%3 model=%4 intent=%5 memoryAutoWrite=%6 toolCount=%7 toolResultCount=%8")
+            QStringLiteral("[agent_request] provider=%1 endpoint=%2 transport=%3 model=%4 intent=%5 memoryAutoWrite=%6 toolCount=%7 toolResultCount=%8 provider_tool_filter_reason=%9 provider_tool_compatibility_mode=%10 tools_removed_for_provider=%11")
                 .arg(providerKind,
                      providerEndpoint,
                      transportModeName(result.transportMode),
-                     context.modelId,
-                     QString::number(static_cast<int>(context.intent)),
-                     context.memoryAutoWrite ? QStringLiteral("true") : QStringLiteral("false"),
-                     QString::number(context.tools.size()),
-                     QString::number(context.toolResults.size())));
-        m_loggingService->infoFor(QStringLiteral("memory_audit"), clipAuditText(formatMemoryContext(context.memory)));
-        m_loggingService->infoFor(QStringLiteral("tool_audit"), clipAuditText(formatToolSpecs(context.tools)));
+                     compatibleContext.modelId,
+                     QString::number(static_cast<int>(compatibleContext.intent)),
+                     compatibleContext.memoryAutoWrite ? QStringLiteral("true") : QStringLiteral("false"),
+                     QString::number(compatibleContext.tools.size()),
+                     QString::number(compatibleContext.toolResults.size()),
+                     providerToolFilter.reasonCode,
+                     providerToolFilter.compatibilityMode,
+                     providerToolFilter.removedTools.join(QStringLiteral(","))));
+        m_loggingService->infoFor(QStringLiteral("memory_audit"), clipAuditText(formatMemoryContext(compatibleContext.memory)));
+        m_loggingService->infoFor(QStringLiteral("tool_audit"), clipAuditText(formatToolSpecs(compatibleContext.tools)));
     }
 
     if (result.transportMode == AgentTransportMode::Responses) {
-        const QString instructions = context.promptContext.has_value()
-            ? promptAdapter->buildAgentInstructions(*context.promptContext, context.skills, context.memoryAutoWrite)
+        const QString instructions = compatibleContext.promptContext.has_value()
+            ? promptAdapter->buildAgentInstructions(*compatibleContext.promptContext, compatibleContext.skills, compatibleContext.memoryAutoWrite)
             : promptAdapter->buildAgentInstructions(
-                context.memory,
-                context.skills,
-                context.tools,
-                context.identity,
-                context.userProfile,
-                context.workspaceRoot,
-                context.intent,
-                context.memoryAutoWrite,
-                context.responseMode,
-                context.sessionGoal,
-                context.nextStepHint,
-                context.visionContext);
+                compatibleContext.memory,
+                compatibleContext.skills,
+                compatibleContext.tools,
+                compatibleContext.identity,
+                compatibleContext.userProfile,
+                compatibleContext.workspaceRoot,
+                compatibleContext.intent,
+                compatibleContext.memoryAutoWrite,
+                compatibleContext.responseMode,
+                compatibleContext.sessionGoal,
+                compatibleContext.nextStepHint,
+                compatibleContext.visionContext);
         const AgentRequest request{
-            .model = context.modelId,
+            .model = compatibleContext.modelId,
             .instructions = instructions,
-            .inputText = context.input,
+            .inputText = compatibleContext.input,
             .previousResponseId = {},
-            .tools = context.tools,
+            .tools = compatibleContext.tools,
             .toolResults = {},
-            .sampling = context.sampling,
-            .mode = context.mode,
-            .timeout = std::chrono::milliseconds(context.timeoutMs)
+            .sampling = compatibleContext.sampling,
+            .mode = compatibleContext.mode,
+            .timeout = std::chrono::milliseconds(compatibleContext.timeoutMs)
         };
         if (m_loggingService) {
-            if (context.promptContext.has_value()) {
-                logPromptAssembly(m_loggingService, promptAdapter, *context.promptContext, context.turnId);
+            if (compatibleContext.promptContext.has_value()) {
+                logPromptAssembly(m_loggingService, promptAdapter, *compatibleContext.promptContext, compatibleContext.turnId);
             }
             const QString providerKind = providerKindForAudit(m_settings);
             const QString providerEndpoint = providerEndpointForAudit(m_settings);
@@ -461,49 +563,49 @@ AgentStartRequestResult AiRequestCoordinator::startAgentRequest(AiBackendClient 
                 QStringLiteral("[agent_request.responses] provider=%1 endpoint=%2 model=%3 mode=%4 timeoutMs=%5 workspaceRoot=%6")
                     .arg(providerKind,
                          providerEndpoint,
-                         context.modelId,
-                         reasoningModeName(context.mode),
-                         QString::number(context.timeoutMs),
-                         context.workspaceRoot));
+                         compatibleContext.modelId,
+                         reasoningModeName(compatibleContext.mode),
+                         QString::number(compatibleContext.timeoutMs),
+                         compatibleContext.workspaceRoot));
             if (debugPromptDumpEnabled()) {
                 m_loggingService->infoFor(QStringLiteral("ai_prompt"), clipAuditText(QStringLiteral("--- instructions ---\n%1").arg(instructions)));
-                m_loggingService->infoFor(QStringLiteral("ai_prompt"), clipAuditText(QStringLiteral("--- input_text ---\n%1").arg(context.input)));
+                m_loggingService->infoFor(QStringLiteral("ai_prompt"), clipAuditText(QStringLiteral("--- input_text ---\n%1").arg(compatibleContext.input)));
             }
         }
         result.requestId = backendClient->sendAgentRequest(request);
         if (m_loggingService) {
             logProviderRequestStarted(
                 m_loggingService,
-                context.turnId,
+                compatibleContext.turnId,
                 result.requestId,
                 providerKindForAudit(m_settings),
                 providerEndpointForAudit(m_settings),
-                context.modelId,
+                compatibleContext.modelId,
                 QStringLiteral("agent"),
                 QStringLiteral("responses"));
         }
         return result;
     }
 
-    const auto messages = context.promptContext.has_value()
-        ? promptAdapter->buildHybridAgentMessages(*context.promptContext)
+    const auto messages = compatibleContext.promptContext.has_value()
+        ? promptAdapter->buildHybridAgentMessages(*compatibleContext.promptContext)
         : promptAdapter->buildHybridAgentMessages(
-            context.input,
-            context.memory,
-            context.identity,
-            context.userProfile,
-            context.workspaceRoot,
-            context.intent,
-            context.tools,
-            context.responseMode,
-            context.sessionGoal,
-            context.nextStepHint,
-            context.mode,
-            context.visionContext);
+            compatibleContext.input,
+            compatibleContext.memory,
+            compatibleContext.identity,
+            compatibleContext.userProfile,
+            compatibleContext.workspaceRoot,
+            compatibleContext.intent,
+            compatibleContext.tools,
+            compatibleContext.responseMode,
+            compatibleContext.sessionGoal,
+            compatibleContext.nextStepHint,
+            compatibleContext.mode,
+            compatibleContext.visionContext);
 
     if (m_loggingService) {
-        if (context.promptContext.has_value()) {
-            logPromptAssembly(m_loggingService, promptAdapter, *context.promptContext, context.turnId);
+        if (compatibleContext.promptContext.has_value()) {
+            logPromptAssembly(m_loggingService, promptAdapter, *compatibleContext.promptContext, compatibleContext.turnId);
         }
         const QString providerKind = providerKindForAudit(m_settings);
         const QString providerEndpoint = providerEndpointForAudit(m_settings);
@@ -512,32 +614,32 @@ AgentStartRequestResult AiRequestCoordinator::startAgentRequest(AiBackendClient 
             QStringLiteral("[agent_request.chat_adapter] provider=%1 endpoint=%2 model=%3 mode=%4 timeoutMs=%5")
                 .arg(providerKind,
                      providerEndpoint,
-                     context.modelId,
-                     reasoningModeName(context.mode),
-                     QString::number(context.timeoutMs)));
+                     compatibleContext.modelId,
+                     reasoningModeName(compatibleContext.mode),
+                     QString::number(compatibleContext.timeoutMs)));
         if (debugPromptDumpEnabled()) {
             m_loggingService->infoFor(QStringLiteral("ai_prompt"), clipAuditText(formatMessages(messages)));
         }
     }
 
     result.requestId = backendClient->sendChatRequest(messages,
-                                                      context.modelId,
-                                                      {.mode = context.mode,
+                                                      compatibleContext.modelId,
+                                                      {.mode = compatibleContext.mode,
                                                        .kind = RequestKind::AgentConversation,
                                                        .stream = false,
-                                                       .temperature = context.sampling.conversationTemperature,
-                                                       .topP = context.sampling.conversationTopP,
-                                                       .providerTopK = context.sampling.providerTopK,
-                                                       .maxTokens = context.sampling.maxOutputTokens,
-                                                       .timeout = std::chrono::milliseconds(context.timeoutMs)});
+                                                       .temperature = compatibleContext.sampling.conversationTemperature,
+                                                       .topP = compatibleContext.sampling.conversationTopP,
+                                                       .providerTopK = compatibleContext.sampling.providerTopK,
+                                                       .maxTokens = compatibleContext.sampling.maxOutputTokens,
+                                                       .timeout = std::chrono::milliseconds(compatibleContext.timeoutMs)});
     if (m_loggingService) {
         logProviderRequestStarted(
             m_loggingService,
-            context.turnId,
+            compatibleContext.turnId,
             result.requestId,
             providerKindForAudit(m_settings),
             providerEndpointForAudit(m_settings),
-            context.modelId,
+            compatibleContext.modelId,
             QStringLiteral("agent"),
             QStringLiteral("chat_adapter"));
     }
@@ -553,49 +655,64 @@ quint64 AiRequestCoordinator::continueAgentRequest(AiBackendClient *backendClien
         return 0;
     }
 
+    AgentRequestContext compatibleContext = context;
+    const AgentTransportMode transportMode = useResponses ? AgentTransportMode::Responses : AgentTransportMode::ChatAdapter;
+    const ProviderToolFilterResult providerToolFilter = filterToolsForProvider(
+        providerKindForAudit(m_settings),
+        context.modelId,
+        context.tools,
+        transportMode);
+    compatibleContext.tools = providerToolFilter.tools;
+    if (compatibleContext.promptContext.has_value()) {
+        compatibleContext.promptContext->allowedTools = compatibleContext.tools;
+    }
+
     if (useResponses) {
-        const QString instructions = context.promptContext.has_value()
-            ? promptAdapter->buildAgentInstructions(*context.promptContext, context.skills, context.memoryAutoWrite)
+        const QString instructions = compatibleContext.promptContext.has_value()
+            ? promptAdapter->buildAgentInstructions(*compatibleContext.promptContext, compatibleContext.skills, compatibleContext.memoryAutoWrite)
             : promptAdapter->buildAgentInstructions(
-                context.memory,
-                context.skills,
-                context.tools,
-                context.identity,
-                context.userProfile,
-                context.workspaceRoot,
-                context.intent,
-                context.memoryAutoWrite,
-                context.responseMode,
-                context.sessionGoal,
-                context.nextStepHint,
-                context.visionContext);
+                compatibleContext.memory,
+                compatibleContext.skills,
+                compatibleContext.tools,
+                compatibleContext.identity,
+                compatibleContext.userProfile,
+                compatibleContext.workspaceRoot,
+                compatibleContext.intent,
+                compatibleContext.memoryAutoWrite,
+                compatibleContext.responseMode,
+                compatibleContext.sessionGoal,
+                compatibleContext.nextStepHint,
+                compatibleContext.visionContext);
         const AgentRequest request{
-            .model = context.modelId,
+            .model = compatibleContext.modelId,
             .instructions = instructions,
             .inputText = {},
-            .previousResponseId = context.previousResponseId,
-            .tools = context.tools,
-            .toolResults = context.toolResults,
-            .sampling = context.sampling,
-            .mode = context.mode,
-            .timeout = std::chrono::milliseconds(context.timeoutMs)
+            .previousResponseId = compatibleContext.previousResponseId,
+            .tools = compatibleContext.tools,
+            .toolResults = compatibleContext.toolResults,
+            .sampling = compatibleContext.sampling,
+            .mode = compatibleContext.mode,
+            .timeout = std::chrono::milliseconds(compatibleContext.timeoutMs)
         };
         if (m_loggingService) {
-            if (context.promptContext.has_value()) {
-                logPromptAssembly(m_loggingService, promptAdapter, *context.promptContext, context.turnId);
+            if (compatibleContext.promptContext.has_value()) {
+                logPromptAssembly(m_loggingService, promptAdapter, *compatibleContext.promptContext, compatibleContext.turnId);
             }
             const QString providerKind = providerKindForAudit(m_settings);
             const QString providerEndpoint = providerEndpointForAudit(m_settings);
             m_loggingService->infoFor(
                 QStringLiteral("route_audit"),
-                QStringLiteral("[agent_continue.responses] provider=%1 endpoint=%2 model=%3 previousResponseId=%4 toolResultCount=%5")
+                QStringLiteral("[agent_continue.responses] provider=%1 endpoint=%2 model=%3 previousResponseId=%4 toolResultCount=%5 provider_tool_filter_reason=%6 provider_tool_compatibility_mode=%7 tools_removed_for_provider=%8")
                     .arg(providerKind,
                          providerEndpoint,
-                         context.modelId,
-                         context.previousResponseId,
-                         QString::number(context.toolResults.size())));
-            m_loggingService->infoFor(QStringLiteral("memory_audit"), clipAuditText(formatMemoryContext(context.memory)));
-            m_loggingService->infoFor(QStringLiteral("tool_audit"), clipAuditText(formatToolResults(context.toolResults)));
+                         compatibleContext.modelId,
+                         compatibleContext.previousResponseId,
+                         QString::number(compatibleContext.toolResults.size()),
+                         providerToolFilter.reasonCode,
+                         providerToolFilter.compatibilityMode,
+                         providerToolFilter.removedTools.join(QStringLiteral(","))));
+            m_loggingService->infoFor(QStringLiteral("memory_audit"), clipAuditText(formatMemoryContext(compatibleContext.memory)));
+            m_loggingService->infoFor(QStringLiteral("tool_audit"), clipAuditText(formatToolResults(compatibleContext.toolResults)));
             if (debugPromptDumpEnabled()) {
                 m_loggingService->infoFor(QStringLiteral("ai_prompt"), clipAuditText(QStringLiteral("--- continuation instructions ---\n%1").arg(instructions)));
             }
@@ -604,37 +721,37 @@ quint64 AiRequestCoordinator::continueAgentRequest(AiBackendClient *backendClien
         if (m_loggingService) {
             logProviderRequestStarted(
                 m_loggingService,
-                context.turnId,
+                compatibleContext.turnId,
                 requestId,
                 providerKindForAudit(m_settings),
                 providerEndpointForAudit(m_settings),
-                context.modelId,
+                compatibleContext.modelId,
                 QStringLiteral("agent_continue"),
                 QStringLiteral("responses"));
         }
         return requestId;
     }
 
-    const auto messages = context.promptContext.has_value()
-        ? promptAdapter->buildHybridAgentContinuationMessages(*context.promptContext)
+    const auto messages = compatibleContext.promptContext.has_value()
+        ? promptAdapter->buildHybridAgentContinuationMessages(*compatibleContext.promptContext)
         : promptAdapter->buildHybridAgentContinuationMessages(
-            context.input,
-            context.toolResults,
-            context.memory,
-            context.identity,
-            context.userProfile,
-            context.workspaceRoot,
-            context.intent,
-            context.tools,
-            context.responseMode,
-            context.sessionGoal,
-            context.nextStepHint,
-            context.mode,
-            context.visionContext);
+            compatibleContext.input,
+            compatibleContext.toolResults,
+            compatibleContext.memory,
+            compatibleContext.identity,
+            compatibleContext.userProfile,
+            compatibleContext.workspaceRoot,
+            compatibleContext.intent,
+            compatibleContext.tools,
+            compatibleContext.responseMode,
+            compatibleContext.sessionGoal,
+            compatibleContext.nextStepHint,
+            compatibleContext.mode,
+            compatibleContext.visionContext);
 
     if (m_loggingService) {
-        if (context.promptContext.has_value()) {
-            logPromptAssembly(m_loggingService, promptAdapter, *context.promptContext, context.turnId);
+        if (compatibleContext.promptContext.has_value()) {
+            logPromptAssembly(m_loggingService, promptAdapter, *compatibleContext.promptContext, compatibleContext.turnId);
         }
         const QString providerKind = providerKindForAudit(m_settings);
         const QString providerEndpoint = providerEndpointForAudit(m_settings);
@@ -643,33 +760,33 @@ quint64 AiRequestCoordinator::continueAgentRequest(AiBackendClient *backendClien
             QStringLiteral("[agent_continue.chat_adapter] provider=%1 endpoint=%2 model=%3 toolResultCount=%4")
                 .arg(providerKind,
                      providerEndpoint,
-                     context.modelId,
-                     QString::number(context.toolResults.size())));
-        m_loggingService->infoFor(QStringLiteral("memory_audit"), clipAuditText(formatMemoryContext(context.memory)));
-        m_loggingService->infoFor(QStringLiteral("tool_audit"), clipAuditText(formatToolResults(context.toolResults)));
+                     compatibleContext.modelId,
+                     QString::number(compatibleContext.toolResults.size())));
+        m_loggingService->infoFor(QStringLiteral("memory_audit"), clipAuditText(formatMemoryContext(compatibleContext.memory)));
+        m_loggingService->infoFor(QStringLiteral("tool_audit"), clipAuditText(formatToolResults(compatibleContext.toolResults)));
         if (debugPromptDumpEnabled()) {
             m_loggingService->infoFor(QStringLiteral("ai_prompt"), clipAuditText(formatMessages(messages)));
         }
     }
 
     const quint64 requestId = backendClient->sendChatRequest(messages,
-                                                             context.modelId,
-                                                             {.mode = context.mode,
+                                                             compatibleContext.modelId,
+                                                             {.mode = compatibleContext.mode,
                                                               .kind = RequestKind::AgentConversation,
                                                               .stream = false,
-                                                              .temperature = context.sampling.conversationTemperature,
-                                                              .topP = context.sampling.conversationTopP,
-                                                              .providerTopK = context.sampling.providerTopK,
-                                                              .maxTokens = context.sampling.maxOutputTokens,
-                                                              .timeout = std::chrono::milliseconds(context.timeoutMs)});
+                                                              .temperature = compatibleContext.sampling.conversationTemperature,
+                                                              .topP = compatibleContext.sampling.conversationTopP,
+                                                              .providerTopK = compatibleContext.sampling.providerTopK,
+                                                              .maxTokens = compatibleContext.sampling.maxOutputTokens,
+                                                              .timeout = std::chrono::milliseconds(compatibleContext.timeoutMs)});
     if (m_loggingService) {
         logProviderRequestStarted(
             m_loggingService,
-            context.turnId,
+            compatibleContext.turnId,
             requestId,
             providerKindForAudit(m_settings),
             providerEndpointForAudit(m_settings),
-            context.modelId,
+            compatibleContext.modelId,
             QStringLiteral("agent_continue"),
             QStringLiteral("chat_adapter"));
     }

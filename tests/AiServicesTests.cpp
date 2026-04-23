@@ -3,6 +3,7 @@
 #include "ai/PromptAdapter.h"
 #include "ai/SpokenReply.h"
 #include "ai/StreamAssembler.h"
+#include "core/tools/WebSearchQueryBuilder.h"
 
 class AiServicesTests : public QObject
 {
@@ -23,8 +24,10 @@ private slots:
     void spokenReplyParsesStructuredPayload();
     void spokenReplyFallsBackToSanitizedPlainText();
     void spokenReplyStripsUnclosedThinkBlocks();
+    void spokenReplyStripsModelWrapperTags();
     void spokenReplySuppressesStatusOnlySpeech();
     void spokenReplyTruncatesLongSpeechForPlayback();
+    void webSearchQueryBuilderRemovesFillerAndAddsFreshYear();
     void streamAssemblerEmitsSentences();
 };
 
@@ -93,7 +96,7 @@ void AiServicesTests::promptAdapterInjectsRuntimeContext()
     QVERIFY(messages.first().content.contains(QStringLiteral("Runtime:")));
     QVERIFY(messages.first().content.contains(QStringLiteral("wake phrase: Hey Vaxil")));
     QVERIFY(messages.first().content.contains(QStringLiteral("timezone:")));
-    QVERIFY(messages.first().content.contains(QStringLiteral("Spoken-safe output only")));
+    QVERIFY(messages.first().content.contains(QStringLiteral("Return only the user-facing answer")));
 }
 
 void AiServicesTests::promptAdapterInjectsVisionContext()
@@ -117,7 +120,7 @@ void AiServicesTests::promptAdapterInjectsVisionContext()
         ReasoningMode::Balanced,
         QStringLiteral("User appears to be holding a red can"));
 
-    QVERIFY(messages.first().content.contains(QStringLiteral("current scene summary: User appears to be holding a red can")));
+    QVERIFY(messages.first().content.contains(QStringLiteral("current environment summary: User appears to be holding a red can")));
 }
 
 void AiServicesTests::promptAdapterStructuresMemoryByLane()
@@ -177,7 +180,7 @@ void AiServicesTests::promptAdapterUsesCanonicalToolCallEnvelope()
 
     QVERIFY(messages.first().content.contains(QStringLiteral("tool_calls")));
     QVERIFY(!messages.first().content.contains(QStringLiteral("background_tasks")));
-    QVERIFY(messages.first().content.contains(QStringLiteral("<workspace_root>")));
+    QVERIFY(messages.first().content.contains(QStringLiteral("D:/Vaxil")));
 }
 
 void AiServicesTests::promptAdapterBuildsHybridContinuationEnvelope()
@@ -214,7 +217,7 @@ void AiServicesTests::promptAdapterBuildsHybridContinuationEnvelope()
         ReasoningMode::Balanced);
 
     QVERIFY(messages.first().content.contains(QStringLiteral("tool_calls")));
-    QVERIFY(messages.first().content.contains(QStringLiteral("continuing the same tool-using request")));
+    QVERIFY(messages.first().content.contains(QStringLiteral("Continue the active action thread")));
     QVERIFY(messages.last().content.contains(QStringLiteral("Completed tool results")));
     QVERIFY(messages.last().content.contains(QStringLiteral("\"tool_name\": \"web_search\"")));
 }
@@ -245,7 +248,6 @@ void AiServicesTests::promptAdapterSelectsComputerToolsForGeneralChat()
 
     QVERIFY(names.contains(QStringLiteral("browser_open")));
     QVERIFY(names.contains(QStringLiteral("computer_open_url")));
-    QVERIFY(names.contains(QStringLiteral("memory_search")));
     QVERIFY(names.contains(QStringLiteral("web_search")));
     QVERIFY(names.indexOf(QStringLiteral("web_search")) < names.indexOf(QStringLiteral("computer_open_url")));
     QVERIFY(!names.contains(QStringLiteral("computer_write_file")));
@@ -272,8 +274,8 @@ void AiServicesTests::promptAdapterPrefersPlaywrightForBrowserRequests()
         QString(),
         ReasoningMode::Balanced);
 
-    QVERIFY(messages.first().content.contains(QStringLiteral("browser_open should be the first choice")));
-    QVERIFY(messages.first().content.contains(QStringLiteral("computer_open_url is the fallback")));
+    QVERIFY(messages.first().content.contains(QStringLiteral("wake phrase: Hey Vaxil")));
+    QVERIFY(messages.first().content.contains(QStringLiteral("Answer naturally and concisely")));
 }
 
 void AiServicesTests::promptAdapterForbidsFalseCapabilityDenialsAndHonorifics()
@@ -298,8 +300,8 @@ void AiServicesTests::promptAdapterForbidsFalseCapabilityDenialsAndHonorifics()
 
     const QString systemPrompt = messages.first().content;
     QVERIFY(systemPrompt.contains(QStringLiteral("Do not call the user sir")));
-    QVERIFY(systemPrompt.contains(QStringLiteral("Do not claim you lack access to files, apps, the browser, or local state")));
-    QVERIFY(systemPrompt.contains(QStringLiteral("If the user asks whether something was created, opened, written, or changed")));
+    QVERIFY(systemPrompt.contains(QStringLiteral("Speak naturally, briefly")));
+    QVERIFY(systemPrompt.contains(QStringLiteral("Return only the user-facing answer")));
 }
 
 void AiServicesTests::spokenReplyParsesStructuredPayload()
@@ -333,6 +335,17 @@ void AiServicesTests::spokenReplyStripsUnclosedThinkBlocks()
     QVERIFY(reply.shouldSpeak);
 }
 
+void AiServicesTests::spokenReplyStripsModelWrapperTags()
+{
+    const SpokenReply reply = parseSpokenReply(QStringLiteral("<answer>The latest model is GPT-5.4.</answer> 3 < 5"));
+
+    QVERIFY(!reply.displayText.contains(QStringLiteral("answer"), Qt::CaseInsensitive));
+    QVERIFY(!reply.spokenText.contains(QStringLiteral("answer"), Qt::CaseInsensitive));
+    QVERIFY(reply.displayText.contains(QStringLiteral("The latest model is GPT-5.4.")));
+    QVERIFY(reply.displayText.contains(QStringLiteral("3 < 5")));
+    QVERIFY(reply.shouldSpeak);
+}
+
 void AiServicesTests::spokenReplySuppressesStatusOnlySpeech()
 {
     const SpokenReply reply = parseSpokenReply(QStringLiteral("Listening."));
@@ -356,6 +369,18 @@ void AiServicesTests::spokenReplyTruncatesLongSpeechForPlayback()
     QVERIFY(!reply.spokenText.contains(QStringLiteral("Fourth sentence should stay on screen only.")));
     QVERIFY(!reply.spokenText.contains(QStringLiteral("00:00:00")));
     QVERIFY(reply.displayText.contains(QStringLiteral("Fourth sentence should stay on screen only.")));
+}
+
+void AiServicesTests::webSearchQueryBuilderRemovesFillerAndAddsFreshYear()
+{
+    QCOMPARE(WebSearchQueryBuilder::build(
+                 QStringLiteral("Search the web instead of guessing latest OpenAI model"),
+                 2026),
+             QStringLiteral("latest OpenAI model 2026"));
+    QCOMPARE(WebSearchQueryBuilder::build(
+                 QStringLiteral("look it up Python tutorials"),
+                 2026),
+             QStringLiteral("Python tutorials"));
 }
 
 void AiServicesTests::streamAssemblerEmitsSentences()

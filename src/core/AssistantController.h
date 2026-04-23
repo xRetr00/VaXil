@@ -365,6 +365,11 @@ private:
     void logPlannedSuggestion(const ProactiveSuggestionPlan &plan,
                               const QString &sourceKind,
                               const QString &taskType) const;
+    bool speakProactiveSuggestion(const ProactiveSuggestionPlan &plan,
+                                  const QString &surfaceKind,
+                                  const QString &taskType,
+                                  const QString &priority,
+                                  qint64 nowMs);
     void commitProactivePresentation(const QString &surfaceKind,
                                      const QString &taskType,
                                      const QString &priority,
