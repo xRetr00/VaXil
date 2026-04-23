@@ -273,7 +273,7 @@ QString DesktopContextSelectionBuilder::contextInjectionReason(const QString &us
     if (score >= 0.9) {
         return QStringLiteral("context.explicit_referent");
     }
-    if (score >= 0.55) {
+    if (score >= minimumInjectionScore()) {
         return QStringLiteral("context.lexical_topic_match");
     }
     return QStringLiteral("context.low_relevance_suppressed");
@@ -283,5 +283,10 @@ bool DesktopContextSelectionBuilder::shouldUseDesktopContext(const QString &user
                                                              IntentType intent,
                                                              const QVariantMap &desktopContext)
 {
-    return contextRelevanceScore(userInput, intent, desktopContext) >= 0.55;
+    return contextRelevanceScore(userInput, intent, desktopContext) >= minimumInjectionScore();
+}
+
+double DesktopContextSelectionBuilder::minimumInjectionScore()
+{
+    return 0.45;
 }

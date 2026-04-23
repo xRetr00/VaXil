@@ -9,6 +9,7 @@ class MemoryStoreTests : public QObject
     Q_OBJECT
 
 private slots:
+    void sanitizesAssistantConversationHistoryBeforeReuse();
     void returnsConnectorMemoryRecordsForRelevantQuery();
     void persistsCompiledContextPolicyMemory();
     void persistsCompiledContextPolicyHistory();
@@ -17,6 +18,24 @@ private slots:
     void persistsFeedbackSignalsAndBuildsAggregateMemory();
     void scoresTuningEpisodesAgainstFeedbackSignals();
 };
+
+void MemoryStoreTests::sanitizesAssistantConversationHistoryBeforeReuse()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    MemoryStore store(dir.path() + QStringLiteral("/memory.json"));
+
+    store.appendConversation(
+        QStringLiteral("assistant"),
+        QStringLiteral("Tone: concise, confident, non-robotic.\nYou are Vaxil.\n<answer>Hello there.</answer>"));
+
+    const QList<AiMessage> history = store.recentMessages(4);
+    QCOMPARE(history.size(), 1);
+    QCOMPARE(history.first().role, QStringLiteral("assistant"));
+    QVERIFY(!history.first().content.contains(QStringLiteral("Tone:"), Qt::CaseInsensitive));
+    QVERIFY(!history.first().content.contains(QStringLiteral("You are Vaxil"), Qt::CaseInsensitive));
+    QVERIFY(history.first().content.contains(QStringLiteral("Hello there.")));
+}
 
 void MemoryStoreTests::returnsConnectorMemoryRecordsForRelevantQuery()
 {

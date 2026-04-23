@@ -14,7 +14,7 @@ private slots:
     void allowsToastOnMeaningfulThreadShift();
     void keepsFailureToastVisible();
     void suppressesCompletionFollowUpDuringFocusMode();
-    void suppressesCompletionFollowUpDuringActiveCooldown();
+    void softlyAllowsCompletionFollowUpDuringActiveCooldown();
     void allowsUserRequestedCompletionDuringActiveCooldown();
     void allowsUserRequestedCompletionDuringFocusedDesktopWork();
     void allowsFailureFollowUpEvenInFocusMode();
@@ -113,7 +113,7 @@ void ProactiveSurfaceGateTests::suppressesCompletionFollowUpDuringFocusMode()
     QCOMPARE(decision.reasonCode, QStringLiteral("surface.follow_up_focus_mode_suppressed"));
 }
 
-void ProactiveSurfaceGateTests::suppressesCompletionFollowUpDuringActiveCooldown()
+void ProactiveSurfaceGateTests::softlyAllowsCompletionFollowUpDuringActiveCooldown()
 {
     ProactiveSurfaceGate::Input input;
     input.result.type = QStringLiteral("web_search");
@@ -125,8 +125,8 @@ void ProactiveSurfaceGateTests::suppressesCompletionFollowUpDuringActiveCooldown
     input.nowMs = 1500;
 
     const BehaviorDecision decision = ProactiveSurfaceGate::evaluateCompletionFollowUp(input, true);
-    QVERIFY(!decision.allowed);
-    QCOMPARE(decision.reasonCode, QStringLiteral("surface.follow_up_cooldown_suppressed"));
+    QVERIFY(decision.allowed);
+    QCOMPARE(decision.reasonCode, QStringLiteral("surface.follow_up_cooldown_soft_allow"));
 }
 
 void ProactiveSurfaceGateTests::allowsUserRequestedCompletionDuringActiveCooldown()
@@ -197,7 +197,8 @@ void ProactiveSurfaceGateTests::proactiveSpeechRespectsCooldownAndFocusMode()
         FocusModeState{},
         cooldown,
         1500);
-    QVERIFY(!cooldownDecision.shouldSpeak);
+    QVERIFY(cooldownDecision.shouldSpeak);
+    QCOMPARE(cooldownDecision.reasonCode, QStringLiteral("proactive_speech.cooldown_soft_allow"));
     QVERIFY(cooldownDecision.cooldownActive);
 
     FocusModeState focus;

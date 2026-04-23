@@ -83,7 +83,7 @@ AgentToolLoopGuardDecision AgentToolLoopGuard::evaluateResults(
                 || assessment.confidence == QStringLiteral("medium")
                 || !usefulEvidenceSummary(result).isEmpty());
         if (state->evidenceSufficient
-            && usefulEvidence
+            && failedOrLowSignal
             && !state->lastUsefulToolFamily.isEmpty()
             && state->lastUsefulToolFamily != family
             && family != QStringLiteral("memory")) {

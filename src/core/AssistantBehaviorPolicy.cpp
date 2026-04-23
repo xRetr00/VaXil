@@ -896,7 +896,7 @@ ActionSession AssistantBehaviorPolicy::createActionSession(const QString &input,
     case ResponseMode::Act:
         session.preamble = QStringLiteral("I'm working through that now.");
         session.progress = QStringLiteral("Continuing the request.");
-        session.successSummary = QStringLiteral("I finished that request.");
+        session.successSummary = QStringLiteral("Request handled.");
         session.failureSummary = QStringLiteral("I hit a blocker while handling that.");
         break;
     case ResponseMode::Recover:

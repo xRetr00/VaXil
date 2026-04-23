@@ -112,19 +112,13 @@ BehaviorDecision ProactiveSurfaceGate::evaluateCompletionFollowUp(const Input &i
     }
 
     if (shouldSuppressForFocusedDesktopWork(input)) {
-        decision.allowed = false;
-        decision.action = QStringLiteral("suppress_follow_up");
-        decision.reasonCode = QStringLiteral("surface.follow_up_focused_context_suppressed");
-        decision.score = 0.89;
-        return decision;
+        decision.reasonCode = QStringLiteral("surface.follow_up_focused_context_soft_allow");
+        decision.score = 0.76;
     }
 
     if (input.cooldownState.isActive(input.nowMs) && !hasMeaningfulThreadShift(input)) {
-        decision.allowed = false;
-        decision.action = QStringLiteral("suppress_follow_up");
-        decision.reasonCode = QStringLiteral("surface.follow_up_cooldown_suppressed");
-        decision.score = 0.91;
-        return decision;
+        decision.reasonCode = QStringLiteral("surface.follow_up_cooldown_soft_allow");
+        decision.score = 0.78;
     }
 
     if (hasFreshDesktopContext(input)) {

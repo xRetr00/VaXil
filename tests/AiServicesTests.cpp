@@ -25,6 +25,7 @@ private slots:
     void spokenReplyFallsBackToSanitizedPlainText();
     void spokenReplyStripsUnclosedThinkBlocks();
     void spokenReplyStripsModelWrapperTags();
+    void spokenReplyStripsPromptLeakageLines();
     void spokenReplySuppressesStatusOnlySpeech();
     void spokenReplyTruncatesLongSpeechForPlayback();
     void webSearchQueryBuilderRemovesFillerAndAddsFreshYear();
@@ -343,6 +344,19 @@ void AiServicesTests::spokenReplyStripsModelWrapperTags()
     QVERIFY(!reply.spokenText.contains(QStringLiteral("answer"), Qt::CaseInsensitive));
     QVERIFY(reply.displayText.contains(QStringLiteral("The latest model is GPT-5.4.")));
     QVERIFY(reply.displayText.contains(QStringLiteral("3 < 5")));
+    QVERIFY(reply.shouldSpeak);
+}
+
+void AiServicesTests::spokenReplyStripsPromptLeakageLines()
+{
+    const SpokenReply reply = parseSpokenReply(
+        QStringLiteral("Tone: concise, confident, non-robotic.\n"
+                       "Runtime: local datetime.\n"
+                       "The latest OpenAI model is GPT-5.4."));
+
+    QVERIFY(!reply.displayText.contains(QStringLiteral("Tone:"), Qt::CaseInsensitive));
+    QVERIFY(!reply.displayText.contains(QStringLiteral("Runtime:"), Qt::CaseInsensitive));
+    QVERIFY(reply.displayText.contains(QStringLiteral("GPT-5.4")));
     QVERIFY(reply.shouldSpeak);
 }
 

@@ -21,6 +21,7 @@ public:
     [[nodiscard]] static QString contextInjectionReason(const QString &userInput,
                                                         IntentType intent,
                                                         const QVariantMap &desktopContext);
+    [[nodiscard]] static double minimumInjectionScore();
 
 private:
     [[nodiscard]] static QString buildHint(const QString &desktopSummary,

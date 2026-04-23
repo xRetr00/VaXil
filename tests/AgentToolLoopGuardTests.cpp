@@ -25,7 +25,8 @@ private slots:
     void stopsAfterRepeatedLowSignalSameFamily();
     void doesNotStopAfterSuccessThenSingleFailure();
     void doesNotStopAfterEvidenceThenSingleFailure();
-    void stopsAfterEvidenceThenCrossFamilyDrift();
+    void doesNotStopAfterEvidenceThenCrossFamilySuccess();
+    void stopsAfterEvidenceThenCrossFamilyFailureDrift();
     void classifiesToolFamilies();
 };
 
@@ -124,7 +125,7 @@ void AgentToolLoopGuardTests::doesNotStopAfterEvidenceThenSingleFailure()
     QCOMPARE(second.consecutiveFailureCount, 1);
 }
 
-void AgentToolLoopGuardTests::stopsAfterEvidenceThenCrossFamilyDrift()
+void AgentToolLoopGuardTests::doesNotStopAfterEvidenceThenCrossFamilySuccess()
 {
     AgentToolLoopGuardState state;
     AgentToolLoopGuardConfig config;
@@ -143,6 +144,31 @@ void AgentToolLoopGuardTests::stopsAfterEvidenceThenCrossFamilyDrift()
 
     const AgentToolLoopGuardDecision second = AgentToolLoopGuard::evaluateResults(
         {makeResult(QStringLiteral("file_read"), true, QStringLiteral("Unrelated local file result."))},
+        &state,
+        config);
+    QVERIFY(!second.stop);
+    QVERIFY(!second.toolDriftDetected);
+}
+
+void AgentToolLoopGuardTests::stopsAfterEvidenceThenCrossFamilyFailureDrift()
+{
+    AgentToolLoopGuardState state;
+    AgentToolLoopGuardConfig config;
+    config.maxFailedToolCallsPerTurn = 10;
+
+    const AgentToolLoopGuardDecision first = AgentToolLoopGuard::evaluateResults(
+        {[] {
+            AgentToolResult result = makeResult(QStringLiteral("web_search"), true, QStringLiteral("OpenAI release result with enough evidence."));
+            result.payload = QJsonObject{{QStringLiteral("text"), QStringLiteral("OpenAI release result with enough evidence.")}};
+            return result;
+        }()},
+        &state,
+        config);
+    QVERIFY(!first.stop);
+    QVERIFY(state.evidenceSufficient);
+
+    const AgentToolLoopGuardDecision second = AgentToolLoopGuard::evaluateResults(
+        {makeResult(QStringLiteral("file_read"), false, QStringLiteral("Unrelated local file failure."))},
         &state,
         config);
     QVERIFY(second.stop);

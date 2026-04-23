@@ -142,7 +142,7 @@ void DesktopContextSelectionBuilderTests::skipsStaleTopicForUnrelatedCorrection(
     QVERIFY(DesktopContextSelectionBuilder::contextRelevanceScore(
                 QStringLiteral("No, the latest model released by OpenAI"),
                 IntentType::GENERAL_CHAT,
-                context) < 0.55);
+                context) < DesktopContextSelectionBuilder::minimumInjectionScore());
 }
 
 void DesktopContextSelectionBuilderTests::includesExplicitCurrentPageReference()

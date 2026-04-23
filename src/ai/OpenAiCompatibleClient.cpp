@@ -46,6 +46,70 @@ QJsonObject functionToolSchema(const AgentToolSpec &tool)
         {QStringLiteral("parameters"), QJsonDocument::fromJson(QByteArray::fromStdString(tool.parameters.dump())).object()}
     };
 }
+
+QString normalizedProviderKind(const QString &providerKind)
+{
+    const QString normalized = providerKind.trimmed().toLower();
+    return normalized.isEmpty() ? QStringLiteral("openai_compatible_local") : normalized;
+}
+
+bool shouldIncludeReasoningObject(const QString &providerKind)
+{
+    const QString normalized = normalizedProviderKind(providerKind);
+    return normalized == QStringLiteral("openrouter")
+        || normalized == QStringLiteral("openai")
+        || normalized == QStringLiteral("azure_openai");
+}
+
+bool isLocalEndpoint(const QString &endpoint)
+{
+    const QString lowered = endpoint.trimmed().toLower();
+    return lowered.contains(QStringLiteral("localhost"))
+        || lowered.contains(QStringLiteral("127.0.0.1"))
+        || lowered.contains(QStringLiteral("::1"));
+}
+
+QString firstNonEmptyTextField(const QJsonObject &object, const QStringList &keys)
+{
+    for (const QString &key : keys) {
+        const QJsonValue value = object.value(key);
+        if (value.isString()) {
+            const QString text = value.toString().trimmed();
+            if (!text.isEmpty()) {
+                return text;
+            }
+        } else if (value.isArray()) {
+            QStringList joined;
+            const QJsonArray array = value.toArray();
+            for (const QJsonValue &item : array) {
+                if (item.isString()) {
+                    const QString text = item.toString().trimmed();
+                    if (!text.isEmpty()) {
+                        joined.push_back(text);
+                    }
+                } else if (item.isObject()) {
+                    const QString text = firstNonEmptyTextField(
+                        item.toObject(),
+                        {QStringLiteral("text"), QStringLiteral("content"), QStringLiteral("value")});
+                    if (!text.isEmpty()) {
+                        joined.push_back(text);
+                    }
+                }
+            }
+            if (!joined.isEmpty()) {
+                return joined.join(QStringLiteral(" "));
+            }
+        } else if (value.isObject()) {
+            const QString text = firstNonEmptyTextField(
+                value.toObject(),
+                {QStringLiteral("text"), QStringLiteral("content"), QStringLiteral("value"), QStringLiteral("output_text")});
+            if (!text.isEmpty()) {
+                return text;
+            }
+        }
+    }
+    return {};
+}
 }
 
 OpenAiCompatibleClient::OpenAiCompatibleClient(QObject *parent)
@@ -81,8 +145,7 @@ void OpenAiCompatibleClient::setEndpoint(const QString &endpoint)
 
 void OpenAiCompatibleClient::setProviderConfig(const QString &providerKind, const QString &apiKey)
 {
-    const QString normalizedProvider = providerKind.trimmed().toLower();
-    m_providerKind = normalizedProvider.isEmpty() ? QStringLiteral("openai_compatible_local") : normalizedProvider;
+    m_providerKind = normalizedProviderKind(providerKind);
     m_apiKey = apiKey.trimmed();
     m_endpoint = normalizeEndpoint(m_endpoint, m_providerKind);
     qInfo().noquote() << "[AI_PROVIDER] config_set provider=" << m_providerKind
@@ -305,7 +368,9 @@ quint64 OpenAiCompatibleClient::sendAgentRequest(const AgentRequest &request)
     if (request.sampling.maxOutputTokens > 0) {
         body.insert(QStringLiteral("max_output_tokens"), request.sampling.maxOutputTokens);
     }
-    body.insert(QStringLiteral("reasoning"), QJsonObject{{QStringLiteral("effort"), reasoningEffortForMode(request.mode)}});
+    if (shouldIncludeReasoningObject(m_providerKind) && !isLocalEndpoint(m_endpoint)) {
+        body.insert(QStringLiteral("reasoning"), QJsonObject{{QStringLiteral("effort"), reasoningEffortForMode(request.mode)}});
+    }
 
     m_activeRequestId = ++m_requestCounter;
     qInfo().noquote() << "[AI_PROVIDER] agent_request_start requestId=" << m_activeRequestId
@@ -345,6 +410,10 @@ quint64 OpenAiCompatibleClient::sendAgentRequest(const AgentRequest &request)
 
         const QByteArray payload = reply->readAll();
         const AgentResponse response = parseAgentResponse(payload);
+        if (response.toolCalls.isEmpty() && response.outputText.trimmed().isEmpty()) {
+            finishWithFailure(m_activeRequestId, QStringLiteral("Provider returned an empty agent response payload"));
+            return;
+        }
         const int httpStatus = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
         qInfo().noquote() << "[AI_PROVIDER] agent_request_finished requestId=" << requestId
                           << " provider=" << m_providerKind
@@ -459,8 +528,15 @@ AgentResponse OpenAiCompatibleClient::parseAgentResponse(const QByteArray &paylo
             const QJsonArray content = item.value(QStringLiteral("content")).toArray();
             for (const QJsonValue &contentValue : content) {
                 const QJsonObject contentObject = contentValue.toObject();
-                if (contentObject.value(QStringLiteral("type")).toString() == QStringLiteral("output_text")) {
-                    textParts.push_back(contentObject.value(QStringLiteral("text")).toString());
+                const QString contentType = contentObject.value(QStringLiteral("type")).toString();
+                if (contentType == QStringLiteral("output_text")
+                    || contentType == QStringLiteral("text")) {
+                    const QString text = firstNonEmptyTextField(
+                        contentObject,
+                        {QStringLiteral("text"), QStringLiteral("content"), QStringLiteral("value")});
+                    if (!text.trimmed().isEmpty()) {
+                        textParts.push_back(text);
+                    }
                 }
             }
         } else if (type == QStringLiteral("function_call")) {
@@ -469,11 +545,26 @@ AgentResponse OpenAiCompatibleClient::parseAgentResponse(const QByteArray &paylo
                 .name = item.value(QStringLiteral("name")).toString(),
                 .argumentsJson = item.value(QStringLiteral("arguments")).toString()
             });
+        } else if (type == QStringLiteral("output_text") || type == QStringLiteral("text")) {
+            const QString text = firstNonEmptyTextField(
+                item,
+                {QStringLiteral("text"), QStringLiteral("content"), QStringLiteral("value")});
+            if (!text.trimmed().isEmpty()) {
+                textParts.push_back(text);
+            }
         }
     }
 
     if (textParts.isEmpty()) {
-        response.outputText = object.value(QStringLiteral("output_text")).toString();
+        response.outputText = firstNonEmptyTextField(
+            object,
+            {
+                QStringLiteral("output_text"),
+                QStringLiteral("text"),
+                QStringLiteral("content"),
+                QStringLiteral("message"),
+                QStringLiteral("output")
+            });
     } else {
         response.outputText = textParts.join(QString());
     }

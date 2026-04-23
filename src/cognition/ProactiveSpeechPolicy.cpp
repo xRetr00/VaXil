@@ -17,7 +17,10 @@ ProactiveSpeechDecision ProactiveSpeechPolicy::evaluate(const QString &message,
         return decision;
     }
     if (decision.cooldownActive) {
-        decision.reasonCode = QStringLiteral("proactive_speech.suppressed_cooldown");
+        // Soft cooldown: keep proactive speech available during tuning and rely on focus mode
+        // plus downstream dedupe for spam control.
+        decision.shouldSpeak = true;
+        decision.reasonCode = QStringLiteral("proactive_speech.cooldown_soft_allow");
         return decision;
     }
     decision.shouldSpeak = true;

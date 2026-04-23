@@ -15,10 +15,13 @@ QString stripHiddenReasoning(QString text)
 {
     text.replace(QRegularExpression(QStringLiteral("(?is)<think>.*?(?=\\b(?:assistant|final)\\s*:|</think>|$)")), QStringLiteral(" "));
     text.replace(QRegularExpression(QStringLiteral("(?is)</?think>")), QStringLiteral(" "));
+    text.replace(QRegularExpression(QStringLiteral("(?is)<\\s*(identity|behavior_mode|mode|task_state|constraints|tools|workspace|memory_context|execution_loop|response_contract|agent_mode)\\b[^>]*>.*?<\\s*/\\s*\\1\\s*>")), QStringLiteral(" "));
     text.replace(QRegularExpression(QStringLiteral("(?im)^\\s*(reasoning|analysis|thought process)\\s*:\\s*.*$")), QStringLiteral(" "));
     text.replace(QRegularExpression(QStringLiteral("(?im)^\\s*```(?:json|text|markdown)?\\s*$")), QStringLiteral(" "));
     text.replace(QRegularExpression(QStringLiteral("(?im)^\\s*```\\s*$")), QStringLiteral(" "));
     text.replace(QRegularExpression(QStringLiteral("(?im)^\\s*(assistant|system|developer)\\s*:\\s*")), QStringLiteral(" "));
+    text.replace(QRegularExpression(QStringLiteral("(?im)^\\s*(tone|addressing style|user name|user preferences|runtime|session_goal|policy|mode|reasoning mode)\\s*:\\s*.*$")), QStringLiteral(" "));
+    text.replace(QRegularExpression(QStringLiteral("(?im)^\\s*[-*]\\s*(mode|policy|session_goal|reasoning mode)\\s*:\\s*.*$")), QStringLiteral(" "));
     text.replace(QStringLiteral("/no_think"), QStringLiteral(" "));
     return text;
 }

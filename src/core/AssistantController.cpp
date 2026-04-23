@@ -36,6 +36,7 @@
 #include "core/agent/IntentEngine.h"
 #include "core/ActionThreadTracker.h"
 #include "core/AiRequestCoordinator.h"
+#include "core/AssistantRequestLifecyclePolicy.h"
 #include "core/AssistantBehaviorPolicy.h"
 #include "core/DesktopActionContextPolicy.h"
 #include "core/ExecutionNarrator.h"
@@ -483,13 +484,20 @@ bool isCurrentTimeQuery(const QString &input)
 
 bool isCurrentDateQuery(const QString &input)
 {
-    const QString lowered = input.toLower();
+    QString lowered = input.toLower().trimmed();
+    while (lowered.startsWith(QChar::fromLatin1(',')) || lowered.startsWith(QChar::fromLatin1('.'))) {
+        lowered.remove(0, 1);
+        lowered = lowered.trimmed();
+    }
     return lowered.contains(QStringLiteral("what day is it"))
         || lowered.contains(QStringLiteral("what's the date"))
         || lowered.contains(QStringLiteral("whats the date"))
         || lowered.contains(QStringLiteral("and the date"))
+        || lowered.contains(QStringLiteral("and date"))
         || lowered == QStringLiteral("the date?")
         || lowered == QStringLiteral("the date")
+        || lowered == QStringLiteral("date?")
+        || lowered == QStringLiteral("date")
         || lowered.contains(QStringLiteral("and tomorrow"))
         || lowered == QStringLiteral("tomorrow?")
         || lowered == QStringLiteral("tomorrow")
@@ -1397,9 +1405,29 @@ QString groundedToolInventoryText(const QList<AgentToolSpec> &tools, const AppSe
         .arg(names.join(QStringLiteral(", ")), runtimeToolStatusSummary(settings));
 }
 
-int effectiveRequestTimeoutMs(const AppSettings *settings)
+int effectiveRequestTimeoutMs(const AppSettings *settings, RequestKind kind, const QString &input = QString())
 {
-    return std::max(30000, settings != nullptr ? settings->requestTimeoutMs() : 30000);
+    const int configuredMs = settings != nullptr ? settings->requestTimeoutMs() : 30000;
+    int timeoutMs = AssistantRequestLifecyclePolicy::timeoutMs(kind, configuredMs);
+    const QString lowered = input.toLower();
+    const bool likelyLongTask = lowered.contains(QStringLiteral("create "))
+        || lowered.contains(QStringLiteral("build "))
+        || lowered.contains(QStringLiteral("generate "))
+        || lowered.contains(QStringLiteral("implement "))
+        || lowered.contains(QStringLiteral("make "))
+        || lowered.contains(QStringLiteral("write "))
+        || lowered.contains(QStringLiteral("project"))
+        || lowered.contains(QStringLiteral("game"))
+        || lowered.contains(QStringLiteral("snake game"))
+        || lowered.contains(QStringLiteral("html"))
+        || lowered.contains(QStringLiteral("react"))
+        || lowered.contains(QStringLiteral("javascript"))
+        || lowered.contains(QStringLiteral("full code"))
+        || lowered.contains(QStringLiteral("step by step"));
+    if (likelyLongTask && (kind == RequestKind::Conversation || kind == RequestKind::AgentConversation)) {
+        timeoutMs += 120000;
+    }
+    return timeoutMs;
 }
 
 }
@@ -2806,7 +2834,7 @@ void AssistantController::submitText(const QString &text)
         && DesktopContextSelectionBuilder::contextRelevanceScore(
                routedInput,
                routeContext.effectiveIntent,
-               m_latestDesktopContext) >= 0.55;
+               m_latestDesktopContext) >= DesktopContextSelectionBuilder::minimumInjectionScore();
     routingTrace.contextDropReason = routingTrace.contextInjected
         ? QString()
         : (m_latestDesktopContextSummary.trimmed().isEmpty()
@@ -5603,7 +5631,7 @@ void AssistantController::startConversationRequest(const QString &input)
         .promptContext = m_turnOrchestrationRuntime ? std::optional<PromptTurnContext>(turnPlan.promptContext) : std::nullopt,
         .sampling = samplingProfile(),
         .streaming = m_settings->streamingEnabled(),
-        .timeoutMs = effectiveRequestTimeoutMs(m_settings)
+        .timeoutMs = effectiveRequestTimeoutMs(m_settings, RequestKind::Conversation, input)
     };
     m_activeRequestId = m_aiRequestCoordinator->startConversationRequest(
         m_aiBackendClient,
@@ -5815,7 +5843,7 @@ void AssistantController::startAgentConversationRequest(const QString &input, In
         .sampling = samplingProfile(),
         .mode = mode,
         .memoryAutoWrite = m_settings->memoryAutoWrite(),
-        .timeoutMs = effectiveRequestTimeoutMs(m_settings)
+        .timeoutMs = effectiveRequestTimeoutMs(m_settings, RequestKind::AgentConversation, input)
     };
     const AgentStartRequestResult startResult = m_aiRequestCoordinator->startAgentRequest(
         m_aiBackendClient,
@@ -6071,7 +6099,7 @@ void AssistantController::continueAgentConversation(const QList<AgentToolResult>
         .sampling = samplingProfile(),
         .mode = m_activeReasoningMode,
         .memoryAutoWrite = m_settings->memoryAutoWrite(),
-        .timeoutMs = effectiveRequestTimeoutMs(m_settings)
+        .timeoutMs = effectiveRequestTimeoutMs(m_settings, RequestKind::AgentConversation, m_lastAgentInput)
     };
     const AgentStartRequestResult continueResult = m_aiRequestCoordinator->continueAgentRequest(
         m_aiBackendClient,
@@ -6515,7 +6543,7 @@ void AssistantController::startCommandRequest(const QString &input)
             .userProfile = m_identityProfileService->userProfile(),
             .responseMode = m_activeActionSession.responseMode,
             .sessionGoal = m_activeActionSession.goal,
-            .timeoutMs = effectiveRequestTimeoutMs(m_settings),
+            .timeoutMs = effectiveRequestTimeoutMs(m_settings, RequestKind::CommandExtraction, input),
             .temperature = m_settings->toolUseTemperature(),
             .topP = m_settings->conversationTopP(),
             .providerTopK = m_settings->providerTopK(),
@@ -6637,12 +6665,49 @@ void AssistantController::handleHybridAgentFinished(const QString &payload)
         m_memoryPolicyHandler->captureExplicitMemoryFromInput(m_lastAgentInput);
     }
 
-    const SpokenReply reply = parseSpokenReply(
-        message.isEmpty()
-            ? (m_executionNarrator
-                ? m_executionNarrator->outcomeSummary(m_activeActionSession, true, QStringLiteral("I finished that request."))
-                : QStringLiteral("I finished that request."))
-            : message);
+    if (message.trimmed().isEmpty()) {
+        appendAgentTrace(QStringLiteral("validation"),
+                         QStringLiteral("Hybrid payload rejected"),
+                         QStringLiteral("The model returned an empty final message."),
+                         false);
+        deliverLocalResponse(
+            m_executionNarrator
+                ? m_executionNarrator->validationFailure(
+                    m_activeActionSession,
+                    m_localResponseEngine->respondToError(
+                        QStringLiteral("error_invalid"),
+                        buildLocalResponseContext(),
+                        m_activeActionSession.responseMode))
+                : m_localResponseEngine->respondToError(
+                    QStringLiteral("error_invalid"),
+                    buildLocalResponseContext(),
+                    m_activeActionSession.responseMode),
+            QStringLiteral("The chat adapter returned an empty response."),
+            true);
+        return;
+    }
+    const SpokenReply reply = parseSpokenReply(message);
+    if (reply.displayText.trimmed().isEmpty()) {
+        appendAgentTrace(QStringLiteral("validation"),
+                         QStringLiteral("Hybrid payload rejected"),
+                         QStringLiteral("The model reply became empty after sanitization."),
+                         false);
+        deliverLocalResponse(
+            m_executionNarrator
+                ? m_executionNarrator->validationFailure(
+                    m_activeActionSession,
+                    m_localResponseEngine->respondToError(
+                        QStringLiteral("error_invalid"),
+                        buildLocalResponseContext(),
+                        m_activeActionSession.responseMode))
+                : m_localResponseEngine->respondToError(
+                    QStringLiteral("error_invalid"),
+                    buildLocalResponseContext(),
+                    m_activeActionSession.responseMode),
+            QStringLiteral("The chat adapter returned unusable output."),
+            true);
+        return;
+    }
     if (m_activeActionSession.responseMode == ResponseMode::Act
         || m_activeActionSession.responseMode == ResponseMode::ActWithProgress
         || m_activeActionSession.responseMode == ResponseMode::Recover) {
@@ -6677,12 +6742,49 @@ void AssistantController::handleAgentResponse(const AgentResponse &response)
         m_memoryPolicyHandler->captureExplicitMemoryFromInput(m_lastAgentInput);
     }
 
-    const SpokenReply reply = parseSpokenReply(
-        response.outputText.trimmed().isEmpty()
-            ? (m_executionNarrator
-                ? m_executionNarrator->outcomeSummary(m_activeActionSession, true, QStringLiteral("I finished that request."))
-                : QStringLiteral("I finished that request."))
-            : response.outputText);
+    if (response.outputText.trimmed().isEmpty()) {
+        appendAgentTrace(QStringLiteral("validation"),
+                         QStringLiteral("Agent response rejected"),
+                         QStringLiteral("The provider returned an empty final message."),
+                         false);
+        deliverLocalResponse(
+            m_executionNarrator
+                ? m_executionNarrator->validationFailure(
+                    m_activeActionSession,
+                    m_localResponseEngine->respondToError(
+                        QStringLiteral("error_invalid"),
+                        buildLocalResponseContext(),
+                        m_activeActionSession.responseMode))
+                : m_localResponseEngine->respondToError(
+                    QStringLiteral("error_invalid"),
+                    buildLocalResponseContext(),
+                    m_activeActionSession.responseMode),
+            QStringLiteral("The provider returned an empty response."),
+            true);
+        return;
+    }
+    const SpokenReply reply = parseSpokenReply(response.outputText);
+    if (reply.displayText.trimmed().isEmpty()) {
+        appendAgentTrace(QStringLiteral("validation"),
+                         QStringLiteral("Agent response rejected"),
+                         QStringLiteral("The provider response became empty after sanitization."),
+                         false);
+        deliverLocalResponse(
+            m_executionNarrator
+                ? m_executionNarrator->validationFailure(
+                    m_activeActionSession,
+                    m_localResponseEngine->respondToError(
+                        QStringLiteral("error_invalid"),
+                        buildLocalResponseContext(),
+                        m_activeActionSession.responseMode))
+                : m_localResponseEngine->respondToError(
+                    QStringLiteral("error_invalid"),
+                    buildLocalResponseContext(),
+                    m_activeActionSession.responseMode),
+            QStringLiteral("The provider returned unusable output."),
+            true);
+        return;
+    }
     if (m_activeActionSession.responseMode == ResponseMode::Act
         || m_activeActionSession.responseMode == ResponseMode::ActWithProgress
         || m_activeActionSession.responseMode == ResponseMode::Recover) {
@@ -6929,8 +7031,12 @@ void AssistantController::recordTaskResult(const QJsonObject &resultObject)
         .nowMs = nowMs
     };
 
-    if (m_currentState == AssistantState::Processing) {
-        return;
+    if (m_currentState == AssistantState::Processing && m_loggingService) {
+        m_loggingService->infoFor(
+            QStringLiteral("follow_up_audit"),
+            QStringLiteral("[spoken_follow_up_processing_state] allowing follow-up delivery while processing taskId=%1 taskType=%2")
+                .arg(QString::number(handling.completedResult->taskId),
+                     handling.completedResult->type));
     }
 
     const std::optional<ActionThread> &currentActionThread = m_actionThreadTracker->current();

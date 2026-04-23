@@ -6,6 +6,7 @@
 #include <QJsonObject>
 #include <QRegularExpression>
 #include <QStandardPaths>
+#include <QStringList>
 
 #include <memory>
 
@@ -85,6 +86,35 @@ QString normalizedQuery(QString value)
     return value.simplified();
 }
 
+QString sanitizeConversationContent(const QString &role, QString content)
+{
+    content = content.trimmed();
+    if (content.isEmpty()) {
+        return {};
+    }
+
+    if (role.compare(QStringLiteral("assistant"), Qt::CaseInsensitive) == 0) {
+        content.replace(QRegularExpression(QStringLiteral("(?is)<think>.*?</think>")), QStringLiteral(" "));
+        content.replace(QRegularExpression(QStringLiteral("(?is)</?\\s*(answer|final|response|assistant_response)\\s*>")),
+                        QStringLiteral(" "));
+        content.replace(QRegularExpression(QStringLiteral("(?im)^\\s*(tone|addressing style|runtime|response contract|task type|suggested next step)\\s*:.*$")),
+                        QStringLiteral(" "));
+        content.replace(QRegularExpression(QStringLiteral("(?im)^\\s*you are\\s+vaxil.*$")),
+                        QStringLiteral(" "));
+        content.replace(QRegularExpression(QStringLiteral("(?im)^\\s*do not call the user.*$")),
+                        QStringLiteral(" "));
+        content.replace(QRegularExpression(QStringLiteral("(?im)^\\s*return only the user-facing answer.*$")),
+                        QStringLiteral(" "));
+    }
+
+    content.replace(QRegularExpression(QStringLiteral("[\\x00-\\x08\\x0B\\x0C\\x0E-\\x1F]")), QStringLiteral(" "));
+    content = content.simplified();
+    if (content.size() > 1600) {
+        content = content.left(1600).trimmed() + QStringLiteral("...");
+    }
+    return content;
+}
+
 QString connectorSummary(const QString &connectorKind, const QVariantMap &state)
 {
     const int seenCount = state.value(QStringLiteral("seenCount")).toInt();
@@ -143,6 +173,11 @@ MemoryStore::MemoryStore(const QString &storagePath, QObject *parent)
 
 void MemoryStore::appendConversation(const QString &role, const QString &content)
 {
+    const QString sanitizedContent = sanitizeConversationContent(role, content);
+    if (sanitizedContent.isEmpty()) {
+        return;
+    }
+
     QFile file(transcriptPath());
     if (!file.open(QIODevice::Append | QIODevice::Text)) {
         return;
@@ -151,7 +186,7 @@ void MemoryStore::appendConversation(const QString &role, const QString &content
     nlohmann::json line = {
         {"timestamp", nowIso().toStdString()},
         {"role", role.toStdString()},
-        {"content", content.toStdString()}
+        {"content", sanitizedContent.toStdString()}
     };
 
     file.write(QByteArray::fromStdString(line.dump()));
@@ -207,7 +242,9 @@ QList<AiMessage> MemoryStore::recentMessages(int maxCount) const
 
         result.push_back({
             .role = QString::fromStdString(parsed.value("role", std::string{})),
-            .content = QString::fromStdString(parsed.value("content", std::string{}))
+            .content = sanitizeConversationContent(
+                QString::fromStdString(parsed.value("role", std::string{})),
+                QString::fromStdString(parsed.value("content", std::string{})))
         });
     }
 
