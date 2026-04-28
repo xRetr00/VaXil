@@ -136,7 +136,8 @@ Window {
         smartHomeTokenEnvField.text = settingsVm.smartHomeHomeAssistantTokenEnvVar
         smartHomePresenceEntityField.text = settingsVm.smartHomePresenceEntityId
         smartHomeLightEntityField.text = settingsVm.smartHomeLightEntityId
-        smartHomeIdentityModeField.text = settingsVm.smartHomeIdentityMode
+        const identityModeIndex = smartHomeIdentityModeCombo.model.indexOf(settingsVm.smartHomeIdentityMode)
+        smartHomeIdentityModeCombo.currentIndex = identityModeIndex >= 0 ? identityModeIndex : 0
         smartHomeIdentityEntityField.text = settingsVm.smartHomeHomeAssistantIdentityEntityId
         smartHomePollSpin.value = settingsVm.smartHomePollIntervalMs
         smartHomeRequestTimeoutSpin.value = settingsVm.smartHomeRequestTimeoutMs
@@ -148,7 +149,10 @@ Window {
         smartHomeBleMissingSpin.value = settingsVm.smartHomeBleMissingTimeoutMinutes
         smartHomeBleScanSpin.value = settingsVm.smartHomeBleScanIntervalMs
         smartHomeBleRssiSpin.value = settingsVm.smartHomeBleRssiThreshold
+        smartHomeWelcomeEnabledCheck.checked = settingsVm.smartHomeWelcomeEnabled
+        smartHomeWelcomeCooldownEnabledCheck.checked = settingsVm.smartHomeWelcomeCooldownEnabled
         smartHomePersonalWelcomeCheck.checked = settingsVm.smartHomePersonalWelcomeEnabled
+        smartHomeUnknownBlocksWelcomeCheck.checked = settingsVm.smartHomeUnknownOccupantBlocksWelcomeEnabled
         smartHomeUnknownAlertsCheck.checked = settingsVm.smartHomeUnknownOccupantSpokenAlertsEnabled
         smartHomePersonalTemplateField.text = settingsVm.smartHomePersonalWelcomeTemplate
         smartHomePersonalAlertTemplateField.text = settingsVm.smartHomePersonalWelcomeWithAlertTemplate
@@ -1508,7 +1512,12 @@ Window {
                         Text { text: "Light entity"; color: "#b8c6d8" }
                         TextField { id: smartHomeLightEntityField; Layout.fillWidth: true; text: settingsVm.smartHomeLightEntityId }
                         Text { text: "Identity mode"; color: "#b8c6d8" }
-                        TextField { id: smartHomeIdentityModeField; Layout.fillWidth: true; text: settingsVm.smartHomeIdentityMode }
+                        ComboBox {
+                            id: smartHomeIdentityModeCombo
+                            Layout.fillWidth: true
+                            model: ["none", "desktop_ble_beacon", "home_assistant_device_tracker", "espresense"]
+                            currentIndex: Math.max(0, model.indexOf(settingsVm.smartHomeIdentityMode))
+                        }
                         Text { text: "HA identity entity"; color: "#b8c6d8" }
                         TextField { id: smartHomeIdentityEntityField; Layout.fillWidth: true; text: settingsVm.smartHomeHomeAssistantIdentityEntityId }
                         Text { text: "Poll interval ms"; color: "#b8c6d8" }
@@ -1533,8 +1542,15 @@ Window {
 
                     RowLayout {
                         Layout.fillWidth: true
+                        CheckBox { id: smartHomeWelcomeEnabledCheck; text: "Enable welcomes"; checked: settingsVm.smartHomeWelcomeEnabled }
+                        CheckBox { id: smartHomeWelcomeCooldownEnabledCheck; text: "Use welcome cooldown"; checked: settingsVm.smartHomeWelcomeCooldownEnabled }
                         CheckBox { id: smartHomeSensorOnlyWelcomeCheck; text: "Sensor-only test welcomes"; checked: settingsVm.smartHomeSensorOnlyWelcomeEnabled }
+                    }
+
+                    RowLayout {
+                        Layout.fillWidth: true
                         CheckBox { id: smartHomePersonalWelcomeCheck; text: "Personal welcomes"; checked: settingsVm.smartHomePersonalWelcomeEnabled }
+                        CheckBox { id: smartHomeUnknownBlocksWelcomeCheck; text: "Block unknown-occupant welcomes"; checked: settingsVm.smartHomeUnknownOccupantBlocksWelcomeEnabled }
                         CheckBox { id: smartHomeUnknownAlertsCheck; text: "Speak unknown-occupant alerts"; checked: settingsVm.smartHomeUnknownOccupantSpokenAlertsEnabled }
                     }
 
@@ -1562,7 +1578,7 @@ Window {
                                 smartHomeTokenEnvField.text,
                                 smartHomePresenceEntityField.text,
                                 smartHomeLightEntityField.text,
-                                smartHomeIdentityModeField.text,
+                                smartHomeIdentityModeCombo.currentText,
                                 smartHomeIdentityEntityField.text,
                                 smartHomePollSpin.value,
                                 smartHomeRequestTimeoutSpin.value,
@@ -1574,7 +1590,10 @@ Window {
                                 smartHomeBleMissingSpin.value,
                                 smartHomeBleScanSpin.value,
                                 smartHomeBleRssiSpin.value,
+                                smartHomeWelcomeEnabledCheck.checked,
+                                smartHomeWelcomeCooldownEnabledCheck.checked,
                                 smartHomePersonalWelcomeCheck.checked,
+                                smartHomeUnknownBlocksWelcomeCheck.checked,
                                 smartHomeUnknownAlertsCheck.checked,
                                 smartHomePersonalTemplateField.text,
                                 smartHomePersonalAlertTemplateField.text,

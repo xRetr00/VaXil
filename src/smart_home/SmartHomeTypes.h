@@ -35,7 +35,10 @@ struct SmartHomeConfig
     int bleAwayTimeoutMinutes = 10;
     int bleScanIntervalMs = 1000;
     int bleRssiThreshold = -127;
+    bool welcomeEnabled = true;
+    bool welcomeCooldownEnabled = true;
     bool personalWelcomeEnabled = true;
+    bool unknownOccupantBlocksWelcomeEnabled = true;
     bool unknownOccupantSpokenAlertsEnabled = true;
     QString personalWelcomeTemplate = QStringLiteral("Welcome back, {user_name}.");
     QString personalWelcomeWithAlertTemplate = QStringLiteral("Welcome back, {user_name}. Someone entered your room at {event_time}.");
@@ -149,6 +152,7 @@ struct SmartWelcomeDecision
     qint64 nextLastWelcomeAtMs = 0;
     bool personal = false;
     bool sensorOnlyTest = false;
+    bool unknownOccupant = false;
     bool mentionUnknownOccupant = false;
 };
 

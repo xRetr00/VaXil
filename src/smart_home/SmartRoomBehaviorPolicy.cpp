@@ -20,8 +20,14 @@ SmartWelcomeDecision SmartRoomBehaviorPolicy::evaluateWelcome(const WelcomeInput
     SmartWelcomeDecision decision;
     decision.nextLastWelcomeAtMs = input.lastWelcomeAtMs;
 
+    if (!input.welcomeEnabled) {
+        decision.reasonCode = QStringLiteral("welcome.blocked.disabled");
+        return decision;
+    }
+
     const int cooldownMinutes = std::clamp(input.welcomeCooldownMinutes, 0, 24 * 60);
-    if (cooldownMinutes > 0
+    if (input.welcomeCooldownEnabled
+        && cooldownMinutes > 0
         && input.lastWelcomeAtMs > 0
         && nowMs - input.lastWelcomeAtMs < cooldownMinutes * kMinuteMs) {
         decision.reasonCode = QStringLiteral("welcome.blocked.cooldown");
@@ -46,12 +52,28 @@ SmartWelcomeDecision SmartRoomBehaviorPolicy::evaluateWelcome(const WelcomeInput
             decision.personal = true;
             return decision;
         }
+        if (!input.welcomeCooldownEnabled) {
+            decision.allowed = true;
+            decision.reasonCode = QStringLiteral("welcome.allowed.in_room_cooldown_disabled");
+            decision.message = QStringLiteral("Welcome back.");
+            decision.nextLastWelcomeAtMs = nowMs;
+            decision.personal = true;
+            return decision;
+        }
         decision.reasonCode = QStringLiteral("welcome.blocked.not_away_to_in_room");
         return decision;
     }
 
     if (input.transition.currentState == SmartRoomOccupancyState::UNKNOWN_OCCUPANT_IN_ROOM) {
-        decision.reasonCode = QStringLiteral("welcome.blocked.unknown_occupant");
+        if (input.unknownOccupantBlocksWelcomeEnabled) {
+            decision.reasonCode = QStringLiteral("welcome.blocked.unknown_occupant");
+            return decision;
+        }
+        decision.allowed = true;
+        decision.reasonCode = QStringLiteral("welcome.allowed.unknown_occupant_override");
+        decision.message = QStringLiteral("There appears to be someone in the room.");
+        decision.nextLastWelcomeAtMs = nowMs;
+        decision.unknownOccupant = true;
         return decision;
     }
 

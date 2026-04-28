@@ -10,7 +10,22 @@
 
 namespace {
 constexpr int kDisabledRssiThreshold = -127;
+constexpr int kMinimumBleScanWindowMs = 3000;
 constexpr qint64 kMinuteMs = 60 * 1000;
+
+int effectiveScanWindowMs(const SmartHomeConfig &config)
+{
+    return std::clamp(std::max(config.bleScanIntervalMs, kMinimumBleScanWindowMs), kMinimumBleScanWindowMs, 60000);
+}
+
+QByteArray uuidBytesFromString(const QString &uuid)
+{
+    const QUuid parsed(uuid.trimmed());
+    if (parsed.isNull()) {
+        return {};
+    }
+    return parsed.toRfc4122();
+}
 
 QString uuidFromIBeaconPayload(const QByteArray &data)
 {
@@ -33,9 +48,57 @@ QString uuidFromIBeaconPayload(const QByteArray &data)
         .toLower();
 }
 
+bool byteArrayContains(const QByteArray &haystack, const QByteArray &needle)
+{
+    return !needle.isEmpty() && haystack.indexOf(needle) >= 0;
+}
+
+bool manufacturerPayloadContainsBeacon(const QByteArray &data, const QString &target)
+{
+    if (uuidFromIBeaconPayload(data) == target) {
+        return true;
+    }
+    return byteArrayContains(data, uuidBytesFromString(target));
+}
+
 bool rssiAllowed(qint16 rssi, int threshold)
 {
     return threshold <= kDisabledRssiThreshold || rssi >= threshold;
+}
+
+bool advertisementContainsBeaconUuid(const QBluetoothDeviceInfo &info, const QString &target)
+{
+    if (target.isEmpty()) {
+        return false;
+    }
+
+    for (const QBluetoothUuid &uuid : info.serviceUuids()) {
+        if (DesktopBleIdentityAdapter::normalizedBeaconUuid(uuid.toString()) == target) {
+            return true;
+        }
+    }
+    for (const QBluetoothUuid &uuid : info.serviceIds()) {
+        if (DesktopBleIdentityAdapter::normalizedBeaconUuid(uuid.toString()) == target) {
+            return true;
+        }
+    }
+
+    const QMultiHash<QBluetoothUuid, QByteArray> serviceData = info.serviceData();
+    for (auto it = serviceData.cbegin(); it != serviceData.cend(); ++it) {
+        if (DesktopBleIdentityAdapter::normalizedBeaconUuid(it.key().toString()) == target
+            || byteArrayContains(it.value(), uuidBytesFromString(target))) {
+            return true;
+        }
+    }
+
+    const QMultiHash<quint16, QByteArray> manufacturerData = info.manufacturerData();
+    for (auto it = manufacturerData.cbegin(); it != manufacturerData.cend(); ++it) {
+        if (manufacturerPayloadContainsBeacon(it.value(), target)) {
+            return true;
+        }
+    }
+
+    return false;
 }
 }
 
@@ -61,6 +124,9 @@ void DesktopBleIdentityAdapter::setConfig(const SmartHomeConfig &config)
         m_lastSeenAtMs = 0;
         m_latestRssi = 0;
         m_matchCount = 0;
+        m_scanDevicesSeen = 0;
+        m_scanUuidMatches = 0;
+        m_scanRssiRejected = 0;
         publishPresence(false, QDateTime::currentMSecsSinceEpoch(), 0, QStringLiteral("ble_identity.uuid_changed"));
     }
     restartAgent();
@@ -126,32 +192,7 @@ bool DesktopBleIdentityAdapter::advertisementMatchesBeacon(const QBluetoothDevic
         return false;
     }
 
-    for (const QBluetoothUuid &uuid : info.serviceUuids()) {
-        if (normalizedBeaconUuid(uuid.toString()) == target) {
-            return true;
-        }
-    }
-    for (const QBluetoothUuid &uuid : info.serviceIds()) {
-        if (normalizedBeaconUuid(uuid.toString()) == target) {
-            return true;
-        }
-    }
-
-    const QMultiHash<QBluetoothUuid, QByteArray> serviceData = info.serviceData();
-    for (auto it = serviceData.cbegin(); it != serviceData.cend(); ++it) {
-        if (normalizedBeaconUuid(it.key().toString()) == target) {
-            return true;
-        }
-    }
-
-    const QMultiHash<quint16, QByteArray> manufacturerData = info.manufacturerData();
-    for (auto it = manufacturerData.cbegin(); it != manufacturerData.cend(); ++it) {
-        if (uuidFromIBeaconPayload(it.value()) == target) {
-            return true;
-        }
-    }
-
-    return false;
+    return advertisementContainsBeaconUuid(info, target);
 }
 
 void DesktopBleIdentityAdapter::scanTick()
@@ -170,7 +211,15 @@ void DesktopBleIdentityAdapter::handleDeviceUpdated(const QBluetoothDeviceInfo &
 {
     Q_UNUSED(fields)
 
-    if (!advertisementMatchesBeacon(info, m_config.bleBeaconUuid, m_config.bleRssiThreshold)) {
+    ++m_scanDevicesSeen;
+    const QString target = normalizedBeaconUuid(m_config.bleBeaconUuid);
+    if (!advertisementContainsBeaconUuid(info, target)) {
+        return;
+    }
+
+    ++m_scanUuidMatches;
+    if (!rssiAllowed(info.rssi(), m_config.bleRssiThreshold)) {
+        ++m_scanRssiRejected;
         return;
     }
 
@@ -184,7 +233,12 @@ void DesktopBleIdentityAdapter::handleDeviceUpdated(const QBluetoothDeviceInfo &
 void DesktopBleIdentityAdapter::handleScanFinished()
 {
     logScan(QStringLiteral("finished"),
-            QStringLiteral("matches=%1 supported=%2").arg(m_matchCount).arg(m_supported ? QStringLiteral("true") : QStringLiteral("false")));
+            QStringLiteral("devicesSeen=%1 uuidMatches=%2 rssiRejected=%3 totalMatches=%4 supported=%5")
+                .arg(QString::number(m_scanDevicesSeen),
+                     QString::number(m_scanUuidMatches),
+                     QString::number(m_scanRssiRejected),
+                     QString::number(m_matchCount),
+                     m_supported ? QStringLiteral("true") : QStringLiteral("false")));
     refreshPresenceFromClock(QDateTime::currentMSecsSinceEpoch());
 }
 
@@ -239,7 +293,7 @@ void DesktopBleIdentityAdapter::restartAgent()
     m_supported = QBluetoothDeviceDiscoveryAgent::supportedDiscoveryMethods()
         .testFlag(QBluetoothDeviceDiscoveryAgent::LowEnergyMethod);
     m_agent = new QBluetoothDeviceDiscoveryAgent(this);
-    m_agent->setLowEnergyDiscoveryTimeout(std::clamp(m_config.bleScanIntervalMs, 500, 60000));
+    m_agent->setLowEnergyDiscoveryTimeout(effectiveScanWindowMs(m_config));
     connect(m_agent, &QBluetoothDeviceDiscoveryAgent::deviceDiscovered,
             this, &DesktopBleIdentityAdapter::handleDeviceDiscovered);
     connect(m_agent, &QBluetoothDeviceDiscoveryAgent::deviceUpdated,
@@ -265,7 +319,13 @@ void DesktopBleIdentityAdapter::startScan()
     }
 
     logScan(QStringLiteral("started"),
-            QStringLiteral("intervalMs=%1 rssiThreshold=%2").arg(m_config.bleScanIntervalMs).arg(m_config.bleRssiThreshold));
+            QStringLiteral("intervalMs=%1 scanWindowMs=%2 rssiThreshold=%3")
+                .arg(QString::number(m_config.bleScanIntervalMs),
+                     QString::number(effectiveScanWindowMs(m_config)),
+                     QString::number(m_config.bleRssiThreshold)));
+    m_scanDevicesSeen = 0;
+    m_scanUuidMatches = 0;
+    m_scanRssiRejected = 0;
     m_agent->start(QBluetoothDeviceDiscoveryAgent::LowEnergyMethod);
 }
 

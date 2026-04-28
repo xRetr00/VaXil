@@ -550,7 +550,10 @@ QString SettingsViewModel::smartHomeBleBeaconUuid() const { return m_backend ? m
 int SettingsViewModel::smartHomeBleMissingTimeoutMinutes() const { return m_backend ? m_backend->smartHomeBleMissingTimeoutMinutes() : 10; }
 int SettingsViewModel::smartHomeBleScanIntervalMs() const { return m_backend ? m_backend->smartHomeBleScanIntervalMs() : 1000; }
 int SettingsViewModel::smartHomeBleRssiThreshold() const { return m_backend ? m_backend->smartHomeBleRssiThreshold() : -127; }
+bool SettingsViewModel::smartHomeWelcomeEnabled() const { return m_backend == nullptr || m_backend->smartHomeWelcomeEnabled(); }
+bool SettingsViewModel::smartHomeWelcomeCooldownEnabled() const { return m_backend == nullptr || m_backend->smartHomeWelcomeCooldownEnabled(); }
 bool SettingsViewModel::smartHomePersonalWelcomeEnabled() const { return m_backend == nullptr || m_backend->smartHomePersonalWelcomeEnabled(); }
+bool SettingsViewModel::smartHomeUnknownOccupantBlocksWelcomeEnabled() const { return m_backend == nullptr || m_backend->smartHomeUnknownOccupantBlocksWelcomeEnabled(); }
 bool SettingsViewModel::smartHomeUnknownOccupantSpokenAlertsEnabled() const { return m_backend == nullptr || m_backend->smartHomeUnknownOccupantSpokenAlertsEnabled(); }
 QString SettingsViewModel::smartHomePersonalWelcomeTemplate() const { return m_backend ? m_backend->smartHomePersonalWelcomeTemplate() : QStringLiteral("Welcome back, {user_name}."); }
 QString SettingsViewModel::smartHomePersonalWelcomeWithAlertTemplate() const { return m_backend ? m_backend->smartHomePersonalWelcomeWithAlertTemplate() : QStringLiteral("Welcome back, {user_name}. Someone entered your room at {event_time}."); }
@@ -918,7 +921,10 @@ bool SettingsViewModel::saveSmartHomeSettings(bool enabled,
                                               int bleMissingTimeoutMinutes,
                                               int bleScanIntervalMs,
                                               int bleRssiThreshold,
+                                              bool welcomeEnabled,
+                                              bool welcomeCooldownEnabled,
                                               bool personalWelcomeEnabled,
+                                              bool unknownOccupantBlocksWelcomeEnabled,
                                               bool unknownOccupantSpokenAlertsEnabled,
                                               const QString &personalWelcomeTemplate,
                                               const QString &personalWelcomeWithAlertTemplate,
@@ -943,7 +949,10 @@ bool SettingsViewModel::saveSmartHomeSettings(bool enabled,
                                                          bleMissingTimeoutMinutes,
                                                          bleScanIntervalMs,
                                                          bleRssiThreshold,
+                                                         welcomeEnabled,
+                                                         welcomeCooldownEnabled,
                                                          personalWelcomeEnabled,
+                                                         unknownOccupantBlocksWelcomeEnabled,
                                                          unknownOccupantSpokenAlertsEnabled,
                                                          personalWelcomeTemplate,
                                                          personalWelcomeWithAlertTemplate,

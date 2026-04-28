@@ -176,7 +176,10 @@ SmartHomeConfig SmartHomeRuntime::configFromSettings() const
     config.bleAwayTimeoutMinutes = m_settings->smartHomeBleMissingTimeoutMinutes();
     config.bleScanIntervalMs = m_settings->smartHomeBleScanIntervalMs();
     config.bleRssiThreshold = m_settings->smartHomeBleRssiThreshold();
+    config.welcomeEnabled = m_settings->smartHomeWelcomeEnabled();
+    config.welcomeCooldownEnabled = m_settings->smartHomeWelcomeCooldownEnabled();
     config.personalWelcomeEnabled = m_settings->smartHomePersonalWelcomeEnabled();
+    config.unknownOccupantBlocksWelcomeEnabled = m_settings->smartHomeUnknownOccupantBlocksWelcomeEnabled();
     config.unknownOccupantSpokenAlertsEnabled = m_settings->smartHomeUnknownOccupantSpokenAlertsEnabled();
     config.personalWelcomeTemplate = m_settings->smartHomePersonalWelcomeTemplate();
     config.personalWelcomeWithAlertTemplate = m_settings->smartHomePersonalWelcomeWithAlertTemplate();
@@ -238,6 +241,9 @@ void SmartHomeRuntime::handleSnapshot(const SmartHomeSnapshot &snapshot)
     const bool identityAvailable = identity.has_value() && identity->available && !identity->stale;
     const SmartWelcomeDecision welcome = m_behaviorPolicy.evaluateWelcome({
         .transition = transition,
+        .welcomeEnabled = m_config.welcomeEnabled,
+        .welcomeCooldownEnabled = m_config.welcomeCooldownEnabled,
+        .unknownOccupantBlocksWelcomeEnabled = m_config.unknownOccupantBlocksWelcomeEnabled,
         .sensorOnlyWelcomeEnabled = identityAvailable ? false : m_config.sensorOnlyWelcomeEnabled,
         .welcomeCooldownMinutes = m_config.welcomeCooldownMinutes,
         .lastWelcomeAtMs = m_lastWelcomeAtMs,
@@ -345,6 +351,12 @@ QString SmartHomeRuntime::welcomeMessageForDecision(const SmartWelcomeDecision &
     if (decision.sensorOnlyTest) {
         return QStringLiteral("Welcome back.");
     }
+    if (decision.unknownOccupant) {
+        return renderTemplate(m_config.unknownOccupantMessageTemplate,
+                              QString(),
+                              m_unknownOccupant,
+                              decision.nextLastWelcomeAtMs);
+    }
     return decision.message.trimmed().isEmpty() ? QStringLiteral("Welcome back.") : decision.message.trimmed();
 }
 
@@ -374,13 +386,16 @@ void SmartHomeRuntime::logWelcomeDecision(const SmartWelcomeDecision &decision, 
     }
     m_loggingService->infoFor(
         QStringLiteral("tools_mcp"),
-        QStringLiteral("[smart_room.welcome] allowed=%1 reason=%2 previous=%3 current=%4 cooldownMinutes=%5 sensorOnlyEnabled=%6")
+        QStringLiteral("[smart_room.welcome] allowed=%1 reason=%2 previous=%3 current=%4 welcomeEnabled=%5 cooldownEnabled=%6 cooldownMinutes=%7 sensorOnlyEnabled=%8 unknownOccupantBlocksWelcome=%9")
             .arg(decision.allowed ? QStringLiteral("true") : QStringLiteral("false"),
                  decision.reasonCode,
                  smartRoomOccupancyStateName(transition.previousState),
                  smartRoomOccupancyStateName(transition.currentState),
+                 m_config.welcomeEnabled ? QStringLiteral("true") : QStringLiteral("false"),
+                 m_config.welcomeCooldownEnabled ? QStringLiteral("true") : QStringLiteral("false"),
                  QString::number(m_config.welcomeCooldownMinutes),
-                 m_config.sensorOnlyWelcomeEnabled ? QStringLiteral("true") : QStringLiteral("false")));
+                 m_config.sensorOnlyWelcomeEnabled ? QStringLiteral("true") : QStringLiteral("false"),
+                 m_config.unknownOccupantBlocksWelcomeEnabled ? QStringLiteral("true") : QStringLiteral("false")));
 }
 
 void SmartHomeRuntime::logUnknownOccupant(const QString &action, const SmartRoomUnknownOccupantEvent &event) const

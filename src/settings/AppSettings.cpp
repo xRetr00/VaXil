@@ -472,7 +472,11 @@ bool AppSettings::load()
         m_smartHomeWelcomeCooldownMinutes = clampSmartHomeWelcomeCooldownMinutes(smartHome.value("welcome_cooldown_minutes", m_smartHomeWelcomeCooldownMinutes));
         m_smartHomeRoomAbsenceGraceMinutes = clampSmartHomeRoomAbsenceGraceMinutes(smartHome.value("room_absence_grace_minutes", m_smartHomeRoomAbsenceGraceMinutes));
         m_smartHomeRequestTimeoutMs = clampSmartHomeRequestTimeoutMs(smartHome.value("request_timeout_ms", m_smartHomeRequestTimeoutMs));
+        m_smartHomeWelcomeEnabled = smartHome.value("welcome_enabled", m_smartHomeWelcomeEnabled);
+        m_smartHomeWelcomeCooldownEnabled = smartHome.value("welcome_cooldown_enabled", m_smartHomeWelcomeCooldownEnabled);
         m_smartHomePersonalWelcomeEnabled = smartHome.value("personal_welcome_enabled", m_smartHomePersonalWelcomeEnabled);
+        m_smartHomeUnknownOccupantBlocksWelcomeEnabled = smartHome.value("unknown_occupant_blocks_welcome_enabled",
+                                                                         m_smartHomeUnknownOccupantBlocksWelcomeEnabled);
         m_smartHomeUnknownOccupantSpokenAlertsEnabled = smartHome.value("unknown_occupant_spoken_alerts_enabled",
                                                                         m_smartHomeUnknownOccupantSpokenAlertsEnabled);
         if (smartHome.contains("welcome_templates") && smartHome.at("welcome_templates").is_object()) {
@@ -683,7 +687,10 @@ bool AppSettings::save() const
             {"welcome_cooldown_minutes", m_smartHomeWelcomeCooldownMinutes},
             {"room_absence_grace_minutes", m_smartHomeRoomAbsenceGraceMinutes},
             {"request_timeout_ms", m_smartHomeRequestTimeoutMs},
+            {"welcome_enabled", m_smartHomeWelcomeEnabled},
+            {"welcome_cooldown_enabled", m_smartHomeWelcomeCooldownEnabled},
             {"personal_welcome_enabled", m_smartHomePersonalWelcomeEnabled},
+            {"unknown_occupant_blocks_welcome_enabled", m_smartHomeUnknownOccupantBlocksWelcomeEnabled},
             {"unknown_occupant_spoken_alerts_enabled", m_smartHomeUnknownOccupantSpokenAlertsEnabled},
             {"welcome_templates", {
                 {"personal_welcome", m_smartHomePersonalWelcomeTemplate.toStdString()},
@@ -1048,10 +1055,28 @@ void AppSettings::setSmartHomeRequestTimeoutMs(int timeoutMs)
     m_smartHomeRequestTimeoutMs = clampSmartHomeRequestTimeoutMs(timeoutMs);
     emit settingsChanged();
 }
+bool AppSettings::smartHomeWelcomeEnabled() const { return m_smartHomeWelcomeEnabled; }
+void AppSettings::setSmartHomeWelcomeEnabled(bool enabled)
+{
+    m_smartHomeWelcomeEnabled = enabled;
+    emit settingsChanged();
+}
+bool AppSettings::smartHomeWelcomeCooldownEnabled() const { return m_smartHomeWelcomeCooldownEnabled; }
+void AppSettings::setSmartHomeWelcomeCooldownEnabled(bool enabled)
+{
+    m_smartHomeWelcomeCooldownEnabled = enabled;
+    emit settingsChanged();
+}
 bool AppSettings::smartHomePersonalWelcomeEnabled() const { return m_smartHomePersonalWelcomeEnabled; }
 void AppSettings::setSmartHomePersonalWelcomeEnabled(bool enabled)
 {
     m_smartHomePersonalWelcomeEnabled = enabled;
+    emit settingsChanged();
+}
+bool AppSettings::smartHomeUnknownOccupantBlocksWelcomeEnabled() const { return m_smartHomeUnknownOccupantBlocksWelcomeEnabled; }
+void AppSettings::setSmartHomeUnknownOccupantBlocksWelcomeEnabled(bool enabled)
+{
+    m_smartHomeUnknownOccupantBlocksWelcomeEnabled = enabled;
     emit settingsChanged();
 }
 bool AppSettings::smartHomeUnknownOccupantSpokenAlertsEnabled() const { return m_smartHomeUnknownOccupantSpokenAlertsEnabled; }

@@ -60,4 +60,7 @@ private:
     bool m_started = false;
     bool m_supported = false;
     int m_matchCount = 0;
+    int m_scanDevicesSeen = 0;
+    int m_scanUuidMatches = 0;
+    int m_scanRssiRejected = 0;
 };

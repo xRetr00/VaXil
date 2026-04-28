@@ -163,8 +163,17 @@ public:
     int smartHomeRequestTimeoutMs() const;
     void setSmartHomeRequestTimeoutMs(int timeoutMs);
 
+    bool smartHomeWelcomeEnabled() const;
+    void setSmartHomeWelcomeEnabled(bool enabled);
+
+    bool smartHomeWelcomeCooldownEnabled() const;
+    void setSmartHomeWelcomeCooldownEnabled(bool enabled);
+
     bool smartHomePersonalWelcomeEnabled() const;
     void setSmartHomePersonalWelcomeEnabled(bool enabled);
+
+    bool smartHomeUnknownOccupantBlocksWelcomeEnabled() const;
+    void setSmartHomeUnknownOccupantBlocksWelcomeEnabled(bool enabled);
 
     bool smartHomeUnknownOccupantSpokenAlertsEnabled() const;
     void setSmartHomeUnknownOccupantSpokenAlertsEnabled(bool enabled);
@@ -416,7 +425,10 @@ private:
     int m_smartHomeWelcomeCooldownMinutes = 30;
     int m_smartHomeRoomAbsenceGraceMinutes = 6;
     int m_smartHomeRequestTimeoutMs = 5000;
+    bool m_smartHomeWelcomeEnabled = true;
+    bool m_smartHomeWelcomeCooldownEnabled = true;
     bool m_smartHomePersonalWelcomeEnabled = true;
+    bool m_smartHomeUnknownOccupantBlocksWelcomeEnabled = true;
     bool m_smartHomeUnknownOccupantSpokenAlertsEnabled = true;
     QString m_smartHomePersonalWelcomeTemplate = QStringLiteral("Welcome back, {user_name}.");
     QString m_smartHomePersonalWelcomeWithAlertTemplate = QStringLiteral("Welcome back, {user_name}. Someone entered your room at {event_time}.");

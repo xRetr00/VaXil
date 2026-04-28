@@ -13,6 +13,10 @@ private slots:
     void briefSensorOffGapStaysOccupiedDuringGrace();
     void identityPresenceDrivesFutureHomeStates();
     void absentIdentityAndOccupiedSensorTracksUnknownOccupantWithoutWelcome();
+    void welcomePolicyCanDisableAllWelcomes();
+    void welcomePolicyCanDisableCooldown();
+    void welcomePolicyAllowsRepeatedInRoomWhenCooldownDisabled();
+    void unknownOccupantBlockCanBeDisabledForNonPersonalMessage();
     void awayToHomeNotRoomThenInRoomAllowsOnePersonalWelcome();
 };
 
@@ -182,6 +186,98 @@ void SmartRoomStateMachineTests::absentIdentityAndOccupiedSensorTracksUnknownOcc
     });
     QVERIFY(!decision.allowed);
     QCOMPARE(decision.reasonCode, QStringLiteral("welcome.blocked.unknown_occupant"));
+}
+
+void SmartRoomStateMachineTests::welcomePolicyCanDisableAllWelcomes()
+{
+    SmartRoomTransition transition;
+    transition.previousState = SmartRoomOccupancyState::AWAY;
+    transition.currentState = SmartRoomOccupancyState::IN_ROOM;
+    transition.occurredAtMs = 800000;
+
+    SmartRoomBehaviorPolicy policy;
+    const SmartWelcomeDecision decision = policy.evaluateWelcome({
+        .transition = transition,
+        .welcomeEnabled = false,
+        .sensorOnlyWelcomeEnabled = false,
+        .welcomeCooldownMinutes = 30,
+        .lastWelcomeAtMs = 0,
+        .nowMs = transition.occurredAtMs
+    });
+
+    QVERIFY(!decision.allowed);
+    QCOMPARE(decision.reasonCode, QStringLiteral("welcome.blocked.disabled"));
+}
+
+void SmartRoomStateMachineTests::welcomePolicyCanDisableCooldown()
+{
+    SmartRoomTransition transition;
+    transition.previousState = SmartRoomOccupancyState::AWAY;
+    transition.currentState = SmartRoomOccupancyState::IN_ROOM;
+    transition.occurredAtMs = 900000;
+
+    SmartRoomBehaviorPolicy policy;
+    const SmartWelcomeDecision decision = policy.evaluateWelcome({
+        .transition = transition,
+        .welcomeEnabled = true,
+        .welcomeCooldownEnabled = false,
+        .sensorOnlyWelcomeEnabled = false,
+        .welcomeCooldownMinutes = 30,
+        .lastWelcomeAtMs = transition.occurredAtMs - 60 * 1000,
+        .nowMs = transition.occurredAtMs
+    });
+
+    QVERIFY(decision.allowed);
+    QCOMPARE(decision.reasonCode, QStringLiteral("welcome.allowed.identity_away_to_in_room"));
+}
+
+void SmartRoomStateMachineTests::welcomePolicyAllowsRepeatedInRoomWhenCooldownDisabled()
+{
+    SmartRoomTransition transition;
+    transition.previousState = SmartRoomOccupancyState::IN_ROOM;
+    transition.currentState = SmartRoomOccupancyState::IN_ROOM;
+    transition.occurredAtMs = 925000;
+
+    SmartRoomBehaviorPolicy policy;
+    const SmartWelcomeDecision decision = policy.evaluateWelcome({
+        .transition = transition,
+        .welcomeEnabled = true,
+        .welcomeCooldownEnabled = false,
+        .sensorOnlyWelcomeEnabled = false,
+        .welcomeCooldownMinutes = 1,
+        .lastWelcomeAtMs = transition.occurredAtMs - 1000,
+        .nowMs = transition.occurredAtMs
+    });
+
+    QVERIFY(decision.allowed);
+    QVERIFY(decision.personal);
+    QCOMPARE(decision.reasonCode, QStringLiteral("welcome.allowed.in_room_cooldown_disabled"));
+}
+
+void SmartRoomStateMachineTests::unknownOccupantBlockCanBeDisabledForNonPersonalMessage()
+{
+    SmartRoomTransition transition;
+    transition.previousState = SmartRoomOccupancyState::AWAY;
+    transition.currentState = SmartRoomOccupancyState::UNKNOWN_OCCUPANT_IN_ROOM;
+    transition.unknownOccupant = true;
+    transition.occurredAtMs = 950000;
+
+    SmartRoomBehaviorPolicy policy;
+    const SmartWelcomeDecision decision = policy.evaluateWelcome({
+        .transition = transition,
+        .welcomeEnabled = true,
+        .welcomeCooldownEnabled = true,
+        .unknownOccupantBlocksWelcomeEnabled = false,
+        .sensorOnlyWelcomeEnabled = false,
+        .welcomeCooldownMinutes = 30,
+        .lastWelcomeAtMs = 0,
+        .nowMs = transition.occurredAtMs
+    });
+
+    QVERIFY(decision.allowed);
+    QVERIFY(decision.unknownOccupant);
+    QVERIFY(!decision.personal);
+    QCOMPARE(decision.reasonCode, QStringLiteral("welcome.allowed.unknown_occupant_override"));
 }
 
 void SmartRoomStateMachineTests::awayToHomeNotRoomThenInRoomAllowsOnePersonalWelcome()

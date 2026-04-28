@@ -14,6 +14,7 @@ private slots:
     void smartHomeBleIdentitySettersNormalizeAndClamp();
     void smartHomeHomeAssistantIdentitySettersNormalizeAndClamp();
     void smartHomeWelcomeTemplateDefaultsAndOverrides();
+    void smartHomeWelcomeTogglesDefaultOnAndPersistInSettingsObject();
 };
 
 void SmartHomeSettingsTests::smartHomeDefaultsAreSafe()
@@ -118,6 +119,9 @@ void SmartHomeSettingsTests::smartHomeWelcomeTemplateDefaultsAndOverrides()
     QCOMPARE(settings.smartHomeUnknownOccupantMessageTemplate(), QStringLiteral("There appears to be someone in the room."));
     QCOMPARE(settings.smartHomeUnknownOccupantAlertResponseTemplate(), QStringLiteral("Someone was detected in your room at {event_time}."));
     QVERIFY(settings.smartHomePersonalWelcomeEnabled());
+    QVERIFY(settings.smartHomeWelcomeEnabled());
+    QVERIFY(settings.smartHomeWelcomeCooldownEnabled());
+    QVERIFY(settings.smartHomeUnknownOccupantBlocksWelcomeEnabled());
     QVERIFY(settings.smartHomeUnknownOccupantSpokenAlertsEnabled());
 
     settings.setSmartHomePersonalWelcomeTemplate(QStringLiteral("Hi {user_name}"));
@@ -125,6 +129,9 @@ void SmartHomeSettingsTests::smartHomeWelcomeTemplateDefaultsAndOverrides()
     settings.setSmartHomeUnknownOccupantMessageTemplate(QStringLiteral("Someone is here."));
     settings.setSmartHomeUnknownOccupantAlertResponseTemplate(QStringLiteral("Detected {event_time}."));
     settings.setSmartHomePersonalWelcomeEnabled(false);
+    settings.setSmartHomeWelcomeEnabled(false);
+    settings.setSmartHomeWelcomeCooldownEnabled(false);
+    settings.setSmartHomeUnknownOccupantBlocksWelcomeEnabled(false);
     settings.setSmartHomeUnknownOccupantSpokenAlertsEnabled(false);
 
     QCOMPARE(settings.smartHomePersonalWelcomeTemplate(), QStringLiteral("Hi {user_name}"));
@@ -132,7 +139,27 @@ void SmartHomeSettingsTests::smartHomeWelcomeTemplateDefaultsAndOverrides()
     QCOMPARE(settings.smartHomeUnknownOccupantMessageTemplate(), QStringLiteral("Someone is here."));
     QCOMPARE(settings.smartHomeUnknownOccupantAlertResponseTemplate(), QStringLiteral("Detected {event_time}."));
     QVERIFY(!settings.smartHomePersonalWelcomeEnabled());
+    QVERIFY(!settings.smartHomeWelcomeEnabled());
+    QVERIFY(!settings.smartHomeWelcomeCooldownEnabled());
+    QVERIFY(!settings.smartHomeUnknownOccupantBlocksWelcomeEnabled());
     QVERIFY(!settings.smartHomeUnknownOccupantSpokenAlertsEnabled());
+}
+
+void SmartHomeSettingsTests::smartHomeWelcomeTogglesDefaultOnAndPersistInSettingsObject()
+{
+    AppSettings settings;
+
+    QVERIFY(settings.smartHomeWelcomeEnabled());
+    QVERIFY(settings.smartHomeWelcomeCooldownEnabled());
+    QVERIFY(settings.smartHomeUnknownOccupantBlocksWelcomeEnabled());
+
+    settings.setSmartHomeWelcomeEnabled(false);
+    settings.setSmartHomeWelcomeCooldownEnabled(false);
+    settings.setSmartHomeUnknownOccupantBlocksWelcomeEnabled(false);
+
+    QVERIFY(!settings.smartHomeWelcomeEnabled());
+    QVERIFY(!settings.smartHomeWelcomeCooldownEnabled());
+    QVERIFY(!settings.smartHomeUnknownOccupantBlocksWelcomeEnabled());
 }
 
 QTEST_APPLESS_MAIN(SmartHomeSettingsTests)

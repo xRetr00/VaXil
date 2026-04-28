@@ -161,7 +161,10 @@ class BackendFacade : public QObject
     Q_PROPERTY(int smartHomeBleMissingTimeoutMinutes READ smartHomeBleMissingTimeoutMinutes NOTIFY settingsChanged)
     Q_PROPERTY(int smartHomeBleScanIntervalMs READ smartHomeBleScanIntervalMs NOTIFY settingsChanged)
     Q_PROPERTY(int smartHomeBleRssiThreshold READ smartHomeBleRssiThreshold NOTIFY settingsChanged)
+    Q_PROPERTY(bool smartHomeWelcomeEnabled READ smartHomeWelcomeEnabled NOTIFY settingsChanged)
+    Q_PROPERTY(bool smartHomeWelcomeCooldownEnabled READ smartHomeWelcomeCooldownEnabled NOTIFY settingsChanged)
     Q_PROPERTY(bool smartHomePersonalWelcomeEnabled READ smartHomePersonalWelcomeEnabled NOTIFY settingsChanged)
+    Q_PROPERTY(bool smartHomeUnknownOccupantBlocksWelcomeEnabled READ smartHomeUnknownOccupantBlocksWelcomeEnabled NOTIFY settingsChanged)
     Q_PROPERTY(bool smartHomeUnknownOccupantSpokenAlertsEnabled READ smartHomeUnknownOccupantSpokenAlertsEnabled NOTIFY settingsChanged)
     Q_PROPERTY(QString smartHomePersonalWelcomeTemplate READ smartHomePersonalWelcomeTemplate NOTIFY settingsChanged)
     Q_PROPERTY(QString smartHomePersonalWelcomeWithAlertTemplate READ smartHomePersonalWelcomeWithAlertTemplate NOTIFY settingsChanged)
@@ -323,7 +326,10 @@ public:
     int smartHomeBleMissingTimeoutMinutes() const;
     int smartHomeBleScanIntervalMs() const;
     int smartHomeBleRssiThreshold() const;
+    bool smartHomeWelcomeEnabled() const;
+    bool smartHomeWelcomeCooldownEnabled() const;
     bool smartHomePersonalWelcomeEnabled() const;
+    bool smartHomeUnknownOccupantBlocksWelcomeEnabled() const;
     bool smartHomeUnknownOccupantSpokenAlertsEnabled() const;
     QString smartHomePersonalWelcomeTemplate() const;
     QString smartHomePersonalWelcomeWithAlertTemplate() const;
@@ -498,7 +504,10 @@ public:
                                            int bleMissingTimeoutMinutes,
                                            int bleScanIntervalMs,
                                            int bleRssiThreshold,
+                                           bool welcomeEnabled,
+                                           bool welcomeCooldownEnabled,
                                            bool personalWelcomeEnabled,
+                                           bool unknownOccupantBlocksWelcomeEnabled,
                                            bool unknownOccupantSpokenAlertsEnabled,
                                            const QString &personalWelcomeTemplate,
                                            const QString &personalWelcomeWithAlertTemplate,

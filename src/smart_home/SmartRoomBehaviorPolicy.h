@@ -8,6 +8,9 @@ public:
     struct WelcomeInput
     {
         SmartRoomTransition transition;
+        bool welcomeEnabled = true;
+        bool welcomeCooldownEnabled = true;
+        bool unknownOccupantBlocksWelcomeEnabled = true;
         bool sensorOnlyWelcomeEnabled = false;
         int welcomeCooldownMinutes = 30;
         qint64 lastWelcomeAtMs = 0;
